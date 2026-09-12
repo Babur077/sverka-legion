@@ -39,7 +39,6 @@ def show_page():
         with col1:
             with st.container(border=True):
                 st.markdown("#### Динамика расхождений (Δ)")
-                # Простой столбчатый график по датам и банкам
                 fig_bar = px.bar(
                     df_archive, x='date_str', y='difference', color='bank_name',
                     labels={'date_str': 'Дата проведения', 'difference': 'Разница', 'bank_name': 'Банк'},
@@ -51,14 +50,12 @@ def show_page():
         with col2:
             with st.container(border=True):
                 st.markdown("#### Несопоставленные транзакции")
-                # График отсутствующих и лишних строк
                 fig_line = px.line(
                     df_archive, x='date_str', y=['only_our_count', 'only_bank_count'],
                     labels={'date_str': 'Дата', 'value': 'Количество транзакций', 'variable': 'Категория'},
                     template="plotly_white",
                     markers=True
                 )
-                # Переименуем легенду для красоты
                 newnames = {'only_our_count': 'Нет в банке', 'only_bank_count': 'Лишние от банка'}
                 fig_line.for_each_trace(lambda t: t.update(name = newnames.get(t.name, t.name)))
                 st.plotly_chart(fig_line, use_container_width=True)

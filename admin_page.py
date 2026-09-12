@@ -1,5 +1,5 @@
 import streamlit as st
-from utils.db_manager import add_user, get_all_users, get_audit_logs, log_action
+from utils.db_manager import add_user, get_all_users, get_audit_logs, log_action, save_settings
 
 def show_page():
     # 1. Защита страницы: доступ только у администратора
@@ -25,7 +25,6 @@ def show_page():
                 with st.form("add_user_form", clear_on_submit=True):
                     new_user = st.text_input("Логин*")
                     new_pass = st.text_input("Пароль*", type="password")
-                    # 2. Исправлен список ролей на актуальные
                     new_role = st.selectbox("Роль*", ["accountant", "auditor", "admin"])
                     
                     if st.form_submit_button("Создать пользователя", type="primary", use_container_width=True):
@@ -33,7 +32,6 @@ def show_page():
                             success, msg = add_user(new_user, new_pass, new_role)
                             if success:
                                 st.success(msg)
-                                # 3. Безопасное логирование
                                 log_action(current_user, "ADD_USER", f"Создан пользователь {new_user} с ролью {new_role}")
                                 st.rerun()
                             else:
@@ -82,10 +80,8 @@ def show_page():
     with tab3:
         with st.container(border=True):
             st.markdown("### 🔧 Настройки по умолчанию")
+            st.caption("Эти параметры хранятся в базе данных и общие для всех пользователей системы — не только для вашей текущей сессии.")
             
-            if "settings" not in st.session_state:
-                st.session_state["settings"] = {"amount_tolerance": 0.01, "currency": "UZS"}
-                
             new_tol = st.number_input(
                 "Допуск суммы (игнорировать Δ ≤)", 
                 value=float(st.session_state["settings"]["amount_tolerance"]), 
@@ -100,5 +96,6 @@ def show_page():
             if st.button("💾 Сохранить настройки", type="primary"):
                 st.session_state["settings"]["amount_tolerance"] = new_tol
                 st.session_state["settings"]["currency"] = new_curr
+                save_settings(st.session_state["settings"])
                 log_action(current_user, "UPDATE_SETTINGS", f"Изменены параметры: {new_curr}, допуск {new_tol}")
-                st.success("Глобальные параметры обновлены!")
+                st.success("Глобальные параметры обновлены — изменения видны всем пользователям!")

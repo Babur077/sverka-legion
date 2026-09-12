@@ -1,3 +1,5 @@
+import functools
+
 import polars as pl
 import pandas as pd
 import numpy as np
@@ -5,8 +7,23 @@ from core.parsers import clean_amount_polars, clean_date_polars, clean_rrn_polar
 from utils.db_manager import get_epos_registry
 
 def apply_reversals(df: pl.DataFrame, status_col: str, action: str, amt_col: str, rev_words: list) -> pl.DataFrame:
-    if not status_col or status_col not in df.columns: return df
-    rev_mask = pl.col(status_col).cast(pl.Utf8).str.to_lowercase().str.strip_chars().is_in(rev_words)
+    if not status_col or status_col not in df.columns or not rev_words:
+        return df
+
+    status_norm = pl.col(status_col).cast(pl.Utf8).str.to_lowercase().str.strip_chars()
+
+    # ВАЖНО: маркеры возврата матчатся по ВХОЖДЕНИЮ подстроки (а не по точному
+    # совпадению всей строки статуса), как и подсказывает UI ("Маркеры возврата
+    # ... через запятую"). Раньше здесь стояло is_in(rev_words), из-за чего статус
+    # вида "REFUND - client request" не распознавался как возврат, хотя
+    # find_offsetting_rrns_by_status() на странице сверки уже искал именно по
+    # вхождению — из-за расхождения возвраты могли не гаситься в расчёте сумм.
+    rev_mask = functools.reduce(
+        lambda acc, w: acc | status_norm.str.contains(w, literal=True),
+        rev_words[1:],
+        status_norm.str.contains(rev_words[0], literal=True),
+    )
+
     if "💥" in action:
         bad_rrns = df.filter(rev_mask).select("RRN").unique()
         return df.join(bad_rrns, on="RRN", how="anti")
@@ -48,7 +65,7 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
 
     pl_bank = pl_bank.with_columns([
         clean_date_polars("date").alias("date"),
-        clean_amount_polars("amount").alias("raw_amount") if cfg["bank_amt"] else pl.lit(0.0).alias("raw_amount"),
+        (clean_amount_polars("amount").alias("raw_amount") if cfg["bank_amt"] else pl.lit(0.0).alias("raw_amount")),
         clean_rrn_polars("RRN", "bank").alias("RRN")
     ])
     

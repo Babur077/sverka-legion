@@ -1,54 +1,17 @@
 import streamlit as st
+
+# ВАЖНО: set_page_config должен быть самой первой Streamlit-командой в скрипте.
+st.set_page_config(page_title="ReconcileHub", page_icon="⚡", layout="wide")
+
 import rrn_page
 import epos_page
 import admin_page
 import analytics_page
-from utils.db_manager import init_db, authenticate_user, log_action, init_user_db, verify_user
+from utils.db_manager import init_db, authenticate_user, log_action, get_settings
 
+# ─── Инициализация БД (создаёт таблицы и дефолтного админа при первом запуске) ───
 init_db()
-init_user_db()
 
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
-    st.session_state["username"] = None
-    st.session_state["role"] = None
-
-# Экран авторизации, если пользователь не вошел
-if not st.session_state["authenticated"]:
-    st.subheader("🔐 Авторизация в ReconcileHub")
-    username = st.text_input("Логин")
-    password = st.text_input("Пароль", type="password")
-    
-    if st.button("Войти", type="primary"):
-        role = verify_user(username, password)
-        if role:
-            st.session_state["authenticated"] = True
-            st.session_state["username"] = username
-            st.session_state["role"] = role
-            st.rerun()
-        else:
-            st.error("Неверный логин или пароль")
-    st.stop()  
-
-# --- УПРАВЛЕНИЕ РОСТКОМ НАВИГАЦИИ (RBAC) ---
-role = st.session_state["role"]
-
-# Настраиваем доступ к страницам в зависимости от роли
-pages = {"Сверка по RRN": rrn_page, "Аналитика": analytics_page}
-
-if role == "admin":
-    pages["Реестр EPOS"] = epos_page
-    pages["Админ-панель"] = admin_page
-
-# Отрисовка бокового меню
-selected_page = st.sidebar.selectbox("Навигация", list(pages.keys()))
-pages[selected_page].show_page()
-
-if st.sidebar.button("Выйти из системы"):
-    st.session_state["authenticated"] = False
-    st.rerun()
-# Конфигурация страницы должна быть первой командой
-st.set_page_config(page_title="ReconcileHub", page_icon="⚡", layout="wide")
 
 def inject_modern_light_css():
     st.markdown("""
@@ -116,58 +79,58 @@ def inject_modern_light_css():
     </style>
     """, unsafe_allow_html=True)
 
-# Инициализация настроек сессии
-if "settings" not in st.session_state:
-    st.session_state["settings"] = {"amount_tolerance": 0.01, "currency": "UZS", "dayfirst": True}
 
-inject_modern_light_css()
-
-# Инициализация состояния сессии для авторизации
+# ─── Инициализация состояния сессии ───
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 if "username" not in st.session_state:
     st.session_state["username"] = None
 if "role" not in st.session_state:
     st.session_state["role"] = None
+if "settings" not in st.session_state:
+    # Настройки читаются из БД, чтобы быть общими для ВСЕХ пользователей,
+    # а не только для текущей сессии браузера.
+    st.session_state["settings"] = get_settings()
+
+inject_modern_light_css()
+
 
 def login_screen():
     """Экран авторизации (показывается, если пользователь не вошел)."""
-    inject_modern_light_css()
-    
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         st.markdown("<br><br><br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<h2 style='text-align: center;'>Вход в систему</h2>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; color: #64748b;'>ReconcileHub v2.0</p>", unsafe_allow_html=True)
-            
-            # Оборачиваем в форму для надежной передачи данных
+
             with st.form("login_form"):
                 username = st.text_input("Логин")
                 password = st.text_input("Пароль", type="password")
-                
+
                 submitted = st.form_submit_button("Войти", type="primary", use_container_width=True)
-                
+
                 if submitted:
-                    # Принудительно отсекаем случайные пробелы по краям
                     clean_user = username.strip()
                     clean_pass = password.strip()
-                    
+
                     if clean_user and clean_pass:
                         is_auth, role = authenticate_user(clean_user, clean_pass)
                         if is_auth:
                             st.session_state["authenticated"] = True
                             st.session_state["username"] = clean_user
                             st.session_state["role"] = role
-                            # log_action(clean_user, "LOGIN", "Успешный вход в систему") 
+                            log_action(clean_user, "LOGIN", "Успешный вход в систему")
                             st.rerun()
                         else:
                             st.error("Неверный логин или пароль")
+                    else:
+                        st.error("Пожалуйста, введите логин и пароль.")
+
 
 def main_app():
     """Основной интерфейс платформы (показывается только после логина)."""
-    inject_modern_light_css()
-    
+
     # ─── Боковое меню ───
     with st.sidebar:
         st.markdown("""
@@ -178,14 +141,19 @@ def main_app():
         """, unsafe_allow_html=True)
 
         st.markdown("<p style='font-size:0.75rem; color:#94a3b8; margin-left:14px; font-weight:600;'>ОБЗОР</p>", unsafe_allow_html=True)
-        
-        # Зависимость меню от роли (например, Настройки видит только админ)
-        menu_items = ["🔄 Сверка по RRN", "📱 Реестр EPOS", "📊 Аналитика"]
+
+        # Пункты меню зависят от роли. "Реестр EPOS" и "Настройки" — только для admin,
+        # так как в реестре хранятся комиссионные ставки и юрлица (чувствительные данные),
+        # а "Настройки" меняют общесистемные параметры для всех пользователей.
+        menu_items = ["🔄 Сверка по RRN"]
+        if st.session_state["role"] == "admin":
+            menu_items.append("📱 Реестр EPOS")
+        menu_items.append("📊 Аналитика")
         if st.session_state["role"] == "admin":
             menu_items.append("⚙️ Настройки")
-            
+
         app_mode = st.radio("Навигация", menu_items, label_visibility="collapsed")
-        
+
         st.divider()
         st.markdown(f"👤 Пользователь: **{st.session_state['username']}**")
         if st.button("🚪 Выйти", use_container_width=True):
@@ -204,8 +172,10 @@ def main_app():
         analytics_page.show_page()
     elif app_mode == "⚙️ Настройки":
         admin_page.show_page()
+
+
 # ─── Точка входа ───
 if not st.session_state["authenticated"]:
     login_screen()
 else:
-    main_app()  
+    main_app()

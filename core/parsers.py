@@ -14,8 +14,18 @@ def load_file_polars(file_name: str, file_bytes: bytes, sheet_name=0) -> pl.Data
 def clean_amount_polars(col_name: str) -> pl.Expr:
     c = pl.col(col_name).cast(pl.Utf8)
     c = c.str.replace_all(r"[^\d\.,\-]", "")
-    c = pl.when(c.str.contains(",") & ~c.str.contains(r"\.")).then(c.str.replace(",", ".")).otherwise(c)
+
+    # Запятая с 1-2 цифрами после и без точки — десятичный разделитель (напр. "1234,56").
+    is_decimal_comma = c.str.contains(r"^-?\d+,\d{1,2}$")
+    # Запятая(-ые), разбивающая(-ие) число на группы РОВНО по 3 цифры, без точки —
+    # разделитель тысяч (напр. "1,234" или "12,345,678"), а не десятичная дробь.
+    is_thousands_comma = c.str.contains(r"^-?\d{1,3}(,\d{3})+$")
+
+    c = pl.when(is_decimal_comma).then(c.str.replace(",", ".")).otherwise(c)
+    c = pl.when(is_thousands_comma).then(c.str.replace_all(",", "")).otherwise(c)
+    # Если есть и запятые, и точка — запятые это разделители тысяч, точка — десятичная (напр. "1,234.56").
     c = pl.when(c.str.contains(",") & c.str.contains(r"\.")).then(c.str.replace_all(",", "")).otherwise(c)
+
     return c.cast(pl.Float64, strict=False).fill_null(0.0)
 
 def clean_date_polars(col_name: str) -> pl.Expr:

@@ -2,6 +2,16 @@ import streamlit as st
 from utils.db_manager import add_epos_terminal, get_epos_registry, log_action
 
 def show_page():
+    # Защита страницы: доступ только у администратора.
+    # Пункт меню в app.py тоже скрыт для не-админов, но проверка здесь нужна
+    # как независимый рубеж защиты (rubric: "never rely only on hiding a menu item"),
+    # на случай прямого вызова функции или будущих изменений в логике меню.
+    if st.session_state.get("role") != "admin":
+        st.error("⛔ У вас нет прав для просмотра этой страницы.")
+        return
+
+    current_user = st.session_state.get("username", "unknown")
+
     st.title("Реестр EPOS терминалов")
     st.markdown("<p style='color:#64748b; margin-top:-15px; margin-bottom:30px;'>Справочник эквайринговых терминалов и комиссионных ставок.</p>", unsafe_allow_html=True)
     
@@ -28,8 +38,8 @@ def show_page():
                         success, msg = add_epos_terminal(new_tid, new_mid, new_bank, new_entity, new_comm)
                         if success:
                             st.success(msg)
-                            # Записываем действие в лог (пока хардкодим юзера admin)
-                            log_action("admin", "ADD_EPOS", f"Добавлен терминал {new_tid} ({new_bank})")
+                            # Пишем реального инициатора действия, а не хардкод "admin"
+                            log_action(current_user, "ADD_EPOS", f"Добавлен терминал {new_tid} ({new_bank})")
                             st.rerun() # Перезагружаем страницу для обновления таблицы
                         else:
                             st.error(msg)

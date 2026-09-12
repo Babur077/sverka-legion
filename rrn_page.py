@@ -33,8 +33,17 @@ def upload_with_preview(label: str, key: str, icon: str = "📤"):
 def show_page():
     st.title("Сверка по RRN")
     st.markdown("<p style='color:#64748b; margin-top:-15px; margin-bottom:30px;'>Потранзакционная сверка с автоматическим расчетом комиссий на базе EPOS Реестра.</p>", unsafe_allow_html=True)
-    
-    bank_name = st.session_state.get("chosen_bank", "Банк")
+
+    # ИСПРАВЛЕНО: раньше это поле нигде не заполнялось, и bank_name всегда был "Банк" —
+    # все записи в архиве (см. Аналитику) получали одинаковое имя банка.
+    bank_name_input = st.text_input(
+        "🏦 Название банка (используется в загрузках и в архиве сверок)",
+        value=st.session_state.get("chosen_bank", ""),
+        placeholder="напр. Kapital Bank",
+        key="bank_name_input_v2",
+    )
+    st.session_state["chosen_bank"] = bank_name_input.strip() or "Банк"
+    bank_name = st.session_state["chosen_bank"]
 
     with st.container(border=True):
         c1, c2 = st.columns(2)
@@ -394,6 +403,10 @@ def show_page():
             col_info, col_comm = st.columns([3, 1])
             with col_comm:
                 comm_pct = st.number_input("🏷️ Комиссия (%)", min_value=0.0, max_value=100.0, value=0.0, step=0.05, format="%.2f", key="comm_pct_v2")
+                # ИСПРАВЛЕНО: раньше не было пояснения, из-за чего легко спутать это поле
+                # с комиссией, уже вычтенной по реестру EPOS (net_amount_bank), и посчитать
+                # комиссию дважды. Это отдельный ручной калькулятор "что если", а не то же самое.
+                st.caption("ℹ️ Это доп. расчёт «что если» поверх итоговых сумм. Если по TID уже задана комиссия в реестре EPOS — она уже вычтена из «Итого (Банк)» ниже; используйте это поле только для симуляции другой ставки.")
 
             m1, m2, m3, m4, m5 = st.columns(5)
             def fmt_num(v, decimals=2): return f"{float(v):,.{decimals}f}"
