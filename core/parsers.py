@@ -4,11 +4,20 @@ import pandas as pd
 
 def load_file_polars(file_name: str, file_bytes: bytes, sheet_name=0) -> pl.DataFrame:
     if file_name.lower().endswith((".xlsx", ".xls")):
-        return pl.read_excel(io.BytesIO(file_bytes), sheet_id=1 if sheet_name in (0, None) else sheet_name + 1, engine="calamine")
+        sheet_id = 1 if sheet_name in (0, None) else sheet_name + 1
+        try:
+            return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id, engine="calamine")
+        except Exception:
+            try:
+                return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id)
+            except Exception:
+                # В крайнем случае читаем через pandas и конвертируем в polars
+                pdf = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name or 0)
+                return pl.from_pandas(pdf)
     else:
         try:
             return pl.read_csv(io.BytesIO(file_bytes), separator=";", ignore_errors=True)
-        except:
+        except Exception:
             return pl.read_csv(io.BytesIO(file_bytes), separator=",", ignore_errors=True)
 
 def clean_amount_polars(col_name: str) -> pl.Expr:

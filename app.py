@@ -16,33 +16,124 @@ init_db()
 def inject_modern_light_css():
     st.markdown("""
     <style>
-    /* Глобальный фон */
-    [data-testid="stAppViewContainer"] { background-color: #f8fafc !important; }
+    /* Глобальный светлый фон и текстовый цвет */
+    .stApp, [data-testid="stAppViewContainer"] {
+        background-color: #f8fafc !important;
+        color: #0f172a !important;
+    }
     
+    /* Основные текстовые элементы */
+    p, span, div, label {
+        color: inherit;
+    }
+    
+    /* Заголовки */
+    h1, h2, h3, h4, h5, h6 {
+        color: #0f172a !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.02em !important;
+    }
+
+    /* Все метки виджетов (Label): решаем проблему белого текста на белом фоне */
+    [data-testid="stWidgetLabel"],
+    [data-testid="stWidgetLabel"] label,
+    [data-testid="stWidgetLabel"] p,
+    [data-testid="stWidgetLabel"] span {
+        color: #1e293b !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+    }
+
     /* Сайдбар */
-    [data-testid="stSidebar"] { background-color: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
-    [data-testid="stSidebar"] hr { border-color: #f1f5f9 !important; }
+    [data-testid="stSidebar"] {
+        background-color: #ffffff !important;
+        border-right: 1px solid #e2e8f0 !important;
+    }
+    [data-testid="stSidebar"] hr {
+        border-color: #f1f5f9 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+    [data-testid="stSidebar"] span {
+        color: #334155 !important;
+    }
     
-    /* Стилизация радио-кнопок под пункты меню */
+    /* Стилизация радио-кнопок под пункты меню в сайдбаре */
+    [data-testid="stSidebar"] [data-testid="stRadio"] label,
     [data-testid="stSidebar"] .stRadio > div > label {
         padding: 10px 14px !important;
-        margin-bottom: 2px !important;
+        margin-bottom: 3px !important;
         border-radius: 8px !important;
-        color: #475569 !important;
+        color: #334155 !important;
         font-weight: 500 !important;
-        font-size: 0.9rem !important;
+        font-size: 0.92rem !important;
         transition: all 0.2s ease-in-out;
+        background-color: transparent !important;
     }
+    [data-testid="stSidebar"] [data-testid="stRadio"] label p,
+    [data-testid="stSidebar"] .stRadio > div > label p {
+        color: #334155 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:hover,
     [data-testid="stSidebar"] .stRadio > div > label:hover {
         background-color: #f1f5f9 !important;
         color: #0f172a !important;
     }
+    [data-testid="stSidebar"] [data-testid="stRadio"] label[data-checked="true"],
     [data-testid="stSidebar"] .stRadio > div > label[data-checked="true"] {
         background-color: #e0e7ff !important; 
         color: #3730a3 !important;
         font-weight: 600 !important;
     }
-    [data-testid="stSidebar"] .stRadio div[role="radio"] > div { display: none !important; }
+    [data-testid="stSidebar"] [data-testid="stRadio"] label[data-checked="true"] p,
+    [data-testid="stSidebar"] .stRadio > div > label[data-checked="true"] p {
+        color: #3730a3 !important;
+        font-weight: 600 !important;
+    }
+    [data-testid="stSidebar"] .stRadio div[role="radio"] > div {
+        display: none !important;
+    }
+
+    /* Поля ввода (Text input, Number input, Selectbox) */
+    .stTextInput input,
+    .stNumberInput input,
+    div[data-baseweb="input"] input {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+        padding: 8px 12px !important;
+    }
+    .stTextInput input::placeholder,
+    div[data-baseweb="input"] input::placeholder {
+        color: #94a3b8 !important;
+    }
+    div[data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+        border-color: #cbd5e1 !important;
+        color: #0f172a !important;
+        border-radius: 8px !important;
+    }
+
+    /* Загрузчик файлов (File Uploader Dropzone) */
+    [data-testid="stFileUploader"] section {
+        background-color: #ffffff !important;
+        border: 1.5px dashed #cbd5e1 !important;
+        border-radius: 10px !important;
+    }
+    [data-testid="stFileUploader"] section:hover {
+        border-color: #6366f1 !important;
+        background-color: #f8fafc !important;
+    }
+    [data-testid="stFileUploader"] section button {
+        background-color: #f1f5f9 !important;
+        color: #0f172a !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 6px !important;
+    }
+    [data-testid="stFileUploader"] section span,
+    [data-testid="stFileUploader"] section small {
+        color: #64748b !important;
+    }
 
     /* Карточки-контейнеры */
     [data-testid="stVerticalBlockBorderWrapper"] {
@@ -63,19 +154,49 @@ def inject_modern_light_css():
         color: #64748b !important;
         font-weight: 500 !important;
     }
-    button[data-baseweb="tab"]:hover { background-color: #f1f5f9 !important; }
+    button[data-baseweb="tab"]:hover {
+        background-color: #f1f5f9 !important;
+        color: #0f172a !important;
+    }
     button[data-baseweb="tab"][aria-selected="true"] {
         background-color: #e2e8f0 !important; 
         color: #0f172a !important;
         font-weight: 600 !important;
     }
-    div[data-baseweb="tab-highlight"], div[data-baseweb="tab-border"] { display: none !important; }
+    div[data-baseweb="tab-highlight"], div[data-baseweb="tab-border"] {
+        display: none !important;
+    }
+
+    /* Кнопки */
+    .stButton > button {
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+        transition: all 0.15s ease-in-out;
+    }
+    .stButton > button[kind="secondary"],
+    .stButton > button:not([kind="primary"]) {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+    .stButton > button[kind="secondary"]:hover,
+    .stButton > button:not([kind="primary"]):hover {
+        background-color: #f8fafc !important;
+        border-color: #94a3b8 !important;
+    }
+    .stButton > button[kind="primary"] {
+        background-color: #4f46e5 !important;
+        color: #ffffff !important;
+        border: none !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background-color: #4338ca !important;
+    }
     
     /* Верхний хедер */
-    [data-testid="stHeader"] { background: transparent !important; }
-    
-    /* Тексты */
-    h1, h2, h3 { color: #0f172a !important; font-weight: 600 !important; letter-spacing: -0.02em !important; }
+    [data-testid="stHeader"] {
+        background: transparent !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
