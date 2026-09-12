@@ -92,28 +92,31 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ user }) => {
       </div>
 
       {/* Metric Cards */}
+      {/* FIX: min-w-0 on every card + break-words/tabular-nums on the value so large
+          formatted sums (with non-breaking thousands separators) wrap instead of
+          overflowing the grid and getting clipped by the app's overflow-hidden shell. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+        <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Всего сверок</div>
-          <div className="text-2xl font-bold text-slate-900 mt-1">{filtered.length}</div>
+          <div className="text-2xl font-bold text-slate-900 mt-1 break-words tabular-nums">{filtered.length}</div>
           <div className="text-[11px] text-slate-400 mt-1">в базе данных</div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+        <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Объём (Наши данные)</div>
-          <div className="text-2xl font-bold text-indigo-600 mt-1">{fmt(totalOurVolume)}</div>
+          <div className="text-2xl font-bold text-indigo-600 mt-1 break-words tabular-nums">{fmt(totalOurVolume)}</div>
           <div className="text-[11px] text-slate-400 mt-1">UZS</div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+        <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Объём (Банк)</div>
-          <div className="text-2xl font-bold text-emerald-600 mt-1">{fmt(totalBankVolume)}</div>
+          <div className="text-2xl font-bold text-emerald-600 mt-1 break-words tabular-nums">{fmt(totalBankVolume)}</div>
           <div className="text-[11px] text-slate-400 mt-1">UZS</div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+        <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Суммарная разница (Δ)</div>
-          <div className={`text-2xl font-bold mt-1 ${Math.abs(totalDifference) < 1 ? 'text-emerald-600' : 'text-rose-600'}`}>
+          <div className={`text-2xl font-bold mt-1 break-words tabular-nums ${Math.abs(totalDifference) < 1 ? 'text-emerald-600' : 'text-rose-600'}`}>
             {totalDifference > 0 ? `+${fmt(totalDifference)}` : fmt(totalDifference)}
           </div>
           <div className="text-[11px] text-slate-400 mt-1">UZS</div>
@@ -153,7 +156,9 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ user }) => {
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip formatter={(v: number) => fmt(v)} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="diff" name="Разница (Банк - Мы)" stroke="#dc2626" strokeWidth={2} dot={{ r: 4 }} />
+                {/* FIX: exact palette hex (#e11d48 rose) instead of the previous
+                    generic red (#dc2626), matching the rest of the app's rose tone. */}
+                <Line type="monotone" dataKey="diff" name="Разница (Банк - Мы)" stroke="#e11d48" strokeWidth={2} dot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>

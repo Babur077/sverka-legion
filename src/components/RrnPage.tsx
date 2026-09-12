@@ -771,40 +771,45 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           )}
 
           {/* Metric Dashboard Cards */}
+          {/* FIX: min-w-0 on every card + break-words/tabular-nums on the value so large
+              formatted sums (with non-breaking thousands separators) wrap instead of
+              overflowing the grid and getting clipped by the app's overflow-hidden shell. */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
+            <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Итого (Мы), {currency}</div>
-              <div className="text-lg font-bold text-slate-900 mt-1">{fmt(dynamicCalculations.totalOurSum)}</div>
+              <div className="text-lg font-bold text-slate-900 mt-1 break-words tabular-nums">{fmt(dynamicCalculations.totalOurSum)}</div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
+            <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Итого (Банк), {currency}</div>
-              <div className="text-lg font-bold text-slate-900 mt-1">{fmt(dynamicCalculations.totalBankSum)}</div>
+              <div className="text-lg font-bold text-slate-900 mt-1 break-words tabular-nums">{fmt(dynamicCalculations.totalBankSum)}</div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
+            <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Разница (Δ)</div>
-              <div className={`text-lg font-bold mt-1 ${Math.abs(dynamicCalculations.totalDiff) <= tolerance ? 'text-emerald-600' : 'text-rose-600'}`}>
+              <div className={`text-lg font-bold mt-1 break-words tabular-nums ${Math.abs(dynamicCalculations.totalDiff) <= tolerance ? 'text-emerald-600' : 'text-rose-600'}`}>
                 {dynamicCalculations.totalDiff > 0 ? `+${fmt(dynamicCalculations.totalDiff)}` : fmt(dynamicCalculations.totalDiff)}
               </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
+            <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Совпало / Δ Сумм</div>
-              <div className="text-lg font-bold text-slate-900 mt-1">
+              <div className="text-lg font-bold text-slate-900 mt-1 break-words tabular-nums">
                 {reconData.matched_count} <span className="text-xs text-slate-400 font-normal">/</span> <span className={reconData.mismatch_count > 0 ? 'text-amber-600' : 'text-slate-500'}>{reconData.mismatch_count}</span>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs col-span-2 md:col-span-1">
+            <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs col-span-2 md:col-span-1">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Процент сверки</div>
-              <div className="text-lg font-bold text-indigo-600 mt-1">
+              <div className="text-lg font-bold text-indigo-600 mt-1 break-words tabular-nums">
                 {dynamicCalculations.matchRate.toFixed(1)}%
               </div>
             </div>
           </div>
 
           {/* Quick Commission Calculator */}
+          {/* FIX: flex-wrap + min-w-0 + break-words tabular-nums so large commission
+              figures wrap onto a new line on narrower screens instead of being clipped. */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <span className="text-xs font-bold text-slate-700">🏷️ Быстрый расчет комиссии (%):</span>
@@ -819,14 +824,14 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               />
             </div>
             {commissionPct > 0 && (
-              <div className="flex items-center gap-4 text-xs">
-                <div>
+              <div className="flex flex-wrap items-center gap-4 text-xs min-w-0">
+                <div className="min-w-0">
                   <span className="text-slate-500">Комиссия банка: </span>
-                  <strong className="text-slate-800">{fmt(dynamicCalculations.totalBankSum * (commissionPct / 100))} {currency}</strong>
+                  <strong className="text-slate-800 break-words tabular-nums">{fmt(dynamicCalculations.totalBankSum * (commissionPct / 100))} {currency}</strong>
                 </div>
-                <div className="border-l border-slate-200 pl-4">
+                <div className="border-l border-slate-200 pl-4 min-w-0">
                   <span className="text-slate-500">Чистыми: </span>
-                  <strong className="text-emerald-700">{fmt(dynamicCalculations.totalBankSum * (1 - commissionPct / 100))} {currency}</strong>
+                  <strong className="text-emerald-700 break-words tabular-nums">{fmt(dynamicCalculations.totalBankSum * (1 - commissionPct / 100))} {currency}</strong>
                 </div>
               </div>
             )}
@@ -1027,13 +1032,15 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       <YAxis tick={{ fontSize: 10 }} />
                       <Tooltip formatter={(v: number) => fmt(v)} />
                       <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
+                      {/* FIX: exact palette hex values (indigo/emerald/rose) instead of
+                          the previous generic red/blue/green tones. */}
                       <Bar dataKey="Δ суммы" name="Разница">
                         {dynamicCalculations.adjustedSummary
                           .filter(r => !r.date.includes('ИТОГО'))
                           .map((entry, index) => (
                             <Cell
                               key={`cell-${index}`}
-                              fill={Math.abs(entry['Δ суммы']) <= tolerance ? '#16a34a' : entry['Δ суммы'] > 0 ? '#2563eb' : '#dc2626'}
+                              fill={Math.abs(entry['Δ суммы']) <= tolerance ? '#059669' : entry['Δ суммы'] > 0 ? '#4f46e5' : '#e11d48'}
                             />
                           ))}
                       </Bar>
@@ -1047,8 +1054,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           {/* ─── TAB 2: UNMATCHED TRANSACTIONS ─── */}
           {activeTab === 'unmatched' && (
             <div className="space-y-4">
-              <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center gap-2">
-                <HelpCircle className="w-4 h-4 text-blue-600 shrink-0" />
+              {/* FIX: was bg-blue-50/70 / text-blue-900 / text-blue-600 — switched to
+                  indigo to match the rest of the palette (no plain "blue" elsewhere in the app). */}
+              <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center gap-2">
+                <HelpCircle className="w-4 h-4 text-indigo-600 shrink-0" />
                 <span>
                   Снимайте галочки с транзакций или исключайте компенсирующие пары — итоговые суммы и разница автоматически пересчитаются в реальном времени!
                 </span>
