@@ -16,186 +16,214 @@ init_db()
 def inject_modern_light_css():
     st.markdown("""
     <style>
-    /* Глобальный светлый фон и текстовый цвет */
+    /* Глобальный светлый фон и шрифты */
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    }
+
     .stApp, [data-testid="stAppViewContainer"] {
         background-color: #f8fafc !important;
         color: #0f172a !important;
     }
-    
-    /* Основные текстовые элементы */
-    p, span, div, label {
-        color: inherit;
-    }
-    
-    /* Заголовки */
-    h1, h2, h3, h4, h5, h6 {
-        color: #0f172a !important;
-        font-weight: 600 !important;
-        letter-spacing: -0.02em !important;
-    }
 
-    /* Все метки виджетов (Label): решаем проблему белого текста на белом фоне */
-    [data-testid="stWidgetLabel"],
-    [data-testid="stWidgetLabel"] label,
-    [data-testid="stWidgetLabel"] p,
-    [data-testid="stWidgetLabel"] span {
-        color: #1e293b !important;
-        font-weight: 600 !important;
-        font-size: 0.95rem !important;
+    /* Верхний хедер */
+    [data-testid="stHeader"] {
+        background: transparent !important;
     }
 
     /* Сайдбар */
     [data-testid="stSidebar"] {
         background-color: #ffffff !important;
         border-right: 1px solid #e2e8f0 !important;
+        padding-top: 1rem !important;
     }
-    [data-testid="stSidebar"] hr {
-        border-color: #f1f5f9 !important;
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 1rem !important;
     }
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
-    [data-testid="stSidebar"] span {
-        color: #334155 !important;
+
+    /* Полное скрытие радио-кружков в меню сайдбара */
+    [data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child,
+    [data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child,
+    [data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child,
+    [data-testid="stSidebar"] div[role="radiogroup"] label svg,
+    [data-testid="stSidebar"] div[role="radiogroup"] label input {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        opacity: 0 !important;
     }
-    
-    /* Стилизация радио-кнопок под пункты меню в сайдбаре */
+
+    /* Пункты меню в сайдбаре - аккуратные скругленные вкладки как в Preview */
+    [data-testid="stSidebar"] div[role="radiogroup"] label,
     [data-testid="stSidebar"] [data-testid="stRadio"] label,
-    [data-testid="stSidebar"] .stRadio > div > label {
+    [data-testid="stSidebar"] label[data-baseweb="radio"] {
+        display: flex !important;
+        align-items: center !important;
         padding: 10px 14px !important;
-        margin-bottom: 3px !important;
-        border-radius: 8px !important;
-        color: #334155 !important;
+        margin-bottom: 4px !important;
+        border-radius: 12px !important;
+        color: #475569 !important;
         font-weight: 500 !important;
         font-size: 0.92rem !important;
-        transition: all 0.2s ease-in-out;
+        transition: all 0.15s ease-in-out !important;
         background-color: transparent !important;
+        cursor: pointer !important;
+        border: none !important;
+        width: 100% !important;
     }
-    [data-testid="stSidebar"] [data-testid="stRadio"] label p,
-    [data-testid="stSidebar"] .stRadio > div > label p {
-        color: #334155 !important;
+    [data-testid="stSidebar"] div[role="radiogroup"] label p,
+    [data-testid="stSidebar"] [data-testid="stRadio"] label p {
+        color: #475569 !important;
+        font-size: 0.92rem !important;
+        font-weight: 500 !important;
+        margin: 0 !important;
     }
-    [data-testid="stSidebar"] [data-testid="stRadio"] label:hover,
-    [data-testid="stSidebar"] .stRadio > div > label:hover {
-        background-color: #f1f5f9 !important;
-        color: #0f172a !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stRadio"] label[data-checked="true"],
-    [data-testid="stSidebar"] .stRadio > div > label[data-checked="true"] {
-        background-color: #e0e7ff !important; 
-        color: #3730a3 !important;
-        font-weight: 600 !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stRadio"] label[data-checked="true"] p,
-    [data-testid="stSidebar"] .stRadio > div > label[data-checked="true"] p {
-        color: #3730a3 !important;
-        font-weight: 600 !important;
-    }
-    [data-testid="stSidebar"] .stRadio div[role="radio"] > div {
-        display: none !important;
-    }
-
-    /* Поля ввода (Text input, Number input, Selectbox) */
-    .stTextInput input,
-    .stNumberInput input,
-    div[data-baseweb="input"] input {
-        background-color: #ffffff !important;
-        color: #0f172a !important;
-        border: 1px solid #cbd5e1 !important;
-        border-radius: 8px !important;
-        padding: 8px 12px !important;
-    }
-    .stTextInput input::placeholder,
-    div[data-baseweb="input"] input::placeholder {
-        color: #94a3b8 !important;
-    }
-    div[data-baseweb="select"] > div {
-        background-color: #ffffff !important;
-        border-color: #cbd5e1 !important;
-        color: #0f172a !important;
-        border-radius: 8px !important;
-    }
-
-    /* Загрузчик файлов (File Uploader Dropzone) */
-    [data-testid="stFileUploader"] section {
-        background-color: #ffffff !important;
-        border: 1.5px dashed #cbd5e1 !important;
-        border-radius: 10px !important;
-    }
-    [data-testid="stFileUploader"] section:hover {
-        border-color: #6366f1 !important;
+    [data-testid="stSidebar"] div[role="radiogroup"] label:hover,
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
         background-color: #f8fafc !important;
-    }
-    [data-testid="stFileUploader"] section button {
-        background-color: #f1f5f9 !important;
         color: #0f172a !important;
-        border: 1px solid #cbd5e1 !important;
-        border-radius: 6px !important;
     }
-    [data-testid="stFileUploader"] section span,
-    [data-testid="stFileUploader"] section small {
-        color: #64748b !important;
+    [data-testid="stSidebar"] div[role="radiogroup"] label:hover p {
+        color: #0f172a !important;
+    }
+    /* Активный выбранный пункт меню */
+    [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked),
+    [data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"] {
+        background-color: #eef2ff !important;
+        color: #4338ca !important;
+        font-weight: 600 !important;
+        box-shadow: 0 1px 2px rgba(67, 56, 202, 0.05) !important;
+    }
+    [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p,
+    [data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"] p {
+        color: #4338ca !important;
+        font-weight: 600 !important;
+    }
+
+    /* Кнопка выхода в сайдбаре - точь-в-точь как в Preview */
+    [data-testid="stSidebar"] .stButton > button {
+        background-color: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        color: #475569 !important;
+        border-radius: 10px !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        padding: 8px 14px !important;
+        box-shadow: none !important;
+        width: 100% !important;
+        transition: all 0.15s ease-in-out !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        border-color: #fecdd3 !important;
+        background-color: #fff1f2 !important;
+        color: #e11d48 !important;
     }
 
     /* Карточки-контейнеры */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background-color: #ffffff !important;
         border: 1px solid #e2e8f0 !important;
-        border-radius: 12px !important;
-        padding: 24px !important;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+        border-radius: 16px !important;
+        padding: 20px !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.03) !important;
     }
 
-    /* Табы */
+    /* Дропзона загрузки файлов */
+    [data-testid="stFileUploader"] section {
+        background-color: #f8fafc !important;
+        border: 2px dashed #cbd5e1 !important;
+        border-radius: 14px !important;
+        padding: 20px 14px !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+    [data-testid="stFileUploader"] section:hover {
+        border-color: #818cf8 !important;
+        background-color: #f5f7ff !important;
+    }
+    [data-testid="stFileUploader"] section button {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+    }
+    [data-testid="stFileUploader"] section button:hover {
+        background-color: #f1f5f9 !important;
+        border-color: #94a3b8 !important;
+    }
+
+    /* Поля ввода и селекты */
+    .stTextInput input,
+    .stNumberInput input,
+    div[data-baseweb="input"] input {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 10px !important;
+        padding: 9px 12px !important;
+    }
+    div[data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+        border-color: #cbd5e1 !important;
+        color: #0f172a !important;
+        border-radius: 10px !important;
+    }
+
+    /* Вкладки (Табы) */
     button[data-baseweb="tab"] {
         background-color: transparent !important;
         border: none !important;
-        padding: 8px 16px !important;
-        margin-right: 8px !important;
+        padding: 8px 18px !important;
+        margin-right: 6px !important;
         border-radius: 20px !important; 
         color: #64748b !important;
         font-weight: 500 !important;
+        font-size: 14px !important;
     }
     button[data-baseweb="tab"]:hover {
         background-color: #f1f5f9 !important;
         color: #0f172a !important;
     }
     button[data-baseweb="tab"][aria-selected="true"] {
-        background-color: #e2e8f0 !important; 
-        color: #0f172a !important;
+        background-color: #e0e7ff !important; 
+        color: #3730a3 !important;
         font-weight: 600 !important;
     }
     div[data-baseweb="tab-highlight"], div[data-baseweb="tab-border"] {
         display: none !important;
     }
 
-    /* Кнопки */
-    .stButton > button {
-        border-radius: 8px !important;
-        font-weight: 500 !important;
-        transition: all 0.15s ease-in-out;
-    }
-    .stButton > button[kind="secondary"],
-    .stButton > button:not([kind="primary"]) {
-        background-color: #ffffff !important;
-        color: #1e293b !important;
-        border: 1px solid #cbd5e1 !important;
-    }
-    .stButton > button[kind="secondary"]:hover,
-    .stButton > button:not([kind="primary"]):hover {
-        background-color: #f8fafc !important;
-        border-color: #94a3b8 !important;
-    }
+    /* Первичные кнопки */
     .stButton > button[kind="primary"] {
         background-color: #4f46e5 !important;
         color: #ffffff !important;
         border: none !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        padding: 8px 16px !important;
+        box-shadow: 0 1px 2px rgba(79, 70, 229, 0.2) !important;
     }
     .stButton > button[kind="primary"]:hover {
         background-color: #4338ca !important;
     }
     
-    /* Верхний хедер */
-    [data-testid="stHeader"] {
-        background: transparent !important;
+    /* Второстепенные кнопки в основном контенте */
+    .stMainBlockContainer .stButton > button:not([kind="primary"]) {
+        background-color: #f1f5f9 !important;
+        color: #334155 !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 10px !important;
+        font-weight: 500 !important;
+    }
+    .stMainBlockContainer .stButton > button:not([kind="primary"]):hover {
+        background-color: #e2e8f0 !important;
+        color: #0f172a !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -218,18 +246,25 @@ inject_modern_light_css()
 
 def login_screen():
     """Экран авторизации (показывается, если пользователь не вошел)."""
-    col1, col2, col3 = st.columns([1, 1, 1])
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        st.markdown("<br><br>", unsafe_allow_html=True)
         with st.container(border=True):
-            st.markdown("<h2 style='text-align: center;'>Вход в систему</h2>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; color: #64748b;'>ReconcileHub v2.0</p>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style='text-align: center; margin-bottom: 20px;'>
+                <div style='width: 44px; height: 44px; border-radius: 12px; background: #4f46e5; display: flex; align-items: center; justify-content: center; color: #ffffff; font-size: 22px; font-weight: 900; margin: 0 auto 12px auto; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);'>
+                    ⚡
+                </div>
+                <h2 style='font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 4px 0;'>ReconcileHub</h2>
+                <p style='color: #64748b; font-size: 13px; margin: 0;'>Вход в финансовую платформу сверки</p>
+            </div>
+            """, unsafe_allow_html=True)
 
             with st.form("login_form"):
-                username = st.text_input("Логин")
-                password = st.text_input("Пароль", type="password")
+                username = st.text_input("Логин", placeholder="admin")
+                password = st.text_input("Пароль", type="password", placeholder="••••••••")
 
-                submitted = st.form_submit_button("Войти", type="primary", use_container_width=True)
+                submitted = st.form_submit_button("Войти в систему", type="primary", use_container_width=True)
 
                 if submitted:
                     clean_user = username.strip()
@@ -248,36 +283,67 @@ def login_screen():
                     else:
                         st.error("Пожалуйста, введите логин и пароль.")
 
+            st.markdown("""
+            <div style='margin-top: 16px; padding: 10px 12px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 12px; color: #64748b; text-align: center;'>
+                💡 Демо-доступ: <strong>admin</strong> / <strong>admin123</strong>
+            </div>
+            """, unsafe_allow_html=True)
+
 
 def main_app():
     """Основной интерфейс платформы (показывается только после логина)."""
 
     # ─── Боковое меню ───
     with st.sidebar:
+        # Бренд-хедер с иконкой молнии точно как в Preview
         st.markdown("""
-        <div style='padding: 10px 0 20px 10px;'>
-            <div style='font-size: 1.4rem; font-weight: 700; color: #0f172a;'>ReconcileHub</div>
-            <div style='font-size: 0.75rem; color: #64748b;'>v2.0 • PROFESSIONAL</div>
+        <div style='display: flex; align-items: center; gap: 11px; padding: 4px 0 16px 4px; border-bottom: 1px solid #f1f5f9; margin-bottom: 14px;'>
+            <div style='width: 36px; height: 36px; border-radius: 9px; background: #4f46e5; display: flex; align-items: center; justify-content: center; color: #ffffff; font-size: 17px; font-weight: 900; box-shadow: 0 1px 3px rgba(79, 70, 229, 0.25);'>
+                ⚡
+            </div>
+            <div>
+                <div style='font-size: 16px; font-weight: 700; color: #0f172a; line-height: 1.2;'>ReconcileHub</div>
+                <div style='font-size: 11px; font-weight: 600; color: #94a3b8; letter-spacing: 0.05em;'>v2.0 • PROFESSIONAL</div>
+            </div>
+        </div>
+        <div style='font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; padding-left: 8px; margin-bottom: 8px;'>
+            ОБЗОР
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown("<p style='font-size:0.75rem; color:#94a3b8; margin-left:14px; font-weight:600;'>ОБЗОР</p>", unsafe_allow_html=True)
-
-        # Пункты меню зависят от роли. "Реестр EPOS" и "Настройки" — только для admin,
-        # так как в реестре хранятся комиссионные ставки и юрлица (чувствительные данные),
-        # а "Настройки" меняют общесистемные параметры для всех пользователей.
-        menu_items = ["🔄 Сверка по RRN"]
+        # Пункты меню зависят от роли. "Реестр EPOS" и "Настройки" — только для admin
+        menu_items = ["🔄  Сверка по RRN"]
         if st.session_state["role"] == "admin":
-            menu_items.append("📱 Реестр EPOS")
-        menu_items.append("📊 Аналитика")
+            menu_items.append("📱  Реестр EPOS")
+        menu_items.append("📊  Аналитика")
         if st.session_state["role"] == "admin":
-            menu_items.append("⚙️ Настройки")
+            menu_items.append("⚙️  Настройки")
 
         app_mode = st.radio("Навигация", menu_items, label_visibility="collapsed")
 
-        st.divider()
-        st.markdown(f"👤 Пользователь: **{st.session_state['username']}**")
-        if st.button("🚪 Выйти", use_container_width=True):
+        # Карточка пользователя внизу сайдбара точно как в Preview
+        cur_user = st.session_state.get("username", "admin") or "admin"
+        user_initials = cur_user[:2].upper()
+        role_key = st.session_state.get("role", "admin")
+        role_title = "Администратор" if role_key == "admin" else ("Бухгалтер" if role_key == "accountant" else "Пользователь")
+
+        st.markdown(f"""
+        <div style='margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9;'>
+            <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 4px 6px;'>
+                <div style='width: 34px; height: 34px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; color: #334155; font-size: 12px; font-weight: 700; flex-shrink: 0;'>
+                    {user_initials}
+                </div>
+                <div style='overflow: hidden;'>
+                    <div style='font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.2;'>{cur_user}</div>
+                    <div style='display: inline-block; font-size: 10px; font-weight: 600; color: #4338ca; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 4px; padding: 1px 6px; margin-top: 2px;'>
+                        {role_title}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if st.button("↪  Выйти из системы", use_container_width=True, key="btn_logout_clean"):
             log_action(st.session_state["username"], "LOGOUT", "Выход из системы")
             st.session_state["authenticated"] = False
             st.session_state["username"] = None
@@ -285,13 +351,13 @@ def main_app():
             st.rerun()
 
     # ─── Роутер страниц ───
-    if app_mode == "🔄 Сверка по RRN":
+    if "Сверка по RRN" in app_mode:
         rrn_page.show_page()
-    elif app_mode == "📱 Реестр EPOS":
+    elif "Реестр EPOS" in app_mode:
         epos_page.show_page()
-    elif app_mode == "📊 Аналитика":
+    elif "Аналитика" in app_mode:
         analytics_page.show_page()
-    elif app_mode == "⚙️ Настройки":
+    elif "Настройки" in app_mode:
         admin_page.show_page()
 
 

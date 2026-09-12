@@ -8,49 +8,186 @@ from core.parsers import load_file_polars, guess_col
 from core.recon_engine import run_rrn_reconciliation
 
 # Оптимизированная UI-функция загрузки с кэшированием в сессии
-def upload_with_preview(label: str, key: str, icon: str = "📤"):
-    f = st.file_uploader(f"{icon} **{label}**", type=["xlsx", "xls", "csv"], key=key)
+def upload_with_preview(label: str, key: str):
+    f = st.file_uploader(label, type=["xlsx", "xls", "csv"], key=key, label_visibility="collapsed")
     
-    if f is None:
-        st.session_state.pop(f"df_cache_{key}", None)
-        st.session_state.pop(f"name_cache_{key}", None)
-        return None
+    if f is not None:
+        if st.session_state.get(f"name_cache_{key}") != f.name:
+            file_bytes = f.getvalue()
+            df_pl = load_file_polars(f.name, file_bytes)
+            st.session_state[f"df_cache_{key}"] = df_pl
+            st.session_state[f"name_cache_{key}"] = f.name
+            st.session_state[f"preview_{key}"] = df_pl.head(5).to_pandas()
     
-    if st.session_state.get(f"name_cache_{key}") != f.name:
-        file_bytes = f.getvalue()
-        df_pl = load_file_polars(f.name, file_bytes)
-        
-        st.session_state[f"df_cache_{key}"] = df_pl
-        st.session_state[f"name_cache_{key}"] = f.name
-        st.session_state[f"preview_{key}"] = df_pl.head(5).to_pandas()
+    cached_df = st.session_state.get(f"df_cache_{key}")
+    cached_name = st.session_state.get(f"name_cache_{key}")
     
-    with st.expander(f"👁 Предпросмотр: {f.name}", expanded=False):
-        st.dataframe(st.session_state[f"preview_{key}"], use_container_width=True, hide_index=True)
-        
-    return st.session_state[f"df_cache_{key}"]
+    if cached_df is not None:
+        c_info, c_btn = st.columns([3, 1])
+        with c_info:
+            st.markdown(f"<div style='font-size:12px; color:#475569; margin-top:6px;'>📄 <strong>{cached_name or 'Загружен файл'}</strong> ({len(cached_df)} строк, {len(cached_df.columns)} колонок)</div>", unsafe_allow_html=True)
+        with c_btn:
+            if st.button("✕ Сброс", key=f"reset_{key}", use_container_width=True):
+                st.session_state.pop(f"df_cache_{key}", None)
+                st.session_state.pop(f"name_cache_{key}", None)
+                st.session_state.pop(f"preview_{key}", None)
+                st.rerun()
+
+        if f"preview_{key}" in st.session_state:
+            with st.expander("👁 Предпросмотр данных", expanded=False):
+                st.dataframe(st.session_state[f"preview_{key}"], use_container_width=True, hide_index=True)
+                
+        return cached_df
+
+    return None
+
+
+def load_demo_data_to_session():
+    """Создает демонстрационные датасеты 1С и Выписки банка для мгновенной проверки."""
+    import polars as pl
+    dates = ["10.09.2026", "11.09.2026", "12.09.2026"]
+    tids = ["98234011", "98234012", "98234013", "98234014"]
+
+    our_data = []
+    bank_data = []
+
+    for i in range(1, 26):
+        date = dates[i % len(dates)]
+        rrn = f"9482019{1000 + i}"
+        base_amt = float((i * 75000) + 120000)
+        tid = tids[i % len(tids)]
+
+        our_data.append({
+            "Дата": date,
+            "Ключ RRN": rrn,
+            "Сумма платежа": base_amt,
+            "Статус": "Оплачено"
+        })
+        bank_data.append({
+            "Дата проводки": date,
+            "Код RRN": rrn,
+            "Сумма банка": base_amt,
+            "Статус операции": "SUCCESS",
+            "Терминал TID": tid
+        })
+
+    # Возврат в нашей системе и в банке
+    our_data.append({
+        "Дата": "12.09.2026",
+        "Ключ RRN": "94820191099",
+        "Сумма платежа": 450000.0,
+        "Статус": "Возврат клиенту"
+    })
+    bank_data.append({
+        "Дата проводки": "12.09.2026",
+        "Код RRN": "94820191099",
+        "Сумма банка": 450000.0,
+        "Статус операции": "REFUND",
+        "Терминал TID": "98234011"
+    })
+
+    # Не сошлась сумма (расхождение)
+    our_data.append({
+        "Дата": "10.09.2026",
+        "Ключ RRN": "94820191088",
+        "Сумма платежа": 150000.0,
+        "Статус": "Оплачено"
+    })
+    bank_data.append({
+        "Дата проводки": "10.09.2026",
+        "Код RRN": "94820191088",
+        "Сумма банка": 145000.0,
+        "Статус операции": "SUCCESS",
+        "Терминал TID": "98234013"
+    })
+
+    # Только у нас
+    our_data.append({
+        "Дата": "11.09.2026",
+        "Ключ RRN": "94820192001",
+        "Сумма платежа": 320000.0,
+        "Статус": "Оплачено"
+    })
+
+    # Только в банке
+    bank_data.append({
+        "Дата проводки": "11.09.2026",
+        "Код RRN": "94820192002",
+        "Сумма банка": 280000.0,
+        "Статус операции": "SUCCESS",
+        "Терминал TID": "98234012"
+    })
+
+    pl_our = pl.DataFrame(our_data)
+    pl_bank = pl.DataFrame(bank_data)
+
+    st.session_state["df_cache_our_v2"] = pl_our
+    st.session_state["name_cache_our_v2"] = "1C_Выгрузка_Сентябрь.xlsx"
+    st.session_state["preview_our_v2"] = pl_our.head(5).to_pandas()
+
+    st.session_state["df_cache_bank_v2"] = pl_bank
+    st.session_state["name_cache_bank_v2"] = "Выписка_KapitalBank.xlsx"
+    st.session_state["preview_bank_v2"] = pl_bank.head(5).to_pandas()
+
+    st.session_state["chosen_bank"] = "Kapital Bank"
+
 
 # ─── ИНТЕРФЕЙС СТРАНИЦЫ ───
 def show_page():
-    st.title("Сверка по RRN")
-    st.markdown("<p style='color:#64748b; margin-top:-15px; margin-bottom:30px;'>Потранзакционная сверка с автоматическим расчетом комиссий на базе EPOS Реестра.</p>", unsafe_allow_html=True)
+    # Хедер с бейджем и кнопкой демо-данных точно как в Preview
+    col_t, col_b = st.columns([3, 1.4])
+    with col_t:
+        st.markdown("""
+        <div style='margin-bottom: 20px;'>
+            <div style='display: flex; align-items: center; gap: 8px;'>
+                <h1 style='font-size: 26px; font-weight: 700; color: #0f172a; margin: 0; padding: 0;'>Сверка по RRN</h1>
+                <span style='font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 9999px; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe;'>
+                    EPOS Core
+                </span>
+            </div>
+            <p style='color: #64748b; font-size: 13.5px; margin-top: 4px; margin-bottom: 0;'>
+                Потранзакционная сверка с автоматическим расчётом комиссий на базе реестра EPOS.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_b:
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+        if st.button("✨ Загрузить демо-файлы 1С & Банк", use_container_width=True, key="btn_load_demo_rrn", help="Загрузить тестовые файлы 1С и Банка для мгновенной сверки"):
+            load_demo_data_to_session()
+            st.rerun()
 
-    # ИСПРАВЛЕНО: раньше это поле нигде не заполнялось, и bank_name всегда был "Банк" —
-    # все записи в архиве (см. Аналитику) получали одинаковое имя банка.
-    bank_name_input = st.text_input(
-        "🏦 Название банка (используется в загрузках и в архиве сверок)",
-        value=st.session_state.get("chosen_bank", ""),
-        placeholder="напр. Kapital Bank",
-        key="bank_name_input_v2",
-    )
-    st.session_state["chosen_bank"] = bank_name_input.strip() or "Банк"
-    bank_name = st.session_state["chosen_bank"]
+    bank_name = st.session_state.get("chosen_bank", "Банк")
 
-    with st.container(border=True):
-        c1, c2 = st.columns(2)
-        with c1:
+    # Две отдельные карточки загрузки файлов точно как в Preview
+    c1, c2 = st.columns(2)
+    with c1:
+        with st.container(border=True):
+            st.markdown("""
+            <div style='display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: #0f172a; margin-bottom: 8px;'>
+                <span style='color: #4f46e5; font-size: 16px;'>↑</span>
+                <span>Ваши данные (Excel / CSV)</span>
+            </div>
+            """, unsafe_allow_html=True)
             df_our_raw = upload_with_preview("Ваши данные (Excel / CSV)", "our_v2")
-        with c2:
-            df_bank_raw = upload_with_preview(f"Данные {bank_name} (Excel / CSV)", "bank_v2", icon="🏦")
+
+    with c2:
+        with st.container(border=True):
+            st.markdown(f"""
+            <div style='display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: #0f172a; margin-bottom: 8px;'>
+                <span style='color: #059669; font-size: 16px;'>↑</span>
+                <span>Данные {bank_name} (Excel / CSV)</span>
+            </div>
+            """, unsafe_allow_html=True)
+            df_bank_raw = upload_with_preview(f"Данные {bank_name} (Excel / CSV)", "bank_v2")
+
+    with st.expander("🏦 Настройка названия банка (для отчетов и архива)", expanded=False):
+        bank_name_input = st.text_input(
+            "Название банка",
+            value=st.session_state.get("chosen_bank", "Kapital Bank"),
+            placeholder="напр. Kapital Bank",
+            key="bank_name_input_v2",
+        )
+        st.session_state["chosen_bank"] = bank_name_input.strip() or "Банк"
 
     if df_our_raw is not None and df_bank_raw is not None:
         with st.container(border=True):
