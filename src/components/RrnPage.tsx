@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Upload, FileSpreadsheet, Play, Download, Save, CheckCircle2, AlertTriangle, XCircle,
   HelpCircle, ChevronDown, ChevronUp, Filter, Sparkles, RefreshCw, BarChart2, Eye
-} from 'lucide-react';
+, Settings, UploadCloud, Landmark, CalendarDays, Key, Coins, Tag as TagIcon, Settings2, Unlink, Percent, CalendarRange, Search, AlertCircle, Copy, FileText, CheckSquare, Square, FileCheck, Layers} from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
@@ -48,8 +48,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   // Processing rules
   const [revInput, setRevInput] = useState('reversed, возврат, refund, отказ, ошибка');
-  const [ourRev, setOurRev] = useState('➖ Минусовать сумму');
-  const [bankRev, setBankRev] = useState('🗑 Удалить строку');
+  const [ourRev, setOurRev] = useState('Минусовать сумму');
+  const [bankRev, setBankRev] = useState('Удалить строку');
   const [dupAction, setDupAction] = useState('Ничего не делать (оставить все)');
   const [unbindMismatches, setUnbindMismatches] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -280,7 +280,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     const totalDiff = totalBankSum - totalOurSum;
 
     adjustedSummary.push({
-      date: '📊 ИТОГО (с учётом исключений)',
+      date: 'ИТОГО (с учётом исключений)',
       Кол_во_у_нас: totalOurCount,
       Кол_во_в_банке: totalBankCount,
       'Δ кол-во': totalBankCount - totalOurCount,
@@ -508,11 +508,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             {/* Our Column Mapping */}
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/40">
               <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">
-                📤 Ваши данные: соответствие колонок
+                <div className="flex items-center gap-1.5"><UploadCloud className="w-4 h-4 text-indigo-600"/> Ваши данные: соответствие колонок</div>
               </h3>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📅 Дата*</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1"><div className="flex items-center gap-1"><CalendarDays className="w-3 h-3 text-slate-400"/> Дата*</div></label>
                   <select
                     value={ourDateCol}
                     onChange={(e) => setOurDateCol(e.target.value)}
@@ -522,7 +522,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">🔑 RRN*</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1"><div className="flex items-center gap-1"><Key className="w-3 h-3 text-slate-400"/> RRN*</div></label>
                   <select
                     value={ourRrnCol}
                     onChange={(e) => setOurRrnCol(e.target.value)}
@@ -532,7 +532,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">💰 Сумма</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1"><div className="flex items-center gap-1"><Coins className="w-3 h-3 text-slate-400"/> Сумма</div></label>
                   <select
                     value={ourAmtCol}
                     onChange={(e) => setOurAmtCol(e.target.value)}
@@ -543,7 +543,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">🏷 Статус</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1"><div className="flex items-center gap-1"><TagIcon className="w-3 h-3 text-slate-400"/> Статус</div></label>
                   <select
                     value={ourStatusCol}
                     onChange={(e) => setOurStatusCol(e.target.value)}
@@ -559,11 +559,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             {/* Bank Column Mapping */}
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/40">
               <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">
-                🏦 Данные банка: соответствие колонок
+                <div className="flex items-center gap-1.5"><Landmark className="w-4 h-4 text-emerald-600"/> Данные банка: соответствие колонок</div>
               </h3>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📅 Дата*</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Дата*</label>
                   <select
                     value={bankDateCol}
                     onChange={(e) => setBankDateCol(e.target.value)}
@@ -573,7 +573,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">🔑 RRN*</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">RRN*</label>
                   <select
                     value={bankRrnCol}
                     onChange={(e) => setBankRrnCol(e.target.value)}
@@ -583,7 +583,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">💰 Сумма</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Сумма</label>
                   <select
                     value={bankAmtCol}
                     onChange={(e) => setBankAmtCol(e.target.value)}
@@ -594,7 +594,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">🏷 Статус</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Статус</label>
                   <select
                     value={bankStatusCol}
                     onChange={(e) => setBankStatusCol(e.target.value)}
@@ -606,7 +606,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 </div>
                 <div className="col-span-2">
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    📱 Terminal ID (TID) EPOS
+                    Terminal ID (TID) EPOS
                   </label>
                   <select
                     value={bankTidCol}
@@ -628,7 +628,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="w-full px-4 py-3 bg-slate-50 flex items-center justify-between text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             >
-              <span>⚙️ Расширенные настройки (возвраты, дубликаты, строгий допуск)</span>
+              <span><div className="flex items-center gap-2"><Settings2 className="w-4 h-4 text-slate-500"/> Расширенные настройки (возвраты, дубликаты, строгий допуск)</div></span>
               {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
 
@@ -636,7 +636,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               <div className="p-4 space-y-4 bg-white text-xs">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    1️⃣ Маркеры возврата в статусе (через запятую):
+                    1. Маркеры возврата в статусе (через запятую):
                   </label>
                   <input
                     type="text"
@@ -654,10 +654,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       onChange={(e) => setOurRev(e.target.value)}
                       className="w-full py-1.5 px-2 border border-slate-200 rounded-lg text-xs"
                     >
-                      <option value="➖ Минусовать сумму">➖ Минусовать сумму</option>
-                      <option value="🗑 Удалить строку">🗑 Удалить строку</option>
-                      <option value="💥 Удалить RRN полностью">💥 Удалить RRN полностью</option>
-                      <option value="⚪ Не обрабатывать">⚪ Не обрабатывать</option>
+                      <option value="Минусовать сумму">Минусовать сумму</option>
+                      <option value="Удалить строку">Удалить строку</option>
+                      <option value="Удалить RRN полностью">Удалить RRN полностью</option>
+                      <option value="Не обрабатывать">Не обрабатывать</option>
                     </select>
                   </div>
                   <div>
@@ -667,16 +667,16 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       onChange={(e) => setBankRev(e.target.value)}
                       className="w-full py-1.5 px-2 border border-slate-200 rounded-lg text-xs"
                     >
-                      <option value="🗑 Удалить строку">🗑 Удалить строку</option>
-                      <option value="➖ Минусовать сумму">➖ Минусовать сумму</option>
-                      <option value="💥 Удалить RRN полностью">💥 Удалить RRN полностью</option>
-                      <option value="⚪ Не обрабатывать">⚪ Не обрабатывать</option>
+                      <option value="Удалить строку">Удалить строку</option>
+                      <option value="Минусовать сумму">Минусовать сумму</option>
+                      <option value="Удалить RRN полностью">Удалить RRN полностью</option>
+                      <option value="Не обрабатывать">Не обрабатывать</option>
                     </select>
                   </div>
                 </div>
 
                 <div className="border-t border-slate-100 pt-3">
-                  <label className="block font-semibold text-slate-700 mb-1">2️⃣ Действие при обнаружении дубликатов:</label>
+                  <label className="block font-semibold text-slate-700 mb-1">2. Действие при обнаружении дубликатов:</label>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {[
                       'Ничего не делать (оставить все)',
@@ -707,7 +707,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                     className="rounded text-indigo-600"
                   />
                   <label htmlFor="chk-unbind" className="font-semibold text-slate-800 cursor-pointer">
-                    💔 Разрывать связи при расхождении сумм
+                    <div className="flex items-center gap-1"><Unlink className="w-4 h-4 text-indigo-500"/> Разрывать связи при расхождении сумм</div>
                   </label>
                   <span className="text-slate-400 text-[11px]">
                     (Транзакции с одинаковым RRN, но разной суммой, будут перемещены в «Несопоставленные»)
@@ -730,7 +730,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             ) : (
               <Play className="w-4 h-4 fill-current" />
             )}
-            <span>{isProcessing ? 'Выполняется расчет...' : '🚀 Запустить сверку транзакций'}</span>
+            <span>{isProcessing ? 'Выполняется расчет...' : 'Запустить сверку транзакций'}</span>
           </button>
         </div>
       )}
@@ -742,13 +742,13 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           {reconData.matched_count === 0 ? (
             <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-3 text-rose-800 text-sm">
               <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
-              <span><strong>🚨 Ни одного совпадения по RRN!</strong> Проверьте правильность выбранных колонок.</span>
+              <span><strong>Ни одного совпадения по RRN!</strong> Проверьте правильность выбранных колонок.</span>
             </div>
           ) : Math.abs(dynamicCalculations.totalDiff) <= tolerance ? (
             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3 text-emerald-800 text-sm">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <span>
-                <strong>✅ Сверка сошлась!</strong> Разница в пределах допуска ({fmt(tolerance)} {currency}).
+                <strong>Сверка сошлась!</strong> Разница в пределах допуска ({fmt(tolerance)} {currency}).
                 {dynamicCalculations.excludedOurCount > 0 || dynamicCalculations.excludedBankCount > 0 ? (
                   <span className="ml-2 text-xs text-emerald-700">
                     (С учётом исключения: {dynamicCalculations.excludedOurCount} у нас + {dynamicCalculations.excludedBankCount} банк)
@@ -760,7 +760,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-3 text-amber-800 text-sm">
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
               <span>
-                <strong>⚠️ Обнаружено расхождение:</strong> {fmt(dynamicCalculations.totalDiff)} {currency}
+                <strong>Обнаружено расхождение:</strong> {fmt(dynamicCalculations.totalDiff)} {currency}
                 {dynamicCalculations.excludedOurCount > 0 || dynamicCalculations.excludedBankCount > 0 ? (
                   <span className="ml-2 text-xs text-amber-700">
                     (Исключено: {dynamicCalculations.excludedOurCount} у нас + {dynamicCalculations.excludedBankCount} банк)
@@ -777,31 +777,31 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Итого (Мы), {currency}</div>
-              <div className="text-lg font-bold text-slate-900 mt-1 break-words tabular-nums">{fmt(dynamicCalculations.totalOurSum)}</div>
+              <div className="text-base font-bold text-slate-900 mt-1 break-words tabular-nums">{fmt(dynamicCalculations.totalOurSum)}</div>
             </div>
 
             <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Итого (Банк), {currency}</div>
-              <div className="text-lg font-bold text-slate-900 mt-1 break-words tabular-nums">{fmt(dynamicCalculations.totalBankSum)}</div>
+              <div className="text-base font-bold text-slate-900 mt-1 break-words tabular-nums">{fmt(dynamicCalculations.totalBankSum)}</div>
             </div>
 
             <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Разница (Δ)</div>
-              <div className={`text-lg font-bold mt-1 break-words tabular-nums ${Math.abs(dynamicCalculations.totalDiff) <= tolerance ? 'text-emerald-600' : 'text-rose-600'}`}>
+              <div className={`text-base font-bold mt-1 break-words tabular-nums ${Math.abs(dynamicCalculations.totalDiff) <= tolerance ? 'text-emerald-600' : 'text-rose-600'}`}>
                 {dynamicCalculations.totalDiff > 0 ? `+${fmt(dynamicCalculations.totalDiff)}` : fmt(dynamicCalculations.totalDiff)}
               </div>
             </div>
 
             <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Совпало / Δ Сумм</div>
-              <div className="text-lg font-bold text-slate-900 mt-1 break-words tabular-nums">
+              <div className="text-base font-bold text-slate-900 mt-1 break-words tabular-nums">
                 {reconData.matched_count} <span className="text-xs text-slate-400 font-normal">/</span> <span className={reconData.mismatch_count > 0 ? 'text-amber-600' : 'text-slate-500'}>{reconData.mismatch_count}</span>
               </div>
             </div>
 
             <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs col-span-2 md:col-span-1">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Процент сверки</div>
-              <div className="text-lg font-bold text-indigo-600 mt-1 break-words tabular-nums">
+              <div className="text-base font-bold text-indigo-600 mt-1 break-words tabular-nums">
                 {dynamicCalculations.matchRate.toFixed(1)}%
               </div>
             </div>
@@ -812,7 +812,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               figures wrap onto a new line on narrower screens instead of being clipped. */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <span className="text-xs font-bold text-slate-700">🏷️ Быстрый расчет комиссии (%):</span>
+              <span className="text-xs font-bold text-slate-700"><div className="flex items-center gap-1.5"><Percent className="w-4 h-4 text-slate-500"/> Быстрый расчет комиссии (%):</div></span>
               <input
                 type="number"
                 min="0"
@@ -845,7 +845,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 activeTab === 'summary' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              📅 Сводка по датам
+              <div className="flex items-center gap-1.5"><CalendarRange className="w-4 h-4"/> Сводка по датам</div>
             </button>
             <button
               onClick={() => setActiveTab('charts')}
@@ -853,7 +853,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 activeTab === 'charts' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              📈 Графики
+              <div className="flex items-center gap-1.5"><BarChart2 className="w-4 h-4"/> Графики</div>
             </button>
             <button
               onClick={() => setActiveTab('unmatched')}
@@ -861,7 +861,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 activeTab === 'unmatched' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              🔍 Несопоставленные ({reconData.only_our.length + reconData.only_bank.length})
+              <div className="flex items-center gap-1.5"><Search className="w-4 h-4"/> Несопоставленные ({reconData.only_our.length + reconData.only_bank.length})</div>
             </button>
             <button
               onClick={() => setActiveTab('mismatches')}
@@ -869,7 +869,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 activeTab === 'mismatches' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              🟡 Расхождения сумм ({reconData.mismatch_count})
+              <div className="flex items-center gap-1.5"><AlertCircle className="w-4 h-4"/> Расхождения сумм ({reconData.mismatch_count})</div>
             </button>
             <button
               onClick={() => setActiveTab('dups')}
@@ -877,7 +877,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 activeTab === 'dups' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              ⚠️ Дубликаты ({reconData.dup_our_c + reconData.dup_bank_c})
+              <div className="flex items-center gap-1.5"><Copy className="w-4 h-4"/> Дубликаты ({reconData.dup_our_c + reconData.dup_bank_c})</div>
             </button>
           </div>
 
@@ -886,7 +886,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-500">
-                  💡 Нажмите на любую строку таблицы, чтобы увидеть детальные расхождения за этот день.
+                  Нажмите на любую строку таблицы, чтобы увидеть детальные расхождения за этот день.
                 </span>
                 {selectedDrilldownDate && (
                   <button
@@ -925,7 +925,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                         >
                           <td className="px-3 py-2 text-slate-800 whitespace-nowrap">{row.date}</td>
                           <td className="px-3 py-2 text-right text-slate-700">{row.Кол_во_в_банке}</td>
-                          <td className="px-3 py-2 text-right text-slate-900 font-medium">{fmt(row.Сумма_в_банке)}</td>
+                          <td className="px-3 py-2 text-right text-slate-900 font-medium tabular-nums tracking-tight whitespace-nowrap">{fmt(row.Сумма_в_банке)}</td>
                           <td className={`px-3 py-2 text-right font-bold bg-slate-50/50 ${hasDelta ? 'text-rose-600' : 'text-emerald-700'}`}>
                             {row['Δ суммы'] > 0 ? `+${fmt(row['Δ суммы'])}` : fmt(row['Δ суммы'])}
                           </td>
@@ -933,7 +933,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                             {row['Δ кол-во']}
                           </td>
                           <td className="px-3 py-2 text-right text-slate-700">{row.Кол_во_у_нас}</td>
-                          <td className="px-3 py-2 text-right text-slate-900 font-medium">{fmt(row.Сумма_у_нас)}</td>
+                          <td className="px-3 py-2 text-right text-slate-900 font-medium tabular-nums tracking-tight whitespace-nowrap">{fmt(row.Сумма_у_нас)}</td>
                         </tr>
                       );
                     })}
@@ -946,7 +946,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/30 space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider">
-                      🔍 Детализация транзакций за: {selectedDrilldownDate}
+                      Детализация транзакций за: {selectedDrilldownDate}
                     </h3>
                   </div>
 
@@ -954,7 +954,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                     {/* Missing in bank for this date */}
                     <div className="bg-white rounded-xl border border-slate-200 p-3">
                       <div className="text-xs font-semibold text-rose-700 mb-2">
-                        🔴 Отсутствуют в банке ({reconData.only_our.filter(x => x.date_str === selectedDrilldownDate && x.checked).length})
+                        Отсутствуют в банке ({reconData.only_our.filter(x => x.date_str === selectedDrilldownDate && x.checked).length})
                       </div>
                       <div className="max-h-48 overflow-y-auto text-[11px] space-y-1">
                         {reconData.only_our.filter(x => x.date_str === selectedDrilldownDate).length === 0 ? (
@@ -973,7 +973,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                     {/* Extra from bank for this date */}
                     <div className="bg-white rounded-xl border border-slate-200 p-3">
                       <div className="text-xs font-semibold text-indigo-700 mb-2">
-                        🔵 Лишние от банка ({reconData.only_bank.filter(x => x.date_str === selectedDrilldownDate && x.checked).length})
+                        Лишние от банка ({reconData.only_bank.filter(x => x.date_str === selectedDrilldownDate && x.checked).length})
                       </div>
                       <div className="max-h-48 overflow-y-auto text-[11px] space-y-1">
                         {reconData.only_bank.filter(x => x.date_str === selectedDrilldownDate).length === 0 ? (
@@ -1068,7 +1068,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <h3 className="text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
-                      🔴 Отсутствуют в банке ({reconData.only_our.length})
+                      Отсутствуют в банке ({reconData.only_our.length})
                     </h3>
                   </div>
 
@@ -1108,20 +1108,20 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                         onClick={() => handleBulkToggle(false, true)}
                         className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
-                        ➖ Снять галочки
+                        Снять галочки
                       </button>
                       <button
                         onClick={() => handleBulkToggle(true, true)}
                         className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
-                        ➕ Вернуть галочки
+                        Вернуть галочки
                       </button>
                       <button
                         onClick={() => handleExcludeOffsets(true)}
                         className="py-1 px-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-medium rounded hover:bg-indigo-100 cursor-pointer"
                         title="Исключить компенсирующие пары возвратов"
                       >
-                        🪄 Офсеты
+                        Офсеты
                       </button>
                     </div>
                   </div>
@@ -1151,7 +1151,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                             </td>
                             <td className="px-2 py-1.5 whitespace-nowrap">{item.date_str}</td>
                             <td className="px-2 py-1.5 font-mono text-[11px] text-slate-800">{item.RRN}</td>
-                            <td className="px-2 py-1.5 text-right font-semibold text-slate-900">{fmt(item.amount)}</td>
+                            <td className="px-2 py-1.5 text-right font-semibold text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(item.amount)}</td>
                             <td className="px-2 py-1.5">
                               <select
                                 value={item.reason}
@@ -1172,7 +1172,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <h3 className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
-                      🔵 Лишние данные банка ({reconData.only_bank.length})
+                      Лишние данные банка ({reconData.only_bank.length})
                     </h3>
                   </div>
 
@@ -1212,20 +1212,20 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                         onClick={() => handleBulkToggle(false, false)}
                         className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
-                        ➖ Снять галочки
+                        Снять галочки
                       </button>
                       <button
                         onClick={() => handleBulkToggle(true, false)}
                         className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
-                        ➕ Вернуть галочки
+                        Вернуть галочки
                       </button>
                       <button
                         onClick={() => handleExcludeOffsets(false)}
                         className="py-1 px-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-medium rounded hover:bg-indigo-100 cursor-pointer"
                         title="Исключить компенсирующие пары возвратов"
                       >
-                        🪄 Офсеты
+                        Офсеты
                       </button>
                     </div>
                   </div>
@@ -1255,7 +1255,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                             </td>
                             <td className="px-2 py-1.5 whitespace-nowrap">{item.date_str}</td>
                             <td className="px-2 py-1.5 font-mono text-[11px] text-slate-800">{item.RRN}</td>
-                            <td className="px-2 py-1.5 text-right font-semibold text-slate-900">{fmt(item.amount)}</td>
+                            <td className="px-2 py-1.5 text-right font-semibold text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(item.amount)}</td>
                             <td className="px-2 py-1.5">
                               <select
                                 value={item.reason}
@@ -1281,7 +1281,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               {reconData.amt_mismatches.length === 0 ? (
                 <div className="p-4 rounded-xl bg-emerald-50 text-emerald-800 text-xs flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>🎉 Нет расхождений в суммах! Все сопоставленные RRN имеют одинаковые суммы.</span>
+                  <span>Нет расхождений в суммах! Все сопоставленные RRN имеют одинаковые суммы.</span>
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-slate-200 text-xs">
@@ -1302,8 +1302,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                           <td className="px-3 py-2 font-mono text-slate-800">{m.RRN}</td>
                           <td className="px-3 py-2 text-slate-600">{m.date_our}</td>
                           <td className="px-3 py-2 text-slate-600">{m.date_bank}</td>
-                          <td className="px-3 py-2 text-right text-slate-900">{fmt(m.net_amount_our)}</td>
-                          <td className="px-3 py-2 text-right text-slate-900">{fmt(m.net_amount_bank)}</td>
+                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_our)}</td>
+                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_bank)}</td>
                           <td className="px-3 py-2 text-right font-bold text-rose-600">
                             {m['Δ сумма'] > 0 ? `+${fmt(m['Δ сумма'])}` : fmt(m['Δ сумма'])}
                           </td>
@@ -1321,7 +1321,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
                 <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">
-                  🔴 Дубликаты RRN (Наши данные): {reconData.dup_our_c}
+                  Дубликаты RRN (Наши данные): {reconData.dup_our_c}
                 </h3>
                 {reconData.dup_our_c === 0 ? (
                   <div className="text-xs text-emerald-600">Дубликатов не обнаружено</div>
@@ -1334,7 +1334,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
               <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
                 <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">
-                  🔵 Дубликаты RRN (Данные банка): {reconData.dup_bank_c}
+                  Дубликаты RRN (Данные банка): {reconData.dup_bank_c}
                 </h3>
                 {reconData.dup_bank_c === 0 ? (
                   <div className="text-xs text-emerald-600">Дубликатов не обнаружено</div>
@@ -1350,7 +1350,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           {/* ─── EXPORT & SAVE BUTTONS ─── */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">💾 Экспорт и фиксация в системе</h3>
+              <h3 className="text-sm font-bold text-slate-900">Экспорт и фиксация в системе</h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 Выгрузите готовый сводный отчет со всеми вкладками в Excel или сохраните данные в системный архив.
               </p>

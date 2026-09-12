@@ -58,7 +58,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ user }) => {
     <div className="p-8 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <span>Аналитика и архив сверок</span>
           </h1>
           <p className="text-sm text-slate-500 mt-1">
@@ -98,25 +98,25 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ user }) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Всего сверок</div>
-          <div className="text-2xl font-bold text-slate-900 mt-1 break-words tabular-nums">{filtered.length}</div>
+          <div className="text-xl font-bold text-slate-900 mt-1 break-words tabular-nums">{filtered.length}</div>
           <div className="text-[11px] text-slate-400 mt-1">в базе данных</div>
         </div>
 
         <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Объём (Наши данные)</div>
-          <div className="text-2xl font-bold text-indigo-600 mt-1 break-words tabular-nums">{fmt(totalOurVolume)}</div>
+          <div className="text-xl font-bold text-indigo-600 mt-1 break-words tabular-nums">{fmt(totalOurVolume)}</div>
           <div className="text-[11px] text-slate-400 mt-1">UZS</div>
         </div>
 
         <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Объём (Банк)</div>
-          <div className="text-2xl font-bold text-emerald-600 mt-1 break-words tabular-nums">{fmt(totalBankVolume)}</div>
+          <div className="text-xl font-bold text-emerald-600 mt-1 break-words tabular-nums">{fmt(totalBankVolume)}</div>
           <div className="text-[11px] text-slate-400 mt-1">UZS</div>
         </div>
 
         <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Суммарная разница (Δ)</div>
-          <div className={`text-2xl font-bold mt-1 break-words tabular-nums ${Math.abs(totalDifference) < 1 ? 'text-emerald-600' : 'text-rose-600'}`}>
+          <div className={`text-xl font-bold mt-1 break-words tabular-nums ${Math.abs(totalDifference) < 1 ? 'text-emerald-600' : 'text-rose-600'}`}>
             {totalDifference > 0 ? `+${fmt(totalDifference)}` : fmt(totalDifference)}
           </div>
           <div className="text-[11px] text-slate-400 mt-1">UZS</div>
@@ -127,7 +127,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ user }) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
           <h2 className="text-sm font-bold text-slate-900 mb-4">
-            📊 Динамика сведённых объёмов
+            <div className="flex items-center gap-1.5"><BarChart3 className="w-4 h-4 text-indigo-600"/> Динамика сведённых объёмов</div>
           </h2>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -146,7 +146,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ user }) => {
 
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
           <h2 className="text-sm font-bold text-slate-900 mb-4">
-            📉 Тренд расхождений (Δ)
+            <div className="flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-rose-600"/> Тренд расхождений (Δ)</div>
           </h2>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -168,7 +168,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ user }) => {
       {/* Archive Records Table */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
         <h2 className="text-sm font-bold text-slate-900">
-          📜 Журнал проведённых сверок
+          <div className="flex items-center gap-1.5"><Archive className="w-4 h-4 text-emerald-600"/> Журнал проведённых сверок</div>
         </h2>
 
         <div className="overflow-x-auto rounded-xl border border-slate-200 text-xs">
@@ -193,8 +193,8 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ user }) => {
                   </td>
                   <td className="px-3 py-2.5 font-medium text-slate-900">{item.username}</td>
                   <td className="px-3 py-2.5 font-semibold text-indigo-700">{item.bank_name}</td>
-                  <td className="px-3 py-2.5 text-right text-slate-800">{fmt(item.total_our)}</td>
-                  <td className="px-3 py-2.5 text-right text-slate-800">{fmt(item.total_bank)}</td>
+                  <td className="px-3 py-2.5 text-right text-slate-800 tabular-nums tracking-tight whitespace-nowrap">{fmt(item.total_our)}</td>
+                  <td className="px-3 py-2.5 text-right text-slate-800 tabular-nums tracking-tight whitespace-nowrap">{fmt(item.total_bank)}</td>
                   <td className={`px-3 py-2.5 text-right font-bold ${Math.abs(item.difference) < 1 ? 'text-emerald-600' : 'text-rose-600'}`}>
                     {item.difference > 0 ? `+${fmt(item.difference)}` : fmt(item.difference)}
                   </td>

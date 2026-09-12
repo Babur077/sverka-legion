@@ -176,7 +176,7 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h2 className="text-sm font-bold text-slate-900">
-              📋 Зарегистрированные терминалы ({terminals.length})
+               Зарегистрированные терминалы ({terminals.length})
             </h2>
           </div>
 
