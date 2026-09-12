@@ -36,9 +36,17 @@ def apply_reversals(df: pl.DataFrame, status_col: str, action: str, amt_col: str
     return df
 
 def date_summary(dfo, dfb):
-    so = dfo.groupby("date", as_index=False).agg(Кол_во_у_нас=("RRN","count"), Сумма_у_нас=("net_amount_our","sum"))
-    sb = dfb.groupby("date", as_index=False).agg(Кол_во_в_банке=("RRN","count"), Сумма_в_банке=("net_amount_bank","sum"))
+    if "net_amount_our" not in dfo.columns:
+        dfo = dfo.assign(net_amount_our=0.0)
+    if "net_amount_bank" not in dfb.columns:
+        dfb = dfb.assign(net_amount_bank=0.0)
+    so = dfo.groupby("date", as_index=False).agg(Кол_во_у_нас=("RRN","count"), Сумма_у_нас=("net_amount_our","sum")) if not dfo.empty else pd.DataFrame(columns=["date", "Кол_во_у_нас", "Сумма_у_нас"])
+    sb = dfb.groupby("date", as_index=False).agg(Кол_во_в_банке=("RRN","count"), Сумма_в_банке=("net_amount_bank","sum")) if not dfb.empty else pd.DataFrame(columns=["date", "Кол_во_в_банке", "Сумма_в_банке"])
     s = pd.merge(so, sb, on="date", how="outer").fillna(0)
+    for col in ["Сумма_в_банке", "Сумма_у_нас"]:
+        if col not in s.columns: s[col] = 0.0
+    for col in ["Кол_во_в_банке", "Кол_во_у_нас"]:
+        if col not in s.columns: s[col] = 0
     s["Δ суммы"] = s["Сумма_в_банке"] - s["Сумма_у_нас"]
     s["Δ кол-во"] = s["Кол_во_в_банке"] - s["Кол_во_у_нас"]
     return s.sort_values("date", ascending=False).reset_index(drop=True)
@@ -73,7 +81,9 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     if cfg["bank_tid"]:
         df_epos = get_epos_registry()
         pl_epos = pl.from_pandas(df_epos).select(["terminal_id", "legal_entity", "commission_pct"])
-        pl_bank = pl_bank.rename({cfg["bank_tid"]: "terminal_id"}).with_columns(pl.col("terminal_id").cast(pl.Utf8))
+        if cfg["bank_tid"] != "terminal_id":
+            pl_bank = pl_bank.rename({cfg["bank_tid"]: "terminal_id"})
+        pl_bank = pl_bank.with_columns(pl.col("terminal_id").cast(pl.Utf8))
         pl_epos = pl_epos.with_columns([pl.col("terminal_id").cast(pl.Utf8), pl.col("commission_pct").cast(pl.Float64)])
         pl_bank = pl_bank.join(pl_epos, on="terminal_id", how="left")
         pl_bank = pl_bank.with_columns(pl.col("commission_pct").fill_null(0.0))

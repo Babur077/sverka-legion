@@ -102,6 +102,7 @@ def show_page():
                     "reversed, возврат, refund, отказ, ошибка"
                 )
                 rev_words = [w.strip().lower() for w in rev_input.split(",") if w.strip()]
+                st.session_state["rev_words"] = rev_words
                 
                 ra, rb = st.columns(2)
                 with ra:
@@ -217,7 +218,8 @@ def show_page():
                     st.divider()
                     st.markdown("##### 🔄 Автоматическая компенсация (Офсеты)")
                     status_col_our = "status_our" if "status_our" in df_target_our.columns else None
-                    offset_rrns_our = find_offsetting_rrns_by_status(df_target_our, status_col_our, rev_words) if 'rev_words' in locals() else []
+                    active_rev_words = st.session_state.get("rev_words", ["reversed", "возврат", "refund", "отказ", "ошибка"])
+                    offset_rrns_our = find_offsetting_rrns_by_status(df_target_our, status_col_our, active_rev_words)
                     if offset_rrns_our:
                         st.warning(f"Найдено **{len(offset_rrns_our)}** компенсирующих RRN.")
                         if st.button("🪄 Исключить компенсирующие пары (Наши)", use_container_width=True, key="btn_offset_our"):
@@ -284,7 +286,8 @@ def show_page():
                     st.divider()
                     st.markdown("##### 🔄 Автоматическая компенсация (Офсеты)")
                     status_col_bank = "status_bank" if "status_bank" in df_target_bank.columns else None
-                    offset_rrns_bank = find_offsetting_rrns_by_status(df_target_bank, status_col_bank, rev_words) if 'rev_words' in locals() else []
+                    active_rev_words = st.session_state.get("rev_words", ["reversed", "возврат", "refund", "отказ", "ошибка"])
+                    offset_rrns_bank = find_offsetting_rrns_by_status(df_target_bank, status_col_bank, active_rev_words)
                     if offset_rrns_bank:
                         st.warning(f"Найдено **{len(offset_rrns_bank)}** компенсирующих RRN.")
                         if st.button("🪄 Исключить компенсирующие пары (Банк)", use_container_width=True, key="btn_offset_bank"):
