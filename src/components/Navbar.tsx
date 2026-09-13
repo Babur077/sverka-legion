@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Smartphone, BarChart3, Settings, LogOut, Shield, ShieldCheck, UserCheck } from 'lucide-react';
+import { RefreshCw, Smartphone, BarChart3, Settings, LogOut, Shield, ShieldCheck, UserCheck, Zap } from 'lucide-react';
 import { User } from '../types';
 
 interface NavbarProps {
@@ -40,7 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="p-5 border-b border-slate-100">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm font-black text-lg">
-            ⚡
+            <Zap className="w-5 h-5 fill-white text-white" />
           </div>
           <div>
             <div className="font-bold text-slate-900 text-base leading-tight">ReconcileHub</div>

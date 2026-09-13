@@ -191,37 +191,37 @@ def show_page():
 
     if df_our_raw is not None and df_bank_raw is not None:
         with st.container(border=True):
-            st.markdown("### ⚙️ Настройка колонок")
+            st.markdown("### Настройка колонок")
             
             df_our_pd, df_bank_pd = df_our_raw.to_pandas(), df_bank_raw.to_pandas()
-            t1, t2 = st.tabs(["📤 Ваши данные", "🏦 Данные банка"])
+            t1, t2 = st.tabs(["Ваши данные", "Данные банка"])
             
             # Селектор колонок для НАШИХ данных
             with t1:
                 cols_o = list(df_our_pd.columns)
                 ca, cb = st.columns(2)
                 with ca:
-                    our_date = st.selectbox("📅 Дата", cols_o, index=cols_o.index(guess_col(df_our_pd, ["date","дата"])) if guess_col(df_our_pd, ["date","дата"]) else 0, key="our_d")
-                    our_rrn = st.selectbox("🔑 RRN", cols_o, index=cols_o.index(guess_col(df_our_pd, ["rrn","ref"])) if guess_col(df_our_pd, ["rrn","ref"]) else 0, key="our_r")
+                    our_date = st.selectbox("Дата", cols_o, index=cols_o.index(guess_col(df_our_pd, ["date","дата"])) if guess_col(df_our_pd, ["date","дата"]) else 0, key="our_d")
+                    our_rrn = st.selectbox("RRN", cols_o, index=cols_o.index(guess_col(df_our_pd, ["rrn","ref"])) if guess_col(df_our_pd, ["rrn","ref"]) else 0, key="our_r")
                 with cb:
                     _amt_o = guess_col(df_our_pd, ["amount","сумма"])
-                    our_amt = st.selectbox("💰 Сумма", ["(нет)"] + cols_o, index=cols_o.index(_amt_o)+1 if _amt_o else 0, key="our_a")
-                    our_status = st.selectbox("🏷 Статус", ["(нет)"] + cols_o, key="our_s")
+                    our_amt = st.selectbox("Сумма", ["(нет)"] + cols_o, index=cols_o.index(_amt_o)+1 if _amt_o else 0, key="our_a")
+                    our_status = st.selectbox("Статус", ["(нет)"] + cols_o, key="our_s")
 
             # Селектор колонок для БАНКА
             with t2:
                 cols_b = list(df_bank_pd.columns)
                 ca2, cb2, cc2 = st.columns(3)
                 with ca2:
-                    bank_date = st.selectbox("📅 Дата", cols_b, index=cols_b.index(guess_col(df_bank_pd, ["date","дата"])) if guess_col(df_bank_pd, ["date","дата"]) else 0, key="bank_d")
-                    bank_rrn = st.selectbox("🔑 RRN", cols_b, index=cols_b.index(guess_col(df_bank_pd, ["rrn","ref"])) if guess_col(df_bank_pd, ["rrn","ref"]) else 0, key="bank_r")
+                    bank_date = st.selectbox("Дата", cols_b, index=cols_b.index(guess_col(df_bank_pd, ["date","дата"])) if guess_col(df_bank_pd, ["date","дата"]) else 0, key="bank_d")
+                    bank_rrn = st.selectbox("RRN", cols_b, index=cols_b.index(guess_col(df_bank_pd, ["rrn","ref"])) if guess_col(df_bank_pd, ["rrn","ref"]) else 0, key="bank_r")
                 with cb2:
                     _amt_b = guess_col(df_bank_pd, ["amount","сумма"])
-                    bank_amt = st.selectbox("💰 Сумма", ["(нет)"] + cols_b, index=cols_b.index(_amt_b)+1 if _amt_b else 0, key="bank_a")
-                    bank_status = st.selectbox("🏷 Статус", ["(нет)"] + cols_b, key="bank_s")
+                    bank_amt = st.selectbox("Сумма", ["(нет)"] + cols_b, index=cols_b.index(_amt_b)+1 if _amt_b else 0, key="bank_a")
+                    bank_status = st.selectbox("Статус", ["(нет)"] + cols_b, key="bank_s")
                 with cc2:
                     _tid_b = guess_col(df_bank_pd, ["tid","terminal","терминал"])
-                    bank_tid = st.selectbox("📱 Terminal ID (TID)", ["(нет)"] + cols_b, index=cols_b.index(_tid_b)+1 if _tid_b else 0, key="bank_t", help="Связывает транзакцию с Реестром EPOS")
+                    bank_tid = st.selectbox("Terminal ID (TID)", ["(нет)"] + cols_b, index=cols_b.index(_tid_b)+1 if _tid_b else 0, key="bank_t", help="Связывает транзакцию с Реестром EPOS")
 
             our_amt = None if our_amt == "(нет)" else our_amt
             our_status = None if our_status == "(нет)" else our_status
@@ -295,11 +295,11 @@ def show_page():
         dash_ph = st.container()
 
         tabs = st.tabs([
-            "📅 Сводка по датам",
-            "📈 Графики",
-            f"🔍 Несопоставленные ({len(data.get('only_our', [])) + len(data.get('only_bank', []))})",
-            f"🟡 Расхождения сумм ({data.get('mismatch_count', 0)})",
-            f"⚠️ Дубликаты ({data.get('dup_our_c', 0) + data.get('dup_bank_c', 0)})",
+            "Сводка по датам",
+            "Графики",
+            f"Несопоставленные ({len(data.get('only_our', [])) + len(data.get('only_bank', []))})",
+            f"Расхождения сумм ({data.get('mismatch_count', 0)})",
+            f"Дубликаты ({data.get('dup_our_c', 0) + data.get('dup_bank_c', 0)})",
         ])
 
         num_cfg = lambda lbl: st.column_config.NumberColumn(lbl, format="%,.2f")

@@ -12,7 +12,7 @@ def show_page():
     
     current_user = st.session_state.get("username", "system")
     
-    tab1, tab2, tab3 = st.tabs(["👥 Пользователи", "📝 Журнал действий", "🔧 Параметры сверки"])
+    tab1, tab2, tab3 = st.tabs(["Пользователи", "Журнал действий", "Параметры сверки"])
     
     # ─── Вкладка 1: Управление пользователями ───
     with tab1:
@@ -20,7 +20,7 @@ def show_page():
         
         with col1:
             with st.container(border=True):
-                st.markdown("### ➕ Новый профиль")
+                st.markdown("### Новый профиль")
                 
                 with st.form("add_user_form", clear_on_submit=True):
                     new_user = st.text_input("Логин*")

@@ -32,7 +32,7 @@ def show_page():
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ─── БЛОК 2: Графики и Таблица ───
-    tab_charts, tab_data = st.tabs(["📈 Графики", "🗄 Таблица архива"])
+    tab_charts, tab_data = st.tabs(["Графики", "Таблица архива"])
     
     with tab_charts:
         col1, col2 = st.columns(2)

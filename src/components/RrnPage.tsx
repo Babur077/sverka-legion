@@ -498,7 +498,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       {ourFile && bankFile && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
           <div className="border-b border-slate-100 pb-4">
-            <h2 className="text-base font-bold text-slate-900">⚙️ Настройка колонок и правил сверки</h2>
+            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Settings2 className="w-5 h-5 text-slate-700" />
+              <span>Настройка колонок и правил сверки</span>
+            </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               Укажите соответствие колонок для обеих сторон. Поля были предварительно определены автоматически.
             </p>
