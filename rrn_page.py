@@ -6,6 +6,7 @@ import datetime as dt_mod
 # Импортируем ядро и парсеры
 from core.parsers import load_file_polars, guess_col
 from core.recon_engine import run_rrn_reconciliation
+from utils.db_manager import get_active_banks, get_epos_registry, save_reconciliation, log_action
 
 # Оптимизированная UI-функция загрузки с кэшированием в сессии
 def upload_with_preview(label: str, key: str):
@@ -134,8 +135,13 @@ def load_demo_data_to_session():
 
 # ─── ИНТЕРФЕЙС СТРАНИЦЫ ───
 def show_page():
+    is_auditor = (st.session_state.get("role") == "auditor")
+    
+    if is_auditor:
+        st.warning("🔒 **Режим аудитора (Только чтение)**: Вам доступен просмотр данных, параметров сверки и экспорт отчетов в Excel. Ручное редактирование статусов строк и сохранение результатов в архив БД заблокированы.")
+
     # Хедер с бейджем и кнопкой демо-данных точно как в Preview
-    col_t, col_b = st.columns([3, 1.4])
+    col_t, col_b = st.columns([2.6, 1.8])
     with col_t:
         st.markdown("""
         <div style='margin-bottom: 20px;'>
@@ -152,11 +158,21 @@ def show_page():
         """, unsafe_allow_html=True)
     with col_b:
         st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
-        if st.button("✨ Загрузить демо-файлы 1С & Банк", use_container_width=True, key="btn_load_demo_rrn", help="Загрузить тестовые файлы 1С и Банка для мгновенной сверки"):
-            load_demo_data_to_session()
-            st.rerun()
+        btn_c1, btn_c2 = st.columns(2)
+        with btn_c1:
+            if st.button("✨ Демо-файлы", use_container_width=True, key="btn_load_demo_rrn", help="Загрузить тестовые файлы 1С и Банка"):
+                load_demo_data_to_session()
+                st.rerun()
+        with btn_c2:
+            if st.button("🔄 Сбросить", use_container_width=True, key="btn_reset_rrn", help="Очистить загруженные файлы и результаты"):
+                for k in ["df_cache_our_v2", "name_cache_our_v2", "preview_our_v2", 
+                          "df_cache_bank_v2", "name_cache_bank_v2", "preview_bank_v2", 
+                          "res", "ed_our_v2", "ed_bank_v2"]:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                st.rerun()
 
-    # ─── БЫСТРЫЙ ВЫБОР БАНКА-ЭКВАЙЕРА ───
+    # ─── БЫСТРЫЙ ВЫБОР БАНКА-ЭКВАЙЕРА (Динамически из реестра EPOS) ───
     with st.container(border=True):
         st.markdown("""
         <div style='display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: #0f172a; margin-bottom: 6px;'>
@@ -165,11 +181,12 @@ def show_page():
         </div>
         """, unsafe_allow_html=True)
         
-        bank_list = ["Aloqa Bank", "Open Bank", "Saderat Bank", "Davr Bank", "Hamkor Bank", "Другой банк (ввести вручную)..."]
-        cur_bank = st.session_state.get("chosen_bank", "Aloqa Bank")
+        active_banks = get_active_banks()
+        bank_list = active_banks + ["Другой банк (ввести вручную)..."]
+        cur_bank = st.session_state.get("chosen_bank", active_banks[0] if active_banks else "Aloqa Bank")
         
-        idx = bank_list.index(cur_bank) if cur_bank in bank_list else (len(bank_list) - 1)
-        selected_b = st.selectbox("Выберите банк из быстрого набора или добавьте свой", bank_list, index=idx, key="sb_quick_bank")
+        idx = bank_list.index(cur_bank) if cur_bank in bank_list else 0
+        selected_b = st.selectbox("Выберите банк из реестра или введите новый", bank_list, index=idx, key="sb_quick_bank")
         
         if selected_b == "Другой банк (ввести вручную)...":
             custom_bank_name = st.text_input("Название нового банка*", value="" if cur_bank in bank_list else cur_bank, placeholder="напр. Agrobank")
@@ -385,6 +402,7 @@ def show_page():
                 show_cols_our = ["✅", "date_str", "RRN", "net_amount_our", "📝 Причина"]
                 if "status_our" in df_target_our.columns: show_cols_our.append("status_our")
 
+                disabled_our = show_cols_our if is_auditor else [c for c in show_cols_our if c not in ["✅","📝 Причина"]]
                 edited_only_our = st.data_editor(
                     st.session_state["res"]["only_our"][show_cols_our],
                     column_config={
@@ -393,11 +411,12 @@ def show_page():
                         "RRN": st.column_config.TextColumn("RRN"),
                         "net_amount_our": num_cfg("Сумма"),
                     },
-                    disabled=[c for c in show_cols_our if c not in ["✅","📝 Причина"]],
+                    disabled=disabled_our,
                     use_container_width=True, hide_index=True, key="ed_our_v2",
                 )
-                st.session_state["res"]["only_our"]["✅"] = edited_only_our["✅"]
-                st.session_state["res"]["only_our"]["📝 Причина"] = edited_only_our["📝 Причина"]
+                if not is_auditor:
+                    st.session_state["res"]["only_our"]["✅"] = edited_only_our["✅"]
+                    st.session_state["res"]["only_our"]["📝 Причина"] = edited_only_our["📝 Причина"]
 
             with col_right:
                 st.markdown(f"### 🔵 Лишние данные банка ({len(data['only_bank'])})")
@@ -453,6 +472,7 @@ def show_page():
                 show_cols_bank = ["✅", "date_str", "RRN", "net_amount_bank", "📝 Причина"]
                 if "status_bank" in df_target_bank.columns: show_cols_bank.append("status_bank")
 
+                disabled_bank = show_cols_bank if is_auditor else [c for c in show_cols_bank if c not in ["✅","📝 Причина"]]
                 edited_only_bank = st.data_editor(
                     st.session_state["res"]["only_bank"][show_cols_bank],
                     column_config={
@@ -461,11 +481,12 @@ def show_page():
                         "RRN": st.column_config.TextColumn("RRN"),
                         "net_amount_bank": num_cfg("Сумма"),
                     },
-                    disabled=[c for c in show_cols_bank if c not in ["✅","📝 Причина"]],
+                    disabled=disabled_bank,
                     use_container_width=True, hide_index=True, key="ed_bank_v2",
                 )
-                st.session_state["res"]["only_bank"]["✅"] = edited_only_bank["✅"]
-                st.session_state["res"]["only_bank"]["📝 Причина"] = edited_only_bank["📝 Причина"]
+                if not is_auditor:
+                    st.session_state["res"]["only_bank"]["✅"] = edited_only_bank["✅"]
+                    st.session_state["res"]["only_bank"]["📝 Причина"] = edited_only_bank["📝 Причина"]
 
         with tabs[3]:
             if st.session_state.get("unbind_mismatches", False):
@@ -693,14 +714,16 @@ def show_page():
         with col_save:
             with st.container(border=True):
                 st.markdown("#### 🗄 Сохранить в Архив")
-                st.caption("Записать результаты в базу для аналитики")
-                if st.button("Сохранить результат в БД", use_container_width=True):
-                    from utils.db_manager import save_reconciliation, log_action
-                    user = st.session_state.get("username", "unknown")
-                    bank_name = st.session_state.get("chosen_bank", "Банк")
-                    success, msg = save_reconciliation(user=user, bank_name=bank_name, tot_our=adj_tot_our, tot_bank=adj_tot_bank, diff=adj_diff, matched_c=data["matched_count"], mismatch_c=data["mismatch_count"], only_our_c=len(ig_our), only_bank_c=len(ig_bank))
-                    if success:
-                        st.success(msg)
-                        log_action(user, "SAVE_RECON", f"Сохранена сверка по банку {bank_name}")
-                    else:
-                        st.error(msg)
+                st.caption("Записать результаты в общую базу данных для аналитики")
+                if is_auditor:
+                    st.info("🔒 Сохранение в архив недоступно в режиме аудитора (только чтение).")
+                else:
+                    if st.button("Сохранить результат в БД", use_container_width=True, type="primary"):
+                        user = st.session_state.get("username", "unknown")
+                        bank_name = st.session_state.get("chosen_bank", "Банк")
+                        success, msg = save_reconciliation(user=user, bank_name=bank_name, tot_our=adj_tot_our, tot_bank=adj_tot_bank, diff=adj_diff, matched_c=data["matched_count"], mismatch_c=data["mismatch_count"], only_our_c=len(ig_our), only_bank_c=len(ig_bank))
+                        if success:
+                            st.success(msg)
+                            log_action(user, "SAVE_RECON", f"Сохранена сверка по банку {bank_name}")
+                        else:
+                            st.error(msg)
