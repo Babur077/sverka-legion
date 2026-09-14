@@ -173,10 +173,92 @@ def add_epos_terminal(tid, mid, bank, entity="", com_pct=0.0):
             return False, f"Системная ошибка: {e}"
 
 
+def delete_epos_terminal(tid: str):
+    """Удаляет терминал по его TID."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM epos_registry WHERE terminal_id = ?", (tid,))
+        conn.commit()
+        return True, f"Терминал {tid} удалён"
+
+
+def update_epos_terminal(tid: str, bank: str, mid: str, com_pct: float, is_active: bool):
+    """Обновляет параметры терминала."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE epos_registry 
+            SET bank_acquirer = ?, merchant_id = ?, commission_pct = ?, is_active = ?
+            WHERE terminal_id = ?
+        ''', (bank, mid, com_pct, 1 if is_active else 0, tid))
+        conn.commit()
+        return True, "Данные терминала обновлены"
+
+
+def bulk_upsert_epos(records: list[dict]):
+    """Пакетно вставляет или обновляет терминалы (для импорта из Excel/JSON)."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        count = 0
+        for r in records:
+            tid = str(r.get("terminal_id") or r.get("TID") or "").strip()
+            if not tid:
+                continue
+            bank = str(r.get("bank_acquirer") or r.get("Банк") or "Неизвестный банк").strip()
+            mid = str(r.get("merchant_id") or r.get("MID") or f"MID_{tid}").strip()
+            entity = str(r.get("legal_entity") or "").strip()
+            try:
+                raw_pct = r.get("commission_pct") or r.get("Комиссия (%)") or r.get("Комиссия") or 0.0
+                com_pct = float(str(raw_pct).replace("%", "").replace(",", ".").strip() or 0.0)
+            except (ValueError, TypeError):
+                com_pct = 0.0
+            is_active = 1 if r.get("is_active", True) in (True, 1, "1", "true", "True") else 0
+
+            cursor.execute('''
+                INSERT INTO epos_registry (terminal_id, merchant_id, bank_acquirer, legal_entity, commission_pct, is_active)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(terminal_id) DO UPDATE SET
+                    merchant_id = excluded.merchant_id,
+                    bank_acquirer = excluded.bank_acquirer,
+                    legal_entity = excluded.legal_entity,
+                    commission_pct = excluded.commission_pct,
+                    is_active = excluded.is_active
+            ''', (tid, mid, bank, entity, com_pct, is_active))
+            count += 1
+        conn.commit()
+        return count
+
+
+def get_active_banks() -> list[str]:
+    """Возвращает уникальный список активных банков из реестра."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT bank_acquirer FROM epos_registry WHERE is_active = 1 ORDER BY bank_acquirer")
+        banks = [row[0] for row in cursor.fetchall() if row[0]]
+        if not banks:
+            banks = ["Aloqa Bank", "Open Bank", "Saderat Bank", "Davr Bank", "Hamkor Bank"]
+        return banks
+
+
 def get_epos_registry() -> pd.DataFrame:
     """Возвращает весь реестр в виде DataFrame для удобного отображения."""
     with sqlite3.connect(DB_PATH) as conn:
         return pd.read_sql_query("SELECT * FROM epos_registry", conn)
+
+
+def delete_user(user_id: int):
+    """Удаляет пользователя по ID (кроме главного admin)."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False, "Пользователь не найден"
+        if row[0] == "admin":
+            return False, "Нельзя удалить главного администратора 'admin'!"
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+        return True, f"Пользователь '{row[0]}' удалён"
 
 
 def add_user(username, password, role):
