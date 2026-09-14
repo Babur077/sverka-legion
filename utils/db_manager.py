@@ -321,6 +321,14 @@ def get_archive_data() -> pd.DataFrame:
         )
 
 
+def delete_archive_record(record_id: int):
+    """Удаляет запись из архива."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM reconciliation_archive WHERE id = ?", (record_id,))
+        conn.commit()
+
+
 # ─────────────────────────────────────────────────────────────
 # Общесистемные настройки (раньше жили только в st.session_state,
 # из-за чего "сохранённые" настройки видел только тот же браузер/сессия).

@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from utils.db_manager import get_archive_data
+from utils.db_manager import get_archive_data, delete_archive_record
 
 def show_page():
     st.title("Аналитика и Архив сверок")
@@ -32,7 +32,7 @@ def show_page():
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ─── БЛОК 2: Графики и Таблица ───
-    tab_charts, tab_data = st.tabs(["Графики", "Таблица архива"])
+    tab_charts, tab_data = st.tabs(["📊 Графики", "📋 Управление архивом"])
     
     with tab_charts:
         col1, col2 = st.columns(2)
@@ -61,23 +61,41 @@ def show_page():
                 st.plotly_chart(fig_line, use_container_width=True)
 
     with tab_data:
+        st.markdown("💡 **Совет:** Чтобы удалить записи из архива, поставьте галочку в столбце «Удалить» и нажмите кнопку ниже.")
+        
+        # Подготавливаем dataframe для редактирования
+        df_display = df_archive.copy()
+        df_display.insert(0, "🗑️ Удалить", False)
+        
         with st.container(border=True):
-            st.dataframe(
-                df_archive,
+            edited_df = st.data_editor(
+                df_display,
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "id": "ID",
+                    "🗑️ Удалить": st.column_config.CheckboxColumn("Удалить", help="Отметьте для удаления", default=False),
+                    "id": None, # Скрываем ID
+                    "date_str": None, # Скрываем техническую колонку
                     "timestamp": st.column_config.DatetimeColumn("Время сверки", format="DD.MM.YYYY HH:mm"),
                     "username": "Инициатор",
                     "bank_name": "Банк",
                     "total_our": st.column_config.NumberColumn("Сумма (Мы)", format="%,.2f"),
                     "total_bank": st.column_config.NumberColumn("Сумма (Банк)", format="%,.2f"),
-                    "difference": st.column_config.NumberColumn("Расхождение", format="%+,.2f"),
-                    "matched_count": "Совпало",
-                    "mismatch_count": "Δ Сумм",
-                    "only_our_count": "Только у нас",
-                    "only_bank_count": "Только банк",
-                    "date_str": None # Скрываем техническую колонку
-                }
+                    "difference": st.column_config.NumberColumn("Расхождение (Δ)", format="%+,.2f"),
+                    "matched_count": st.column_config.NumberColumn("Совпало"),
+                    "mismatch_count": st.column_config.NumberColumn("Δ Сумм"),
+                    "only_our_count": st.column_config.NumberColumn("Только у нас"),
+                    "only_bank_count": st.column_config.NumberColumn("Только банк")
+                },
+                disabled=["id", "timestamp", "username", "bank_name", "total_our", "total_bank", "difference", "matched_count", "mismatch_count", "only_our_count", "only_bank_count"]
             )
+            
+        # Проверяем, есть ли отмеченные для удаления
+        to_delete = edited_df[edited_df["🗑️ Удалить"] == True]
+        if not to_delete.empty:
+            st.warning(f"⚠️ Выбрано записей для удаления: {len(to_delete)}")
+            if st.button("🗑️ Подтвердить удаление выбранных записей", type="primary"):
+                for idx, row in to_delete.iterrows():
+                    delete_archive_record(row['id'])
+                st.success("✅ Записи успешно удалены из архива!")
+                st.rerun()

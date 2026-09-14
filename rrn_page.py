@@ -507,7 +507,7 @@ def show_page():
                 })
 
         with tabs[4]:
-            if "Оставить" in data["dup_action"]:
+            if "остав" in data["dup_action"].lower() or "ничего" in data["dup_action"].lower():
                 c1, c2 = st.columns(2)
                 fc = {"RRN": st.column_config.TextColumn("RRN"), "amount": num_cfg("Сумма"), "net_amount": num_cfg("Чистая сумма")}
                 with c1:
