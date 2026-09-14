@@ -175,23 +175,21 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   // Toggle single unmatched check
   const handleToggleCheck = (index: number, isOur: boolean) => {
     if (!reconData) return;
-    const list = isOur ? [...reconData.only_our] : [...reconData.only_bank];
-    list[index].checked = !list[index].checked;
-    setReconData({
-      ...reconData,
-      [isOur ? 'only_our' : 'only_bank']: list,
-    });
+    const key = isOur ? 'only_our' : 'only_bank';
+    const updated = reconData[key].map((item, idx) => 
+      idx === index ? { ...item, checked: !item.checked } : item
+    );
+    setReconData({ ...reconData, [key]: updated });
   };
 
   // Change reason
   const handleChangeReason = (index: number, reason: string, isOur: boolean) => {
     if (!reconData) return;
-    const list = isOur ? [...reconData.only_our] : [...reconData.only_bank];
-    list[index].reason = reason;
-    setReconData({
-      ...reconData,
-      [isOur ? 'only_our' : 'only_bank']: list,
-    });
+    const key = isOur ? 'only_our' : 'only_bank';
+    const updated = reconData[key].map((item, idx) => 
+      idx === index ? { ...item, reason } : item
+    );
+    setReconData({ ...reconData, [key]: updated });
   };
 
   // Bulk check / uncheck
@@ -614,7 +612,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               </h3>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1"><div className="flex items-center gap-1"><CalendarDays className="w-3 h-3 text-slate-400"/> Дата*</div></label>
+                 <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 mb-1">
+                    <CalendarDays className="w-3 h-3 text-slate-400"/>
+                    <span>Дата*</span>
+                  </label>
                   <select
                     value={ourDateCol}
                     onChange={(e) => setOurDateCol(e.target.value)}
@@ -728,10 +729,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="w-full px-4 py-3 bg-slate-50 flex items-center justify-between text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <span><div className="flex items-center gap-2"><Settings2 className="w-4 h-4 text-slate-500"/> Расширенные настройки (возвраты, дубликаты, строгий допуск)</div></span>
-              {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              className="w-full px-4 py-3 bg-slate-50 flex items-center justify-between text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer">
+             <span className="flex items-center gap-2">
+                <Settings2 className="w-4 h-4 text-slate-500"/> 
+                 Расширенные настройки (возвраты, дубликаты, строгий допуск)
+            </span>{showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
 
             {showAdvanced && (
