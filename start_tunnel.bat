@@ -6,34 +6,73 @@ echo ===============================================================
 echo   Запуск ReconcileHub с безопасной онлайн-ссылкой для коллег
 echo ===============================================================
 echo.
-echo Этот способ гарантированно работает, даже если:
-echo - Роутер блокирует общение компьютеров (изоляция клиентов Wi-Fi);
-echo - Брандмауэр Windows не пускает входящие соединения;
-echo - Коллеги находятся в другом кабинете или работают удаленно.
+echo Этот способ гарантированно работает на любых компьютерах:
+echo  [✓] Не требует настройки роутера (обходит изоляцию Wi-Fi клиентов);
+echo  [✓] Не блокируется Брандмауэром Windows;
+echo  [✓] Работает даже если коллеги в другом кабинете или дома.
 echo.
 
-:: Сначала запускаем сам Streamlit в фоновом окне, если он еще не запущен
-echo [1/2] Проверка локального сервера...
-start "ReconcileHub Server" cmd /c "python start_network.py"
+:: 1. Проверяем или запускаем локальный сервер Streamlit
+echo [1/3] Проверка локального сервера ReconcileHub...
+netstat -ano | findstr ":8501" | findstr "LISTENING" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo   Локальный сервер не был запущен. Запускаем в фоновом окне...
+    start "ReconcileHub Server" cmd /c "python start_network.py"
+    timeout /t 3 >nul
+) else (
+    echo   [✓] Локальный сервер уже активен на порту 8501.
+)
 
-timeout /t 3 >nul
+echo.
+echo [2/3] Подготовка утилиты Cloudflare Tunnel...
 
-echo.
-echo [2/2] Создание защищенного туннеля через Cloudflare...
-echo.
-echo Сейчас будет сгенерирована публичная ссылка вида:
-echo https://xxxx-xxxx.trycloudflare.com
-echo.
-echo Эту ссылку вы можете отправить любому коллеге!
-echo.
+set "CF_EXE=%~dp0cloudflared.exe"
 
 where cloudflared >nul 2>nul
 if %errorlevel% == 0 (
+    set "CF_EXE=cloudflared"
+)
+
+if not exist "%CF_EXE%" if not "%CF_EXE%"=="cloudflared" (
+    echo   Утилита cloudflared не найдена в папке.
+    echo   Автоматическое скачивание официального cloudflared (18 МБ)...
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Write-Host 'Загрузка...'; (New-Object System.Net.WebClient).DownloadFile('https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe', '%CF_EXE%')"
+    if exist "%CF_EXE%" (
+        echo   [✓] cloudflared успешно скачан!
+    )
+)
+
+echo.
+echo [3/3] Создание защищенного туннеля...
+echo.
+echo ===============================================================
+echo  СЕЙЧАС ПОЯВИТСЯ ПУБЛИЧНАЯ ССЫЛКА ДЛЯ КОЛЛЕГ!
+echo  Ищите в строках ниже ссылку вида:
+echo  👉 https://xxxxx.trycloudflare.com
+echo  Скопируйте её и отправьте коллегам.
+echo  Для завершения работы просто закройте это окно.
+echo ===============================================================
+echo.
+
+if exist "%CF_EXE%" (
+    "%CF_EXE%" tunnel --url http://localhost:8501
+    goto end
+)
+if "%CF_EXE%"=="cloudflared" (
     cloudflared tunnel --url http://localhost:8501
     goto end
 )
 
-:: Пробуем через npx localtunnel если есть node.js
+:: Резервный вариант через встроенный OpenSSH Windows
+where ssh >nul 2>nul
+if %errorlevel% == 0 (
+    echo [INFO] Запуск резервного туннеля через SSH...
+    echo Ссылка для коллег появится ниже:
+    ssh -o StrictHostKeyChecking=no -R 80:localhost:8501 nokey@localhost.run
+    goto end
+)
+
+:: Резервный вариант через npx localtunnel
 where npx >nul 2>nul
 if %errorlevel% == 0 (
     echo [INFO] Запуск через LocalTunnel...
@@ -41,11 +80,12 @@ if %errorlevel% == 0 (
     goto end
 )
 
-echo [ВНИМАНИЕ] Утилита cloudflared или Node.js не обнаружена.
-echo Для работы без настройки локальной сети скачайте cloudflared:
+echo [ОШИБКА] Не удалось запустить туннель автоматически.
+echo Проверьте подключение к интернету или скачайте cloudflared.exe вручную:
 echo https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
-echo и положите файл рядом с этим скриптом, переименовав в cloudflared.exe
+echo и положите в папку с программой.
 echo.
 pause
 
 :end
+
