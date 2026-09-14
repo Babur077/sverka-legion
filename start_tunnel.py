@@ -282,6 +282,51 @@ def try_cloudflared() -> bool:
 
     return bool(found_url)
 
+def ensure_ssh_key() -> str | None:
+    """Гарантирует наличие SSH-ключа для беспарольного подключения к туннелям (Pinggy, Localhost.run)."""
+    ssh_dir = os.path.expanduser("~/.ssh")
+    try:
+        os.makedirs(ssh_dir, exist_ok=True)
+    except Exception:
+        pass
+
+    # Проверяем существующие ключи
+    for name in ["id_ed25519", "id_rsa"]:
+        p = os.path.join(ssh_dir, name)
+        if os.path.isfile(p):
+            return p
+
+    # Если ключа нет — создаем быстрый ключ без парольной фразы (-N "")
+    keygen_cmd = shutil.which("ssh-keygen")
+    if not keygen_cmd and sys.platform == "win32":
+        candidates = [
+            os.path.expandvars(r"%SystemRoot%\System32\OpenSSH\ssh-keygen.exe"),
+            os.path.expandvars(r"%ProgramFiles%\OpenSSH\ssh-keygen.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Git\usr\bin\ssh-keygen.exe"),
+        ]
+        for c in candidates:
+            if os.path.isfile(c):
+                keygen_cmd = c
+                break
+
+    target_key = os.path.join(ssh_dir, "id_ed25519")
+    if keygen_cmd:
+        try:
+            print(" [i] Генерация безопасного SSH-ключа для беспарольного доступа...", end="", flush=True)
+            subprocess.run(
+                [keygen_cmd, "-t", "ed25519", "-N", "", "-f", target_key, "-q"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False
+            )
+            if os.path.isfile(target_key):
+                print(" [Готово]")
+                return target_key
+        except Exception:
+            pass
+
+    return None
+
 def get_ssh_cmd() -> str | None:
     """Находит исполняемый файл SSH в системе."""
     ssh_path = shutil.which("ssh")
@@ -305,7 +350,10 @@ def try_pinggy() -> bool:
         print(" [!] SSH клиент не найден на этом компьютере.")
         return False
 
+    key_path = ensure_ssh_key()
     print("\n [✓] Запуск защищенного туннеля через Pinggy (порт 443)...")
+    print(" [i] Подсказка: если появится запрос password — просто нажмите Enter (пароль пустой).\n")
+
     dev_null = "NUL" if sys.platform == "win32" else "/dev/null"
     cmd = [
         ssh_cmd, "-p", "443",
@@ -313,16 +361,21 @@ def try_pinggy() -> bool:
         "-o", f"UserKnownHostsFile={dev_null}",
         "-o", "ServerAliveInterval=30",
         "-o", "TCPKeepAlive=yes",
-        "-R0:localhost:8501",
-        "a.pinggy.io"
     ]
+    if key_path:
+        cmd.extend(["-i", key_path, "-o", "IdentitiesOnly=yes"])
+
+    cmd.extend([
+        "-R0:localhost:8501",
+        "free@a.pinggy.io"
+    ])
     
     try:
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -338,6 +391,14 @@ def try_pinggy() -> bool:
     try:
         start_time = time.time()
         for line in proc.stdout:
+            # Если сервис запрашивает пароль, автоматически отправляем пустой Enter
+            if "password:" in line.lower() and proc.stdin:
+                try:
+                    proc.stdin.write("\n")
+                    proc.stdin.flush()
+                except Exception:
+                    pass
+
             match = url_pattern.search(line)
             if match and not found_url:
                 found_url = match.group(0)
@@ -364,6 +425,7 @@ def try_localhost_run() -> bool:
     if not ssh_cmd:
         return False
 
+    key_path = ensure_ssh_key()
     print("\n [✓] Запуск резервного туннеля через Localhost.run...")
     dev_null = "NUL" if sys.platform == "win32" else "/dev/null"
     cmd = [
@@ -371,9 +433,14 @@ def try_localhost_run() -> bool:
         "-o", "StrictHostKeyChecking=no",
         "-o", f"UserKnownHostsFile={dev_null}",
         "-o", "ServerAliveInterval=30",
+    ]
+    if key_path:
+        cmd.extend(["-i", key_path, "-o", "IdentitiesOnly=yes"])
+
+    cmd.extend([
         "-R", f"80:localhost:{PORT}",
         "nokey@localhost.run"
-    ]
+    ])
     
     try:
         proc = subprocess.Popen(
