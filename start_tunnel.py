@@ -371,7 +371,7 @@ def try_pinggy() -> bool:
         cmd.extend(["-i", key_path, "-o", "IdentitiesOnly=yes"])
 
     cmd.extend([
-        "-R0:localhost:8501",
+        f"-R0:127.0.0.1:{PORT}",
         "free@a.pinggy.io"
     ])
     
@@ -391,8 +391,8 @@ def try_pinggy() -> bool:
         return False
 
     found_url = None
-    # Ссылка туннеля Pinggy ВСЕГДА заканчивается на .pinggy.link
-    url_pattern = re.compile(r"https://[a-zA-Z0-9\-]+(?:\.[a-zA-Z0-9\-]+)*\.pinggy\.link")
+    # Учитываем, что ссылка может быть pinggy.link или pinggy-free.link
+    url_pattern = re.compile(r"https://[a-zA-Z0-9\-.]+\.pinggy[a-zA-Z0-9\-]*\.link")
 
     try:
         start_time = time.time()
@@ -448,7 +448,7 @@ def try_localhost_run() -> bool:
         cmd.extend(["-i", key_path, "-o", "IdentitiesOnly=yes"])
 
     cmd.extend([
-        "-R", f"80:localhost:{PORT}",
+        "-R", f"80:127.0.0.1:{PORT}",
         "nokey@localhost.run"
     ])
     
