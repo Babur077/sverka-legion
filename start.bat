@@ -35,9 +35,7 @@ if "%CHOICE%"=="2" goto run_react
 goto run_streamlit
 
 :run_streamlit
-echo.
-echo [OK] Запуск Streamlit сервера...
-%PYTHON_CMD% start_network.py
+call start_streamlit.bat
 goto end
 
 :run_react
