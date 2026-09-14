@@ -1,5 +1,5 @@
-import React from 'react';
-import { RefreshCw, Building2, BarChart3, Settings, LogOut, Shield, ShieldCheck, UserCheck, Zap } from 'lucide-react';
+import React, { useState } from 'react';
+import { RefreshCw, Building2, BarChart3, Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X } from 'lucide-react';
 import { User } from '../types';
 
 interface NavbarProps {
@@ -15,6 +15,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   onLogout,
 }) => {
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   const roleLabel = {
     admin: 'Администратор',
     accountant: 'Бухгалтер',
@@ -28,80 +31,141 @@ export const Navbar: React.FC<NavbarProps> = ({
   }[user.role] || 'bg-slate-50 text-slate-700 border-slate-200';
 
   const navItems = [
-    { id: 'rrn', label: 'Сверка по RRN', icon: RefreshCw, adminOnly: false },
+    { 
+      id: 'rrn', 
+      label: user.role === 'auditor' ? 'Сверка (Просмотр)' : 'Сверка по RRN', 
+      icon: RefreshCw, 
+      adminOnly: false 
+    },
     { id: 'epos', label: 'Реестр банков', icon: Building2, adminOnly: true },
     { id: 'analytics', label: 'Аналитика', icon: BarChart3, adminOnly: false },
     { id: 'admin', label: 'Настройки', icon: Settings, adminOnly: true },
   ].filter(item => !item.adminOnly || user.role === 'admin');
 
+  const handleItemClick = (tabId: string) => {
+    onSelectTab(tabId);
+    setMobileOpen(false);
+  };
+
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0 min-h-screen">
-      {/* Brand Header */}
-      <div className="p-5 border-b border-slate-100">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm font-black text-lg">
-            <Zap className="w-5 h-5 fill-white text-white" />
+    <>
+      {/* Mobile top bar with hamburger toggle */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-slate-200 z-40 px-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-xs">
+            <Zap className="w-4 h-4 fill-white text-white" />
           </div>
-          <div>
-            <div className="font-bold text-slate-900 text-base leading-tight">ReconcileHub</div>
-            <div className="text-[11px] font-semibold text-slate-400 tracking-wider">v2.0 • PROFESSIONAL</div>
-          </div>
+          <span className="font-bold text-slate-900 text-sm">ReconcileHub</span>
         </div>
-      </div>
-
-      {/* Navigation section */}
-      <div className="p-3 flex-1">
-        <div className="px-3 py-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-          ОБЗОР
-        </div>
-        <nav className="space-y-1">
-          {navItems.map(item => {
-            const Icon = item.icon;
-            const active = currentTab === item.id;
-            return (
-              <button
-                key={item.id}
-                id={`nav-item-${item.id}`}
-                onClick={() => onSelectTab(item.id)}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-left cursor-pointer ${
-                  active
-                    ? 'bg-indigo-50 text-indigo-700 font-semibold shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* User profile & Logout */}
-      <div className="p-4 border-t border-slate-100 bg-slate-50/50">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 font-semibold text-xs shrink-0">
-              {user.username.slice(0, 2).toUpperCase()}
-            </div>
-            <div className="truncate">
-              <div className="text-xs font-semibold text-slate-900 truncate">{user.username}</div>
-              <div className={`inline-flex items-center text-[10px] font-medium px-1.5 py-0.2 rounded border ${roleBadgeColor}`}>
-                {roleLabel}
-              </div>
-            </div>
-          </div>
-        </div>
-
         <button
-          id="logout-button"
-          onClick={onLogout}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-slate-200 hover:border-rose-200 hover:bg-rose-50 text-xs font-medium text-slate-600 hover:text-rose-600 transition-colors cursor-pointer"
+          onClick={() => setMobileOpen(!mobileOpen)}
+          className="p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100"
+          aria-label="Toggle navigation"
         >
-          <LogOut className="w-3.5 h-3.5" />
-          <span>Выйти из системы</span>
+          {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
-    </aside>
+
+      {/* Mobile Backdrop */}
+      {mobileOpen && (
+        <div 
+          onClick={() => setMobileOpen(false)} 
+          className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 transition-opacity" 
+        />
+      )}
+
+      {/* Sidebar container (responsive) */}
+      <aside
+        className={`fixed md:static inset-y-0 left-0 z-50 bg-white border-r border-slate-200 flex flex-col shrink-0 h-full transition-all duration-200 ease-in-out ${
+          collapsed ? 'w-20' : 'w-64'
+        } ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
+      >
+        {/* Brand Header */}
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between relative">
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-xs font-black text-lg shrink-0">
+              <Zap className="w-5 h-5 fill-white text-white" />
+            </div>
+            {!collapsed && (
+              <div className="min-w-0">
+                <div className="font-bold text-slate-900 text-base leading-tight truncate">ReconcileHub</div>
+                <div className="text-[10px] font-semibold text-slate-400 tracking-wider">v2.0 • PROFESSIONAL</div>
+              </div>
+            )}
+          </div>
+
+          {/* Collapse toggle (desktop only) */}
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="hidden md:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+          >
+            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {/* Navigation items */}
+        <div className="p-3 flex-1 overflow-y-auto">
+          {!collapsed && (
+            <div className="px-3 py-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              ОБЗОР
+            </div>
+          )}
+          <nav className="space-y-1">
+            {navItems.map(item => {
+              const Icon = item.icon;
+              const active = currentTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  id={`nav-item-${item.id}`}
+                  onClick={() => handleItemClick(item.id)}
+                  title={collapsed ? item.label : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left cursor-pointer ${
+                    active
+                      ? 'bg-indigo-50 text-indigo-700 font-semibold shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  } ${collapsed ? 'justify-center px-0' : ''}`}
+                >
+                  <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* User profile & Logout */}
+        <div className="p-3 border-t border-slate-100 bg-slate-50/50">
+          <div className={`flex items-center gap-2 overflow-hidden mb-3 ${collapsed ? 'justify-center' : ''}`}>
+            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0 border border-indigo-200">
+              {user.username.slice(0, 2).toUpperCase()}
+            </div>
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-slate-900 truncate">{user.username}</div>
+                <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${roleBadgeColor}`}>
+                  {roleLabel}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <button
+            id="logout-button"
+            onClick={onLogout}
+            title={collapsed ? 'Выйти из системы' : undefined}
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 hover:border-rose-200 hover:bg-rose-50 text-xs font-medium text-slate-600 hover:text-rose-600 transition-colors cursor-pointer ${
+              collapsed ? 'justify-center px-0' : 'justify-center'
+            }`}
+          >
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
+            {!collapsed && <span>Выйти</span>}
+          </button>
+        </div>
+      </aside>
+    </>
   );
 };

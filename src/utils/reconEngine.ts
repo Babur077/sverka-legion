@@ -10,10 +10,43 @@ export function cleanAmount(val: any): number {
   const hasComma = s.includes(',');
   const hasDot = s.includes('.');
 
-  if (hasComma && !hasDot) {
-    s = s.replace(',', '.');
-  } else if (hasComma && hasDot) {
-    s = s.replace(/,/g, '');
+  if (hasComma && hasDot) {
+    const lastComma = s.lastIndexOf(',');
+    const lastDot = s.lastIndexOf('.');
+    if (lastComma > lastDot) {
+      // European format: "1.234,56" or "1.234.567,89" -> remove dots, replace comma with dot
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      // Standard/US format: "1,234.56" or "1,234,567.89" -> remove commas
+      s = s.replace(/,/g, '');
+    }
+  } else if (hasComma && !hasDot) {
+    // 1. Grouped by exactly 3 digits (thousands separator): "1,234" or "12,345,678" -> remove commas
+    const isThousandsComma = /^-?\d{1,3}(,\d{3})+$/.test(s);
+    // 2. Comma with 1 or 2 decimal digits: "1234,56" or "0,5" -> decimal point
+    const isDecimalComma = /^-?\d+,\d{1,2}$/.test(s);
+    // 3. Comma with 4+ digits: rare scientific/crypto decimal -> decimal point
+    const isMicroDecimalComma = /^-?\d+,\d{4,}$/.test(s);
+
+    if (isThousandsComma) {
+      s = s.replace(/,/g, '');
+    } else if (isDecimalComma || isMicroDecimalComma) {
+      s = s.replace(',', '.');
+    } else {
+      // Multiple commas like "1,234,567" or general fallback
+      const commaCount = (s.match(/,/g) || []).length;
+      if (commaCount > 1) {
+        s = s.replace(/,/g, '');
+      } else {
+        s = s.replace(',', '.');
+      }
+    }
+  } else if (!hasComma && hasDot) {
+    // Multiple dots used as thousands separators: "1.234.567"
+    const dotCount = (s.match(/\./g) || []).length;
+    if (dotCount > 1 && /^-?\d{1,3}(\.\d{3})+$/.test(s)) {
+      s = s.replace(/\./g, '');
+    }
   }
 
   const parsed = parseFloat(s);
@@ -152,14 +185,16 @@ export function runReconciliation(
 
   const applyReversalsOur = (rows: typeof ourRows, action: string) => {
     if (!cfg.our_status) return rows;
-    if (action.includes('💥')) {
+    const act = (action || '').toLowerCase();
+    if (act.includes('rrn') || act.includes('полностью') || act.includes('💥')) {
       const badRrns = new Set(rows.filter(r => isReversal(r.status)).map(r => r.RRN));
       return rows.filter(r => !badRrns.has(r.RRN));
-    } else if (action.includes('🗑')) {
+    } else if (act.includes('удалить строку') || act.includes('строку') || act.includes('🗑')) {
       return rows.filter(r => !isReversal(r.status));
-    } else if (action.includes('➖')) {
+    } else if (act.includes('минусовать') || act.includes('минус') || act.includes('➖')) {
       return rows.map(r => ({
         ...r,
+        amount: isReversal(r.status) ? -Math.abs(r.amount) : r.amount,
         net_amount: isReversal(r.status) ? -Math.abs(r.net_amount) : r.net_amount,
       }));
     }
@@ -168,14 +203,16 @@ export function runReconciliation(
 
   const applyReversalsBank = (rows: typeof bankRows, action: string) => {
     if (!cfg.bank_status) return rows;
-    if (action.includes('💥')) {
+    const act = (action || '').toLowerCase();
+    if (act.includes('rrn') || act.includes('полностью') || act.includes('💥')) {
       const badRrns = new Set(rows.filter(r => isReversal(r.status)).map(r => r.RRN));
       return rows.filter(r => !badRrns.has(r.RRN));
-    } else if (action.includes('🗑')) {
+    } else if (act.includes('удалить строку') || act.includes('строку') || act.includes('🗑')) {
       return rows.filter(r => !isReversal(r.status));
-    } else if (action.includes('➖')) {
+    } else if (act.includes('минусовать') || act.includes('минус') || act.includes('➖')) {
       return rows.map(r => ({
         ...r,
+        raw_amount: isReversal(r.status) ? -Math.abs(r.raw_amount) : r.raw_amount,
         net_amount: isReversal(r.status) ? -Math.abs(r.net_amount) : r.net_amount,
       }));
     }

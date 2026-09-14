@@ -270,6 +270,45 @@ export function getArchiveData(): ReconciliationArchive[] {
   }
 }
 
+export function deleteArchiveRecord(id: number): boolean {
+  try {
+    const raw = localStorage.getItem(ARCHIVE_KEY);
+    if (!raw) return false;
+    const archive: ReconciliationArchive[] = JSON.parse(raw);
+    const updated = archive.filter(a => a.id !== id);
+    localStorage.setItem(ARCHIVE_KEY, JSON.stringify(updated));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const DRAFT_KEY = 'reconcile_active_draft_v1';
+
+export function saveActiveDraft(draft: any): void {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch (e) {
+    console.warn('Failed to save draft to localStorage:', e);
+  }
+}
+
+export function getStoredDraft(): any | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function clearActiveDraft(): void {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {}
+}
+
 export function getStoredSettings(): SystemSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);

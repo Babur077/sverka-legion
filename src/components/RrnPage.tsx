@@ -1,15 +1,22 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Upload, FileSpreadsheet, Play, Download, Save, CheckCircle2, AlertTriangle, XCircle,
-  HelpCircle, ChevronDown, ChevronUp, Filter, Sparkles, RefreshCw, BarChart2, Eye
-, Settings, UploadCloud, Landmark, CalendarDays, Key, Coins, Tag as TagIcon, Settings2, Unlink, Percent, CalendarRange, Search, AlertCircle, Copy, FileText, CheckSquare, Square, FileCheck, Layers, Building2, Plus} from 'lucide-react';
+  HelpCircle, ChevronDown, ChevronUp, Filter, Sparkles, RefreshCw, BarChart2, Eye,
+  Settings, UploadCloud, Landmark, CalendarDays, Key, Coins, Tag as TagIcon, Settings2,
+  Unlink, Percent, CalendarRange, Search, AlertCircle, Copy, FileText, CheckSquare,
+  Square, FileCheck, Layers, Building2, Plus, RotateCcw
+} from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
 import { RawRow, ReconciliationConfig, ReconciliationResult, UnmatchedRow, AmountMismatchRow, DateSummaryRow, SystemSettings, User } from '../types';
 import { parseFile, guessCol, exportReconciliationToExcel, generateSampleData } from '../utils/fileParser';
 import { runReconciliation } from '../utils/reconEngine';
-import { getStoredEpos, saveReconciliation, logAction, getStoredBanks, addStoredBank } from '../utils/storage';
+import {
+  getStoredEpos, saveReconciliation, logAction, getStoredBanks, addStoredBank,
+  getStoredDraft, saveActiveDraft, clearActiveDraft
+} from '../utils/storage';
+import { AlertModal, ConfirmModal } from './Modal';
 
 interface RrnPageProps {
   user: User;
@@ -28,6 +35,40 @@ const REASON_OPTIONS = [
 ];
 
 export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
+  const isAuditor = user.role === 'auditor';
+
+  // Modal states
+  const [alertState, setAlertState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'info' | 'success' | 'warning' | 'error';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info',
+  });
+
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    isDanger?: boolean;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  // Draft banner & persistence
+  const [savedDraft, setSavedDraft] = useState<any | null>(null);
+  const [showDraftBanner, setShowDraftBanner] = useState<boolean>(false);
+
   // File upload state
   const [ourFile, setOurFile] = useState<{ name: string; rows: RawRow[]; columns: string[] } | null>(null);
   const [bankFile, setBankFile] = useState<{ name: string; rows: RawRow[]; columns: string[] } | null>(null);
@@ -67,6 +108,101 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [selectedBank, setSelectedBank] = useState<string>('Aloqa Bank');
   const [showAddBank, setShowAddBank] = useState<boolean>(false);
   const [newBankInput, setNewBankInput] = useState<string>('');
+
+  // Check stored draft on initial mount
+  useEffect(() => {
+    const draft = getStoredDraft();
+    if (draft) {
+      setSavedDraft(draft);
+      setShowDraftBanner(true);
+    }
+  }, []);
+
+  // Auto-save active draft to localStorage
+  useEffect(() => {
+    if (ourFile || bankFile || ourRrnCol || bankRrnCol) {
+      saveActiveDraft({
+        timestamp: new Date().toISOString(),
+        selectedBank,
+        commissionPct,
+        ourFile: ourFile ? { name: ourFile.name, columns: ourFile.columns, rows: ourFile.rows.slice(0, 1500) } : null,
+        bankFile: bankFile ? { name: bankFile.name, columns: bankFile.columns, rows: bankFile.rows.slice(0, 1500) } : null,
+        columns: {
+          ourDateCol, ourRrnCol, ourAmtCol, ourStatusCol,
+          bankDateCol, bankRrnCol, bankAmtCol, bankStatusCol, bankTidCol,
+        },
+        rules: {
+          revInput, ourRev, bankRev, dupAction, unbindMismatches,
+        },
+      });
+    }
+  }, [
+    ourFile, bankFile, selectedBank, commissionPct,
+    ourDateCol, ourRrnCol, ourAmtCol, ourStatusCol,
+    bankDateCol, bankRrnCol, bankAmtCol, bankStatusCol, bankTidCol,
+    revInput, ourRev, bankRev, dupAction, unbindMismatches
+  ]);
+
+  const handleRestoreDraft = () => {
+    if (!savedDraft) return;
+    if (savedDraft.selectedBank) setSelectedBank(savedDraft.selectedBank);
+    if (typeof savedDraft.commissionPct === 'number') setCommissionPct(savedDraft.commissionPct);
+    if (savedDraft.columns) {
+      setOurDateCol(savedDraft.columns.ourDateCol || '');
+      setOurRrnCol(savedDraft.columns.ourRrnCol || '');
+      setOurAmtCol(savedDraft.columns.ourAmtCol || '');
+      setOurStatusCol(savedDraft.columns.ourStatusCol || '');
+      setBankDateCol(savedDraft.columns.bankDateCol || '');
+      setBankRrnCol(savedDraft.columns.bankRrnCol || '');
+      setBankAmtCol(savedDraft.columns.bankAmtCol || '');
+      setBankStatusCol(savedDraft.columns.bankStatusCol || '');
+      setBankTidCol(savedDraft.columns.bankTidCol || '');
+    }
+    if (savedDraft.rules) {
+      setRevInput(savedDraft.rules.revInput || '');
+      setOurRev(savedDraft.rules.ourRev || 'Минусовать сумму');
+      setBankRev(savedDraft.rules.bankRev || 'Удалить строку');
+      setDupAction(savedDraft.rules.dupAction || 'Ничего не делать (оставить все)');
+      setUnbindMismatches(!!savedDraft.rules.unbindMismatches);
+    }
+    if (savedDraft.ourFile) setOurFile(savedDraft.ourFile);
+    if (savedDraft.bankFile) setBankFile(savedDraft.bankFile);
+    setShowDraftBanner(false);
+  };
+
+  const handleDismissDraft = () => {
+    clearActiveDraft();
+    setSavedDraft(null);
+    setShowDraftBanner(false);
+  };
+
+  const handleResetAll = () => {
+    setConfirmState({
+      isOpen: true,
+      title: 'Сбросить текущие данные?',
+      message: 'Все загруженные файлы, параметры сопоставления колонок и результаты сверки будут очищены.',
+      confirmText: 'Сбросить данные',
+      isDanger: true,
+      onConfirm: () => {
+        setOurFile(null);
+        setBankFile(null);
+        setReconData(null);
+        setOurDateCol('');
+        setOurRrnCol('');
+        setOurAmtCol('');
+        setOurStatusCol('');
+        setBankDateCol('');
+        setBankRrnCol('');
+        setBankAmtCol('');
+        setBankStatusCol('');
+        setBankTidCol('');
+        clearActiveDraft();
+        setSavedDraft(null);
+        setShowDraftBanner(false);
+        setConfirmState(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
 
   const handleSelectBank = (bankName: string) => {
     setSelectedBank(bankName);
@@ -117,7 +253,12 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         setBankTidCol(guessCol(parsed.columns, ['tid', 'terminal', 'терминал']) || '');
       }
     } catch (err) {
-      alert(`Ошибка чтения файла: ${err}`);
+      setAlertState({
+        isOpen: true,
+        title: 'Ошибка чтения файла',
+        message: `Не удалось прочитать загруженный файл: ${err}`,
+        type: 'error',
+      });
     }
   };
 
@@ -137,13 +278,75 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     setBankTidCol('Терминал TID');
   };
 
-  const handleRunReconciliation = () => {
-    if (!ourFile || !bankFile) return;
+  // Run reconciliation in Web Worker (with fallback)
+  const runReconciliationAsync = async (
+    ourRows: RawRow[],
+    bankRows: RawRow[],
+    cfg: ReconciliationConfig,
+    eposList: any[]
+  ): Promise<ReconciliationResult> => {
+    if (typeof Worker !== 'undefined') {
+      try {
+        return await new Promise((resolve, reject) => {
+          const worker = new Worker(new URL('../utils/reconWorker.ts', import.meta.url), { type: 'module' });
+          worker.onmessage = (e) => {
+            worker.terminate();
+            if (e.data.success) {
+              resolve(e.data.result);
+            } else {
+              reject(new Error(e.data.error || 'Ошибка в потоке Web Worker'));
+            }
+          };
+          worker.onerror = (err) => {
+            worker.terminate();
+            reject(err);
+          };
+          worker.postMessage({ ourRows, bankRows, cfg, eposList });
+        });
+      } catch (e) {
+        console.warn('Worker fallback to synchronous execution:', e);
+        return runReconciliation(ourRows, bankRows, cfg, eposList);
+      }
+    }
+    return runReconciliation(ourRows, bankRows, cfg, eposList);
+  };
+
+  const handleRunReconciliation = async () => {
+    // Validation checks
+    if (!ourFile || !bankFile) {
+      setAlertState({
+        isOpen: true,
+        title: 'Файлы не выбраны',
+        message: 'Пожалуйста, загрузите реестр (1C / Система) и выписку банка (Excel или CSV), либо нажмите «Загрузить демо-файлы».',
+        type: 'warning',
+      });
+      return;
+    }
+
+    if (!ourRrnCol || !bankRrnCol) {
+      setAlertState({
+        isOpen: true,
+        title: 'Не указана колонка RRN',
+        message: 'Для сверки транзакций обязательно выберите колонку с RRN / кодом операции как в вашей системе, так и в выписке банка.',
+        type: 'error',
+      });
+      return;
+    }
+
+    if (!ourAmtCol || !bankAmtCol) {
+      setAlertState({
+        isOpen: true,
+        title: 'Не выбраны колонки сумм',
+        message: 'Пожалуйста, выберите колонки с суммами платежей с обеих сторон для корректного расчета расхождений и финансового баланса.',
+        type: 'warning',
+      });
+      return;
+    }
 
     setIsProcessing(true);
     setSaveSuccessMsg(null);
 
-    setTimeout(() => {
+    try {
       const eposList = getStoredEpos();
       const revWords = revInput.split(',').map(w => w.trim()).filter(Boolean);
 
@@ -165,16 +368,24 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         tolerance: settings.amount_tolerance,
       };
 
-      const result = runReconciliation(ourFile.rows, bankFile.rows, cfg, eposList);
+      const result = await runReconciliationAsync(ourFile.rows, bankFile.rows, cfg, eposList);
       setReconData(result);
-      setIsProcessing(false);
       setSelectedDrilldownDate(null);
-    }, 300);
+    } catch (err: any) {
+      setAlertState({
+        isOpen: true,
+        title: 'Ошибка сверки',
+        message: `Не удалось завершить расчет: ${err?.message || err}`,
+        type: 'error',
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Toggle single unmatched check
   const handleToggleCheck = (index: number, isOur: boolean) => {
-    if (!reconData) return;
+    if (!reconData || isAuditor) return;
     const key = isOur ? 'only_our' : 'only_bank';
     const updated = reconData[key].map((item, idx) => 
       idx === index ? { ...item, checked: !item.checked } : item
@@ -184,7 +395,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   // Change reason
   const handleChangeReason = (index: number, reason: string, isOur: boolean) => {
-    if (!reconData) return;
+    if (!reconData || isAuditor) return;
     const key = isOur ? 'only_our' : 'only_bank';
     const updated = reconData[key].map((item, idx) => 
       idx === index ? { ...item, reason } : item
@@ -194,7 +405,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   // Bulk check / uncheck
   const handleBulkToggle = (checked: boolean, isOur: boolean) => {
-    if (!reconData) return;
+    if (!reconData || isAuditor) return;
     const list = isOur ? [...reconData.only_our] : [...reconData.only_bank];
     const dateFilter = isOur ? filterDateOur : filterDateBank;
     const statFilter = isOur ? filterStatusOur : filterStatusBank;
@@ -216,7 +427,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   // Auto-exclude offsetting reversal pairs
   const handleExcludeOffsets = (isOur: boolean) => {
-    if (!reconData) return;
+    if (!reconData || isAuditor) return;
     const list = isOur ? [...reconData.only_our] : [...reconData.only_bank];
     const revWords = revInput.split(',').map(w => w.trim().toLowerCase()).filter(Boolean);
 
@@ -236,7 +447,12 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     });
 
     if (offsetRrns.size === 0) {
-      alert('Компенсирующих пар по статусу возврата не обнаружено.');
+      setAlertState({
+        isOpen: true,
+        title: 'Компенсирующие возвраты',
+        message: 'Компенсирующих пар по статусу возврата не обнаружено среди отмеченных строк.',
+        type: 'info',
+      });
       return;
     }
 
@@ -330,6 +546,16 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   // Save to Archive
   const handleSaveToArchive = () => {
+    if (isAuditor) {
+      setAlertState({
+        isOpen: true,
+        title: 'Ограничение прав доступа',
+        message: 'Пользователям с ролью «Аудитор» доступен только режим просмотра. Сохранение результатов в архив базы данных разрешено только бухгалтерам и администраторам.',
+        type: 'warning',
+      });
+      return;
+    }
+
     if (!dynamicCalculations || !reconData) return;
     const bankNameForArchive = selectedBank || bankFile?.name.replace(/\.[^/.]+$/, '') || 'Банк';
     const res = saveReconciliation(
@@ -347,8 +573,19 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     if (res.success) {
       setSaveSuccessMsg('Сверка успешно записана в архив!');
       logAction(user.username, 'SAVE_RECON', `Сохранена сверка по банку (${bankNameForArchive})`);
+      setAlertState({
+        isOpen: true,
+        title: 'Успешно сохранено',
+        message: 'Сверка успешно записана в системный архив базы данных.',
+        type: 'success',
+      });
     } else {
-      alert(res.message);
+      setAlertState({
+        isOpen: true,
+        title: 'Ошибка сохранения',
+        message: res.message,
+        type: 'error',
+      });
     }
   };
 
@@ -382,22 +619,76 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
               EPOS Core
             </span>
+            {isAuditor && (
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
+                <Eye className="w-3 h-3 text-amber-600" />
+                Только чтение
+              </span>
+            )}
           </h1>
           <p className="text-sm text-slate-500 mt-1">
             Потранзакционная сверка с автоматическим расчётом комиссий на базе реестра EPOS.
           </p>
         </div>
 
-        <button
-          id="btn-load-demo-data"
-          type="button"
-          onClick={handleLoadDemoData}
-          className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Загрузить демо-файлы 1С & Банк</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {(ourFile || bankFile) && (
+            <button
+              id="btn-reset-all"
+              type="button"
+              onClick={handleResetAll}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-xs font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Сбросить данные</span>
+            </button>
+          )}
+
+          <button
+            id="btn-load-demo-data"
+            type="button"
+            onClick={handleLoadDemoData}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Загрузить демо-файлы 1С & Банк</span>
+          </button>
+        </div>
       </div>
+
+      {/* ─── DRAFT RECOVERY BANNER ─── */}
+      {showDraftBanner && (!ourFile || !bankFile) && (
+        <div className="p-4 rounded-2xl bg-indigo-50/80 border border-indigo-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 text-indigo-950">
+            <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+            <div>
+              <span className="font-bold">Обнаружен сохранённый черновик</span>{' '}
+              {savedDraft?.timestamp && (
+                <span className="text-indigo-700">от {new Date(savedDraft.timestamp).toLocaleString('ru-RU')}</span>
+              )}
+              {savedDraft?.selectedBank && (
+                <span className="text-slate-600 ml-1">({savedDraft.selectedBank})</span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleRestoreDraft}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
+            >
+              Восстановить параметры
+            </button>
+            <button
+              type="button"
+              onClick={handleDismissDraft}
+              className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 font-medium rounded-lg transition-colors cursor-pointer"
+            >
+              Очистить
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─── ВЫБОР БАНКА-ЭКВАЙЕРА (БЫСТРЫЙ НАБОР) ─── */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
@@ -1481,7 +1772,13 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 id="btn-save-db"
                 type="button"
                 onClick={handleSaveToArchive}
-                className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+                disabled={isAuditor}
+                title={isAuditor ? 'Режим аудитора: сохранение недоступно' : 'Записать в Архив БД'}
+                className={`px-4 py-2.5 text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-2 ${
+                  isAuditor
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-200'
+                    : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white cursor-pointer'
+                }`}
               >
                 <Save className="w-4 h-4" />
                 <span>Записать в Архив БД</span>
@@ -1490,6 +1787,26 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           </div>
         </div>
       )}
+
+      {/* Modals */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        isDanger={confirmState.isDanger}
+        onConfirm={confirmState.onConfirm}
+        onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

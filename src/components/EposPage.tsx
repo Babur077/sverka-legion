@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Building2, Plus, Trash2, CheckCircle, AlertCircle, RotateCcw, Landmark, Check } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Building2, Plus, Trash2, CheckCircle, AlertCircle, RotateCcw, Landmark, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { EposTerminal, User } from '../types';
 import { 
   getStoredEpos, 
@@ -11,6 +11,7 @@ import {
   addStoredBank,
   DEFAULT_BANKS
 } from '../utils/storage';
+import { ConfirmModal } from './Modal';
 
 interface EposPageProps {
   user: User;
@@ -28,6 +29,21 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
   const [mid, setMid] = useState('');
   const [commPct, setCommPct] = useState<number>(1.2);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Sorting
+  const [sortField, setSortField] = useState<'bank_acquirer' | 'terminal_id' | 'commission_pct'>('bank_acquirer');
+  const [sortAsc, setSortAsc] = useState<boolean>(true);
+
+  // Modal confirmation
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    terminalId: string;
+    bankName: string;
+  }>({
+    isOpen: false,
+    terminalId: '',
+    bankName: '',
+  });
 
   // Quick select bank handler
   const handleSelectBank = (bankName: string) => {
@@ -95,10 +111,43 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
   };
 
   const handleDelete = (terminalId: string, bankName: string) => {
-    if (confirm(`Удалить запись банка ${bankName} (${terminalId}) из реестра?`)) {
+    setDeleteConfirm({
+      isOpen: true,
+      terminalId,
+      bankName,
+    });
+  };
+
+  const confirmDeleteTerminal = () => {
+    const { terminalId, bankName } = deleteConfirm;
+    if (terminalId) {
       deleteEposTerminal(terminalId);
       setTerminals(getStoredEpos());
       logAction(user.username, 'DELETE_EPOS', `Удален банк/терминал ${bankName} (${terminalId})`);
+    }
+    setDeleteConfirm({ isOpen: false, terminalId: '', bankName: '' });
+  };
+
+  const sortedTerminals = useMemo(() => {
+    return [...terminals].sort((a, b) => {
+      let res = 0;
+      if (sortField === 'commission_pct') {
+        res = a.commission_pct - b.commission_pct;
+      } else {
+        const valA = a[sortField] || '';
+        const valB = b[sortField] || '';
+        res = valA.localeCompare(valB);
+      }
+      return sortAsc ? res : -res;
+    });
+  }, [terminals, sortField, sortAsc]);
+
+  const toggleSort = (field: 'bank_acquirer' | 'terminal_id' | 'commission_pct') => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      setSortAsc(true);
     }
   };
 
@@ -281,23 +330,59 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50 font-bold text-slate-700">
                 <tr>
-                  <th className="px-3 py-2.5 text-left">Банк-эквайер</th>
-                  <th className="px-3 py-2.5 text-left">TID</th>
+                  <th 
+                    onClick={() => toggleSort('bank_acquirer')}
+                    className="px-3 py-2.5 text-left cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Банк-эквайер</span>
+                      {sortField === 'bank_acquirer' ? (
+                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                      )}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => toggleSort('terminal_id')}
+                    className="px-3 py-2.5 text-left cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>TID</span>
+                      {sortField === 'terminal_id' ? (
+                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                      )}
+                    </div>
+                  </th>
                   <th className="px-3 py-2.5 text-left">MID</th>
-                  <th className="px-3 py-2.5 text-right">Комиссия</th>
+                  <th 
+                    onClick={() => toggleSort('commission_pct')}
+                    className="px-3 py-2.5 text-right cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                  >
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span>Комиссия</span>
+                      {sortField === 'commission_pct' ? (
+                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                      )}
+                    </div>
+                  </th>
                   <th className="px-3 py-2.5 text-center">Активен</th>
                   <th className="px-3 py-2.5 text-right"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {terminals.length === 0 ? (
+                {sortedTerminals.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                       В реестре пока нет записей. Выберите банк слева и сохраните его.
                     </td>
                   </tr>
                 ) : (
-                  terminals.map((t) => (
+                  sortedTerminals.map((t) => (
                     <tr key={t.terminal_id} className={`hover:bg-slate-50 transition-colors ${t.is_active ? '' : 'opacity-60 bg-slate-50/50'}`}>
                       <td className="px-3 py-2.5 font-semibold text-indigo-700 flex items-center gap-2">
                         <div className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
@@ -335,6 +420,17 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={deleteConfirm.isOpen}
+        title="Удаление банка из реестра"
+        message={`Удалить запись банка «${deleteConfirm.bankName}» (TID: ${deleteConfirm.terminalId}) из реестра?`}
+        confirmText="Удалить"
+        isDanger={true}
+        onConfirm={confirmDeleteTerminal}
+        onClose={() => setDeleteConfirm({ isOpen: false, terminalId: '', bankName: '' })}
+      />
     </div>
   );
 };

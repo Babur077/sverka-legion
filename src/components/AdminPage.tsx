@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Shield, UserPlus, Users, Settings as SettingsIcon, History, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Shield, UserPlus, Users, Settings as SettingsIcon, History, Trash2, CheckCircle, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { User, AuditLog, SystemSettings } from '../types';
 import { getStoredUsers, addUser, deleteUser, getAuditLogs, saveSettings, logAction } from '../utils/storage';
+import { ConfirmModal, AlertModal } from './Modal';
 
 interface AdminPageProps {
   user: User;
@@ -24,6 +25,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
   const [currency, setCurrency] = useState<string>(settings.currency);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
+  // Sorting state for users
+  const [sortField, setSortField] = useState<'username' | 'role'>('username');
+  const [sortAsc, setSortAsc] = useState<boolean>(true);
+
+  // Custom modal states
+  const [alertState, setAlertState] = useState<{ isOpen: boolean; title: string; message: string; type?: 'info' | 'warning' | 'error' | 'success' }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
+
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
     setUserMsg(null);
@@ -42,14 +66,43 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
 
   const handleDeleteUser = (id: number, username: string) => {
     if (username === 'admin') {
-      alert('Нельзя удалить главного администратора!');
+      setAlertState({
+        isOpen: true,
+        title: 'Действие запрещено',
+        message: 'Нельзя удалить главного администратора системы (admin)!',
+        type: 'warning',
+      });
       return;
     }
-    if (confirm(`Удалить пользователя «${username}»?`)) {
-      if (deleteUser(id)) {
-        setUsers(getStoredUsers());
-        logAction(user.username, 'DELETE_USER', `Удален пользователь ${username}`);
-      }
+
+    setConfirmState({
+      isOpen: true,
+      title: 'Удаление пользователя',
+      message: `Вы действительно хотите безвозвратно удалить учётную запись «${username}»?`,
+      onConfirm: () => {
+        if (deleteUser(id)) {
+          setUsers(getStoredUsers());
+          logAction(user.username, 'DELETE_USER', `Удален пользователь ${username}`);
+        }
+      },
+    });
+  };
+
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a, b) => {
+      const valA = a[sortField] || '';
+      const valB = b[sortField] || '';
+      const cmp = valA.localeCompare(valB);
+      return sortAsc ? cmp : -cmp;
+    });
+  }, [users, sortField, sortAsc]);
+
+  const toggleSort = (field: 'username' | 'role') => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      setSortAsc(true);
     }
   };
 
@@ -155,14 +208,38 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50 font-bold text-slate-700">
                 <tr>
-                  <th className="px-3 py-2.5 text-left">Логин</th>
-                  <th className="px-3 py-2.5 text-left">Роль</th>
+                  <th 
+                    onClick={() => toggleSort('username')}
+                    className="px-3 py-2.5 text-left cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Логин</span>
+                      {sortField === 'username' ? (
+                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                      )}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => toggleSort('role')}
+                    className="px-3 py-2.5 text-left cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Роль</span>
+                      {sortField === 'role' ? (
+                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                      )}
+                    </div>
+                  </th>
                   <th className="px-3 py-2.5 text-left">Доступ к модулям</th>
                   <th className="px-3 py-2.5 text-right"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {users.map(u => (
+                {sortedUsers.map(u => (
                   <tr key={u.id} className="hover:bg-slate-50">
                     <td className="px-3 py-2.5 font-bold text-slate-900">{u.username}</td>
                     <td className="px-3 py-2.5">
@@ -177,7 +254,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
                       {u.username !== 'admin' && (
                         <button
                           onClick={() => handleDeleteUser(u.id, u.username)}
-                          className="text-slate-400 hover:text-rose-600 p-1"
+                          className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer transition-colors"
                           title="Удалить"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -285,6 +362,26 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
           </table>
         </div>
       </div>
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText="Удалить"
+        isDanger={true}
+        onConfirm={confirmState.onConfirm}
+        onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+      />
+
+      {/* Alert Modal */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };
