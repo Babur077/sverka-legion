@@ -7,31 +7,42 @@ echo          Запуск платформы Reconcile Hub
 echo =======================================================
 echo.
 
-if exist "dist\index.html" (
-    echo [OK] Готовая продакшен-сборка (dist) обнаружена.
-    where python >nul 2>nul
+:: 1. Проверяем наличие Python (python или py)
+set PYTHON_CMD=
+where python >nul 2>nul
+if %errorlevel% == 0 (
+    set PYTHON_CMD=python
+) else (
+    where py >nul 2>nul
     if %errorlevel% == 0 (
-        echo [INFO] Запуск через встроенный Python-сервер...
-        python serve_production.py
-        goto end
+        set PYTHON_CMD=py
     )
 )
 
+:: 2. Если есть Python и есть сборка (папка dist или архив dist.zip)
+if defined PYTHON_CMD (
+    if exist "dist\index.html" goto run_python_react
+    if exist "dist.zip" goto run_python_react
+    if exist "app.py" (
+        echo [INFO] Обнаружен Streamlit-скрипт (app.py).
+    )
+)
+
+:check_node
 where node >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [ОШИБКА] На вашем компьютере не найден ни Node.js, ни Python.
+    if defined PYTHON_CMD (
+        goto run_python_react
+    )
+    echo [ОШИБКА] На вашем компьютере не найден ни Python, ни Node.js.
     echo.
-    echo Пожалуйста, установите одно из двух:
-    echo 1. Node.js с официального сайта: https://nodejs.org/ (рекомендуется LTS)
-    echo    ИЛИ
-    echo 2. Python 3: https://www.python.org/
-    echo.
+    echo Установите Python: https://www.python.org/
     pause
     exit /b 1
 )
 
 if not exist "node_modules\" (
-    echo [INFO] Папка node_modules не найдена. Устанавливаем зависимости (это нужно 1 раз)...
+    echo [INFO] Папка node_modules не найдена. Устанавливаем зависимости...
     call npm install
     if %errorlevel% neq 0 (
         echo [ОШИБКА] Не удалось установить зависимости npm.
@@ -41,13 +52,20 @@ if not exist "node_modules\" (
 )
 
 if not exist "dist\" (
-    echo [INFO] Сборка продакшен-версии проекта (npm run build)...
+    echo [INFO] Сборка проекта (npm run build)...
     call npm run build
 )
 
 echo.
-echo [OK] Запускаем платформу в режиме быстрого предпросмотра / продакшен...
+echo [OK] Запуск React-приложения через Vite preview...
 call npm run preview
+goto end
+
+:run_python_react
+echo [OK] Запуск через встроенный Python-сервер (%PYTHON_CMD%)...
+%PYTHON_CMD% serve_production.py
+goto end
 
 :end
 pause
+
