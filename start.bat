@@ -27,32 +27,32 @@ if not defined PYTHON_CMD (
 
 echo ВЫБЕРИТЕ РЕЖИМ РАБОТЫ:
 echo.
-echo  [1] ОНЛАЙН-ССЫЛКА ДЛЯ ВСЕХ КОЛЛЕГ (Cloudflare / Pinggy Туннель) [РЕКОМЕНДУЕТСЯ]
-echo      --^> Работает везде: обходит роутеры, брандмауэр и мобильный интернет.
+echo  [1] Локальная сеть (Wi-Fi / Офис LAN по локальному IP) [ПО УМОЛЧАНИЮ]
+echo      --^> Быстро, безопасно для банковских данных, работает внутри офиса.
 echo.
-echo  [2] Локальная сеть (Wi-Fi / Офис LAN по локальному IP)
-echo      --^> Требует нахождения в одной сети и настройки брандмауэра.
+echo  [2] Онлайн-ссылка для удаленных коллег (Cloudflare / Pinggy Туннель)
+echo      --^> Для работы из дома или других филиалов через интернет.
 echo.
 echo  [3] Настройка Брандмауэра Windows (открыть порт 8501)
 echo  [4] Диагностика сети (проверить подключение коллег)
 echo  [5] React Web App (локальный браузерный интерфейс)
 echo.
-set /p CHOICE="Введите номер действия (1-5, по умолчанию 1 - Онлайн-ссылка): "
+set /p CHOICE="Введите номер действия (1-5, по умолчанию 1 - Локальная сеть): "
 
 if "%CHOICE%"=="" set CHOICE=1
-if "%CHOICE%"=="1" goto run_tunnel
-if "%CHOICE%"=="2" goto run_streamlit
+if "%CHOICE%"=="1" goto run_streamlit
+if "%CHOICE%"=="2" goto run_tunnel
 if "%CHOICE%"=="3" goto run_firewall
 if "%CHOICE%"=="4" goto run_diag
 if "%CHOICE%"=="5" goto run_react
-goto run_tunnel
-
-:run_tunnel
-call start_tunnel.bat
-goto end
+goto run_streamlit
 
 :run_streamlit
 call start_streamlit.bat
+goto end
+
+:run_tunnel
+call start_tunnel.bat
 goto end
 
 :run_firewall

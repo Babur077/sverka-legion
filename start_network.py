@@ -6,74 +6,111 @@ import time
 import os
 import re
 
+PORT = 8501
+
 def is_virtual_adapter(ip: str) -> bool:
     """Определяет, является ли IP адресом виртуального адаптера (VirtualBox, WSL, VMware, APIPA)."""
     if ip.startswith("127.") or ip.startswith("169.254."):
         return True
-    if ip.startswith("192.168.56."):  # VirtualBox default Host-Only
+    if ip.startswith("192.168.56.") or ip.startswith("192.168.99."):  # VirtualBox default Host-Only
         return True
     return False
 
 def get_all_local_ips():
-    """Получает и категоризирует все локальные IPv4 адреса."""
+    """Надёжно определяет все локальные IPv4 адреса компьютера в офисной сети."""
     primary_ip = None
     lan_ips = []
     other_ips = []
+    found_ips = set()
 
-    # 1. Быстрый способ определить основной рабочий IP через исходящий маршрут
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(0.5)
-        s.connect(("8.8.8.8", 80))
-        primary = s.getsockname()[0]
-        s.close()
-        if primary and not primary.startswith("127.") and not is_virtual_adapter(primary):
-            primary_ip = primary
-    except Exception:
-        pass
+    # Способ 1: Тест маршрутов к типовым шлюзам (работает быстро, не требует реального интернета)
+    test_gateways = [("8.8.8.8", 80), ("1.1.1.1", 80), ("192.168.1.1", 80), ("192.168.0.1", 80), ("10.0.0.1", 80)]
+    for gw, gw_port in test_gateways:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(0.3)
+            s.connect((gw, gw_port))
+            sock_ip = s.getsockname()[0]
+            s.close()
+            if sock_ip and not sock_ip.startswith("127.") and not is_virtual_adapter(sock_ip):
+                primary_ip = sock_ip
+                found_ips.add(sock_ip)
+                break
+        except Exception:
+            pass
 
-    # 2. Получение всех IPv4 адресов системы
-    found = set()
+    # Способ 2: Парсинг ipconfig на Windows (с поддержкой разных кодировок)
+    if sys.platform == "win32":
+        for enc in ["cp866", "utf-8", "cp1251"]:
+            try:
+                out = subprocess.check_output("ipconfig", text=True, encoding=enc, errors="ignore")
+                matches = re.findall(r"(?:IPv4|IP-адрес)[^:\r\n]*:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)", out, re.IGNORECASE)
+                for ip in matches:
+                    ip = ip.strip()
+                    if not ip.startswith("127."):
+                        found_ips.add(ip)
+                if matches:
+                    break
+            except Exception:
+                pass
+
+        # Способ 3: PowerShell Get-NetIPAddress
+        try:
+            ps_cmd = 'powershell -NoProfile -Command "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch \'Loopback|vEthernet|VirtualBox|VMware\' -and $_.IPAddress -notmatch \'^127\.|^169\.254\' } | Select-Object -ExpandProperty IPAddress"'
+            ps_out = subprocess.check_output(ps_cmd, shell=True, text=True, errors="ignore")
+            for line in ps_out.splitlines():
+                ip = line.strip()
+                if ip and re.match(r"^\d+\.\d+\.\d+\.\d+$", ip):
+                    found_ips.add(ip)
+        except Exception:
+            pass
+
+    # Способ 4: getaddrinfo по имени хоста
     try:
         hostname = socket.gethostname()
         for item in socket.getaddrinfo(hostname, None, socket.AF_INET):
             addr = item[4][0]
             if addr and not addr.startswith("127."):
-                found.add(addr)
+                found_ips.add(addr)
     except Exception:
         pass
 
-    # 3. На Windows также пробуем распарсить ipconfig для точности
-    if sys.platform == "win32":
-        try:
-            out = subprocess.check_output("ipconfig", text=True, encoding="cp866", errors="ignore")
-            for match in re.finditer(r"IPv4.*:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)", out):
-                ip = match.group(1).strip()
-                if not ip.startswith("127."):
-                    found.add(ip)
-        except Exception:
-            pass
-
-    for ip in found:
+    for ip in found_ips:
         if is_virtual_adapter(ip):
             other_ips.append(ip)
         else:
             if ip != primary_ip:
                 lan_ips.append(ip)
 
+    if not primary_ip and lan_ips:
+        primary_ip = lan_ips.pop(0)
+
     return primary_ip, lan_ips, other_ips
 
-def check_and_free_port(port: int = 8501):
-    """Проверяет, не занят ли порт 8501, и при необходимости завершает зависший streamlit процесс."""
+def is_port_listening(port: int = PORT) -> bool:
+    """Проверяет, отвечает ли порт 8501."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.5)
-        if s.connect_ex(('127.0.0.1', port)) != 0:
-            return  # Порт свободен
+        return s.connect_ex(('127.0.0.1', port)) == 0
 
-    print(f" [!] Внимание: порт {port} уже кем-то занят.")
+def check_and_free_port(port: int = PORT):
+    """Надёжно завершает любые зависшие старые процессы на порту 8501."""
+    if not is_port_listening(port):
+        return
+
+    print(f" [!] Внимание: порт {port} уже занят предыдущим процессом.")
+    print("     Принудительное завершение зависшего сервера...")
+
     if sys.platform == "win32":
+        # Шаг 1: Точечное завершение процесса, держащего порт через PowerShell
         try:
-            print("     Попытка освободить порт от предыдущего процесса...")
+            ps_kill = f'powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}"'
+            subprocess.run(ps_kill, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+        # Шаг 2: Через netstat и taskkill
+        try:
             out = subprocess.check_output(f'netstat -ano | findstr ":{port}"', shell=True, text=True, errors="ignore")
             for line in out.splitlines():
                 if "LISTENING" in line:
@@ -81,56 +118,56 @@ def check_and_free_port(port: int = 8501):
                     pid = parts[-1]
                     if pid and pid != "0" and pid != str(os.getpid()):
                         subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(1)
-            print("     [✓] Порт освобожден.")
+        except Exception:
+            pass
+    else:
+        try:
+            subprocess.run(f"fuser -k {port}/tcp", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
 
+    # Ждём до 3 секунд освобождения порта
+    for _ in range(6):
+        time.sleep(0.5)
+        if not is_port_listening(port):
+            print("     [✓] Порт успешно освобождён!")
+            return
+
+    print("     [i] Порт остался активен — возможно, сервер уже запущен.")
+
 def main():
-    port = 8501
+    port = PORT
     check_and_free_port(port)
+
     primary_ip, other_lan, virtual_ips = get_all_local_ips()
-    
     recommended_ip = primary_ip or (other_lan[0] if other_lan else "127.0.0.1")
 
-    print("=" * 70)
-    print("      🚀 ReconcileHub — Запуск сервера сверок (Streamlit)")
-    print("=" * 70)
+    print("\n" + "=" * 72)
+    print("      🚀 ReconcileHub — Запуск сервера сверок (Локальная сеть)")
+    print("=" * 72)
+    print(" [✓] Режим: Локальная офисная сеть (100% конфиденциально, без интернета)")
     print(f" [✓] База данных: database/reconcile_hub.db (общая для всех коллег)")
-    print(f" [✓] Для вас на этом компьютере:   http://localhost:{port}")
-    print("-" * 70)
+    print(f" [✓] Ваш локальный адрес:  http://localhost:{port}")
+    print("-" * 72)
     print(" 📢 ССЫЛКА ДЛЯ ВАШИХ КОЛЛЕГ В ОФИСЕ (Wi-Fi / LAN):")
-    print(f"     👉 http://{recommended_ip}:{port}   <--- (ОТПРАВЬТЕ ЭТУ ССЫЛКУ)")
-    
+    if recommended_ip != "127.0.0.1":
+        print(f"     👉 http://{recommended_ip}:{port}   <--- (ОТПРАВЬТЕ ЭТУ ССЫЛКУ КОЛЛЕГАМ)")
+    else:
+        print("     [!] Сетевой адаптер не найден. Подключитесь к Wi-Fi или роутеру.")
+        print(f"     👉 http://localhost:{port}")
+
     if other_lan:
         for ip in other_lan:
             print(f"     или http://{ip}:{port}")
 
-    if virtual_ips:
-        print("\n [!] Дополнительные виртуальные IP (не отправлять коллегам):")
-        for ip in virtual_ips:
-            print(f"     (виртуальный: {ip})")
+    print("=" * 72)
+    print(" 💡 ЕСЛИ У КОЛЛЕГ НЕ ОТКРЫВАЕТСЯ:")
+    print(" 1. Запустите 'allow_firewall.bat' (он разрешит порт 8501 в Windows).")
+    print(" 2. Убедитесь, что вы и коллеги подключены к одной Wi-Fi сети.")
+    print("=" * 72)
+    print("\nЗапуск ReconcileHub в браузере...\n")
 
-    print("=" * 70)
-    print(" 💡 ЧТО ДЕЛАТЬ, ЕСЛИ У КОЛЛЕГ ССЫЛКА НЕ ОТКРЫВАЕТСЯ:")
-    print(" 1. Запустите 'allow_firewall.bat' (он сам откроет порт в Windows).")
-    print(" 2. Убедитесь, что вы и коллеги подключены к одной сети Wi-Fi/роутеру.")
-    print(" 3. Если роутер изолирует Wi-Fi клиентов (AP Isolation), запустите")
-    print("    'start_tunnel.bat' — он создаст мгновенную онлайн-ссылку Cloudflare.")
-    print("=" * 70)
-    print("\nЗапуск приложения... (для остановки нажмите Ctrl + C)\n")
-
-    cmd = [
-        sys.executable, "-m", "streamlit", "run", "app.py",
-        "--server.address", "0.0.0.0",
-        "--server.port", str(port),
-        "--server.headless", "true",
-        "--server.enableCORS", "false",
-        "--server.enableXsrfProtection", "false",
-        "--browser.gatherUsageStats", "false"
-    ]
-
-    # Открываем локальный браузер через 2 секунды
+    # Авто-открытие браузера
     def open_browser():
         time.sleep(2)
         try:
@@ -141,10 +178,22 @@ def main():
     import threading
     threading.Thread(target=open_browser, daemon=True).start()
 
+    cmd = [
+        sys.executable, "-m", "streamlit", "run", "app.py",
+        "--server.address", "0.0.0.0",
+        "--server.port", str(port),
+        "--server.headless", "true",
+        "--browser.gatherUsageStats", "false"
+    ]
+
     try:
-        subprocess.run(cmd)
+        res = subprocess.run(cmd)
+        if res.returncode != 0:
+            print(f"\n[!] Streamlit завершился с кодом {res.returncode}.")
     except KeyboardInterrupt:
-        print("\nСервер ReconcileHub остановлен.")
+        print("\n[✓] Сервер ReconcileHub успешно остановлен.")
+    except Exception as e:
+        print(f"\n[!] Ошибка запуска: {e}")
 
 if __name__ == "__main__":
     main()

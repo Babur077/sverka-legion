@@ -11,6 +11,21 @@ import platform
 
 PORT = 8501
 
+_spawned_streamlit_proc = None
+
+def cleanup_spawned_streamlit():
+    """Завершает фоновый процесс streamlit при выходе из туннеля, чтобы освободить порт 8501."""
+    global _spawned_streamlit_proc
+    if _spawned_streamlit_proc and _spawned_streamlit_proc.poll() is None:
+        try:
+            _spawned_streamlit_proc.terminate()
+            _spawned_streamlit_proc.wait(timeout=2)
+        except Exception:
+            pass
+
+import atexit
+atexit.register(cleanup_spawned_streamlit)
+
 def copy_to_clipboard(text: str):
     """Копирует текст в буфер обмена Windows / Linux / macOS."""
     try:
@@ -55,6 +70,7 @@ def ensure_streamlit_running():
     ]
 
     # Запускаем в фоновом режиме
+    global _spawned_streamlit_proc
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.DEVNULL,
@@ -62,6 +78,7 @@ def ensure_streamlit_running():
         stdin=subprocess.DEVNULL,
         creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     )
+    _spawned_streamlit_proc = proc
 
     # Ждём готовности порта до 20 секунд
     print("     Ожидание готовности сервера...", end="", flush=True)

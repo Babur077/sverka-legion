@@ -39,17 +39,18 @@ def check_local_server():
 def check_ips():
     print_header("3. Сетевые адреса (IP) вашего компьютера")
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(0.5)
-        s.connect(("8.8.8.8", 80))
-        primary = s.getsockname()[0]
-        s.close()
+        from start_network import get_all_local_ips
+        primary, lan_ips, _ = get_all_local_ips()
     except Exception:
         primary = None
+        lan_ips = []
 
-    if primary:
+    if primary and primary != "127.0.0.1":
         print(f"  👉 Главный IP адрес для коллег: http://{primary}:8501")
         print("     (Именно эту ссылку отправьте коллегам в чат)")
+        if lan_ips:
+            for ip in lan_ips:
+                print(f"     или запасной IP: http://{ip}:8501")
     else:
         print("  [!] Не удалось определить основной сетевой IP.")
 

@@ -39,7 +39,8 @@ if %errorlevel% neq 0 (
     )
 )
 
-echo [OK] Запуск сетевого сервера...
+echo [OK] Проверка порта 8501 и запуск сетевого сервера...
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8501 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 %PYTHON_BIN% start_network.py
 
 if %errorlevel% neq 0 (
