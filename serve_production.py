@@ -30,10 +30,28 @@ class SPAHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
 def main():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    zip_path = os.path.join(base_dir, "dist.zip")
+
     if not os.path.exists(DIST_DIR):
-        print("❌ Папка 'dist' не найдена.")
-        print("💡 Сначала выполните сборку проекта: npm run build")
-        sys.exit(1)
+        if os.path.exists(zip_path):
+            print("📦 Обнаружен архив 'dist.zip'. Распаковка готовой сборки...")
+            import zipfile
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(base_dir)
+            print("✅ Сборка успешно распакована в папку 'dist'!")
+        else:
+            print("❌ Папка 'dist' не найдена.")
+            print("")
+            print("💡 У вас есть 2 простых варианта запуска:")
+            print("   1) Если вам нужен классический Streamlit-интерфейс:")
+            print("      Запустите команду: streamlit run app.py")
+            print("      (Для неё папка 'dist' и node_modules вообще не нужны!)")
+            print("")
+            print("   2) Если вам нужен веб-интерфейс React:")
+            print("      Положите файл 'dist.zip' (или папку 'dist') в корень проекта,")
+            print("      скачав свежую версию из AI Studio (Settings -> Export ZIP).")
+            sys.exit(1)
 
     url = f"http://localhost:{PORT}"
     print("=" * 60)
