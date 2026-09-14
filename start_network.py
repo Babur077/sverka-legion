@@ -126,7 +126,7 @@ def get_all_local_ips():
 
 def check_dependencies():
     """Проверяет наличие всех критически важных библиотек и устанавливает их при необходимости."""
-    required = ["streamlit", "pandas", "polars", "openpyxl", "plotly"]
+    required = ["streamlit", "pandas", "polars", "openpyxl", "plotly", "fastexcel"]
     missing = []
     for pkg in required:
         try:

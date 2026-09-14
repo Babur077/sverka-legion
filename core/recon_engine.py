@@ -110,9 +110,16 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     elif "Удалить все" in cfg["dup_action"]:
         pl_our = pl_our.filter(~pl.col("RRN").is_in(dups_our_pl["RRN"]))
         pl_bank = pl_bank.filter(~pl.col("RRN").is_in(dups_bank_pl["RRN"]))
+    else:
+        # Для варианта "Оставить все дубликаты" нумеруем их, чтобы избежать декартова произведения при слиянии
+        pl_our = pl_our.with_columns(pl.col("RRN").cum_count().over("RRN").alias("_dup_idx"))
+        pl_bank = pl_bank.with_columns(pl.col("RRN").cum_count().over("RRN").alias("_dup_idx"))
 
     # 6. Слияние
-    merged_pl = pl_our.join(pl_bank, on="RRN", how="full", coalesce=True, suffix="_bank")
+    if "_dup_idx" in pl_our.columns:
+        merged_pl = pl_our.join(pl_bank, on=["RRN", "_dup_idx"], how="full", coalesce=True, suffix="_bank")
+    else:
+        merged_pl = pl_our.join(pl_bank, on="RRN", how="full", coalesce=True, suffix="_bank")
     merged_pl = merged_pl.with_columns(pl.coalesce(["date", "date_bank"]).alias("date_unified"))
     merged_pl = merged_pl.with_columns(
         pl.when(pl.col("date").is_not_null() & pl.col("date_bank").is_null()).then(pl.lit("left_only"))

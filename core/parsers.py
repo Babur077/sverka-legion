@@ -9,11 +9,14 @@ def load_file_polars(file_name: str, file_bytes: bytes, sheet_name=0) -> pl.Data
             return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id, engine="calamine")
         except Exception:
             try:
-                return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id)
+                return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id, engine="fastexcel")
             except Exception:
-                # В крайнем случае читаем через pandas и конвертируем в polars
-                pdf = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name or 0)
-                return pl.from_pandas(pdf)
+                try:
+                    return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id)
+                except Exception:
+                    # В крайнем случае читаем через pandas и конвертируем в polars
+                    pdf = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name or 0)
+                    return pl.from_pandas(pdf)
     else:
         try:
             return pl.read_csv(io.BytesIO(file_bytes), separator=";", ignore_errors=True)
