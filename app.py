@@ -265,6 +265,44 @@ def inject_modern_light_css():
         background-color: #e2e8f0 !important;
         color: #0f172a !important;
     }
+
+    /* Карточки метрик (st.metric): убираем обрезание длинных финансовых сумм троеточием */
+    [data-testid="stMetric"] {
+        background: #ffffff !important;
+        padding: 12px 14px !important;
+        border-radius: 12px !important;
+        border: 1px solid #f1f5f9 !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+        overflow: visible !important;
+    }
+    [data-testid="stMetricLabel"] {
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        font-size: 0.82rem !important;
+        color: #64748b !important;
+        font-weight: 500 !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: clamp(1.15rem, 1.6vw, 1.7rem) !important;
+        font-weight: 700 !important;
+        color: #0f172a !important;
+        line-height: 1.25 !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    [data-testid="stMetricValue"] > div {
+        overflow: visible !important;
+        text-overflow: clip !important;
+        white-space: normal !important;
+    }
+    [data-testid="stMetricDelta"] {
+        font-size: 0.8rem !important;
+        overflow: visible !important;
+        white-space: nowrap !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 

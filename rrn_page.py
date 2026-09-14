@@ -548,16 +548,16 @@ def show_page():
                 # комиссию дважды. Это отдельный ручной калькулятор "что если", а не то же самое.
                 st.caption("ℹ️ Это доп. расчёт «что если» поверх итоговых сумм. Если по TID уже задана комиссия в реестре EPOS — она уже вычтена из «Итого (Банк)» ниже; используйте это поле только для симуляции другой ставки.")
 
-            m1, m2, m3, m4, m5 = st.columns(5)
+            m1, m2, m3, m4, m5 = st.columns([1.1, 1.1, 1.1, 0.9, 0.8])
             def fmt_num(v, decimals=2): return f"{float(v):,.{decimals}f}"
             
             m1.metric(f"Итого (Мы), {cur}", fmt_num(adj_tot_our))
             m2.metric(f"Итого (Банк), {cur}", fmt_num(adj_tot_bank))
             m3.metric("Разница", f"{adj_diff:+,.2f}", delta=f"{adj_diff:+,.2f}", delta_color="normal" if abs(adj_diff) <= tol else "inverse")
-            m4.metric("✅ Совпало / 🟡 Расх. сумм", f"{data.get('matched_count', 0):,} / {data.get('mismatch_count', 0)}", 
-                      delta="⚠️ Проверьте" if data.get('mismatch_count', 0) > 0 else "OK", 
+            m4.metric("Совпало / Расх. сумм", f"{data.get('matched_count', 0):,} / {data.get('mismatch_count', 0)}", 
+                      delta="Проверьте" if data.get('mismatch_count', 0) > 0 else "OK", 
                       delta_color="inverse" if data.get('mismatch_count', 0) > 0 else "normal")
-            m5.metric("Процент совпадения", f"{recon_rate:.1f}%", delta="Отлично" if recon_rate >= 95 else ("Хорошо" if recon_rate >= 80 else "⚠️ Низкий"), delta_color="normal" if recon_rate >= 80 else "inverse")
+            m5.metric("Совпадение", f"{recon_rate:.1f}%", delta="Отлично" if recon_rate >= 95 else ("Хорошо" if recon_rate >= 80 else "Низкий"), delta_color="normal" if recon_rate >= 80 else "inverse")
 
             if comm_pct > 0:
                 comm_our = adj_tot_our * (comm_pct / 100.0)
