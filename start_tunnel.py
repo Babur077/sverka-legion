@@ -51,8 +51,28 @@ def is_port_listening(host: str = "127.0.0.1", port: int = PORT) -> bool:
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
 
+def check_dependencies():
+    """Проверяет наличие всех критически важных библиотек."""
+    required = ["streamlit", "pandas", "polars", "openpyxl", "plotly"]
+    missing = []
+    for pkg in required:
+        try:
+            __import__(pkg)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        print("\n" + "=" * 76)
+        print(f" [!] Установка недостающих библиотек: {', '.join(missing)}")
+        print("=" * 76)
+        try:
+            subprocess.run([sys.executable, "-m", "pip", "install", *missing], check=True)
+            print(" [✓] Библиотеки успешно установлены!\n")
+        except Exception:
+            pass
+
 def ensure_streamlit_running():
     """Проверяет, работает ли Streamlit, и запускает его при необходимости в фоне."""
+    check_dependencies()
     if is_port_listening("127.0.0.1", PORT):
         print(f" [✓] Локальный сервер ReconcileHub уже активен на порту {PORT}.")
         return None
@@ -64,8 +84,6 @@ def ensure_streamlit_running():
         "--server.address", "0.0.0.0",
         "--server.port", str(PORT),
         "--server.headless", "true",
-        "--server.enableCORS", "false",
-        "--server.enableXsrfProtection", "false",
         "--browser.gatherUsageStats", "false"
     ]
 
@@ -219,8 +237,32 @@ def try_cloudflared() -> bool:
             # Ищем ссылку
             match = url_pattern.search(line)
             if match and not found_url:
-                found_url = match.group(0)
-                show_banner(found_url, "Cloudflare Tunnel")
+                candidate_url = match.group(0)
+                print(f"\n [✓] Получен адрес Cloudflare: {candidate_url}")
+                print(" [i] Проверка регистрации DNS у вашего провайдера...", end="", flush=True)
+
+                host = candidate_url.replace("https://", "").replace("http://", "").split("/")[0]
+                resolves = False
+                for _ in range(10):
+                    time.sleep(1)
+                    print(".", end="", flush=True)
+                    try:
+                        socket.gethostbyname(host)
+                        resolves = True
+                        break
+                    except socket.gaierror:
+                        pass
+
+                if resolves:
+                    print(" [Доступно!]")
+                    found_url = candidate_url
+                    show_banner(found_url, "Cloudflare Tunnel")
+                else:
+                    print("\n [!] Домен trycloudflare.com не отвечает в вашей сети (DNS_PROBE_FINISHED_NXDOMAIN).")
+                    print("     Сервис trycloudflare.com блокируется интернет-провайдером.")
+                    print("     Автоматическое переключение на надёжный туннель Pinggy (порт 443)...")
+                    proc.terminate()
+                    return False
             
             # Если еще не нашли и прошло больше 30 секунд — возможно ошибка
             if not found_url and time.time() - start_time > 30:
@@ -240,16 +282,37 @@ def try_cloudflared() -> bool:
 
     return bool(found_url)
 
+def get_ssh_cmd() -> str | None:
+    """Находит исполняемый файл SSH в системе."""
+    ssh_path = shutil.which("ssh")
+    if ssh_path:
+        return ssh_path
+    if sys.platform == "win32":
+        candidates = [
+            os.path.expandvars(r"%SystemRoot%\System32\OpenSSH\ssh.exe"),
+            os.path.expandvars(r"%ProgramFiles%\OpenSSH\ssh.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Git\usr\bin\ssh.exe"),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                return c
+    return None
+
 def try_pinggy() -> bool:
-    """Резервный вариант через Pinggy SSH (порт 443 — никогда не блокируется)."""
-    if not shutil.which("ssh"):
+    """Запуск через Pinggy SSH (порт 443 — никогда не блокируется провайдерами, мгновенный DNS)."""
+    ssh_cmd = get_ssh_cmd()
+    if not ssh_cmd:
+        print(" [!] SSH клиент не найден на этом компьютере.")
         return False
 
-    print("\n [2/3] Запуск резервного туннеля через Pinggy (порт 443)...")
+    print("\n [✓] Запуск защищенного туннеля через Pinggy (порт 443)...")
+    dev_null = "NUL" if sys.platform == "win32" else "/dev/null"
     cmd = [
-        "ssh", "-p", "443",
+        ssh_cmd, "-p", "443",
         "-o", "StrictHostKeyChecking=no",
+        "-o", f"UserKnownHostsFile={dev_null}",
         "-o", "ServerAliveInterval=30",
+        "-o", "TCPKeepAlive=yes",
         "-R0:localhost:8501",
         "a.pinggy.io"
     ]
@@ -259,6 +322,7 @@ def try_pinggy() -> bool:
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -269,7 +333,7 @@ def try_pinggy() -> bool:
         return False
 
     found_url = None
-    url_pattern = re.compile(r"https://[a-zA-Z0-9\-]+\.a\.pinggy\.link")
+    url_pattern = re.compile(r"https://[a-zA-Z0-9\-]+\.[a-zA-Z0-9\.\-]*pinggy\.(?:link|io)")
 
     try:
         start_time = time.time()
@@ -277,7 +341,7 @@ def try_pinggy() -> bool:
             match = url_pattern.search(line)
             if match and not found_url:
                 found_url = match.group(0)
-                show_banner(found_url, "Pinggy Tunnel")
+                show_banner(found_url, "Pinggy Tunnel (Порт 443)")
 
             if not found_url and time.time() - start_time > 20:
                 proc.terminate()
@@ -296,13 +360,16 @@ def try_pinggy() -> bool:
 
 def try_localhost_run() -> bool:
     """Резервный вариант через localhost.run (SSH)."""
-    if not shutil.which("ssh"):
+    ssh_cmd = get_ssh_cmd()
+    if not ssh_cmd:
         return False
 
-    print("\n [3/3] Запуск резервного туннеля через Localhost.run...")
+    print("\n [✓] Запуск резервного туннеля через Localhost.run...")
+    dev_null = "NUL" if sys.platform == "win32" else "/dev/null"
     cmd = [
-        "ssh",
+        ssh_cmd,
         "-o", "StrictHostKeyChecking=no",
+        "-o", f"UserKnownHostsFile={dev_null}",
         "-o", "ServerAliveInterval=30",
         "-R", f"80:localhost:{PORT}",
         "nokey@localhost.run"
@@ -313,6 +380,7 @@ def try_localhost_run() -> bool:
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -355,21 +423,51 @@ def main():
     print(" Этот режим создает безопасный интернет-адрес (HTTPS) для вашей программы.")
     print(" Ваши коллеги смогут подключиться с любого компьютера, телефона или филиала.")
     print("-" * 76)
+    print(" ВЫБЕРИТЕ СЕРВИС ОНЛАЙН-ССЫЛКИ:")
+    print("  [1] Pinggy SSH (Порт 443) [РЕКОМЕНДУЕТСЯ для Узбекистана и СНГ]")
+    print("      --^> Работает мгновенно, без задержек DNS и без блокировок провайдеров.")
+    print()
+    print("  [2] Cloudflare Tunnel (trycloudflare.com)")
+    print("      --^> Может блокироваться местными DNS/провайдерами.")
+    print()
+    print("  [3] Localhost.run (SSH)")
+    print("=" * 76)
+    
+    choice = "1"
+    try:
+        raw_choice = input("Введите номер (1-3, по умолчанию 1 - Pinggy): ").strip()
+        if raw_choice:
+            choice = raw_choice
+    except Exception:
+        choice = "1"
 
     # 1. Запуск или проверка Streamlit
     ensure_streamlit_running()
 
-    # 2. Попытка Cloudflare Tunnel
-    if try_cloudflared():
-        return
+    if choice == "1":
+        if try_pinggy():
+            return
+        print("\n [!] Pinggy не ответил, пробуем Cloudflare...")
+        if try_cloudflared():
+            return
+    elif choice == "2":
+        if try_cloudflared():
+            return
+        print("\n [!] Cloudflare не ответил, переключаемся на Pinggy...")
+        if try_pinggy():
+            return
+    elif choice == "3":
+        if try_localhost_run():
+            return
+        if try_pinggy():
+            return
+    else:
+        if try_pinggy():
+            return
+        if try_cloudflared():
+            return
 
-    # 3. Попытка Pinggy
-    print("\n [!] Cloudflare не ответил, переключаемся на Pinggy...")
-    if try_pinggy():
-        return
-
-    # 4. Попытка Localhost.run
-    print("\n [!] Pinggy не ответил, переключаемся на Localhost.run...")
+    # Резервная попытка Localhost.run
     if try_localhost_run():
         return
 
@@ -379,13 +477,8 @@ def main():
     print("=" * 76)
     print(" Возможные причины:")
     print(" 1. Нет подключения к интернету на этом компьютере.")
-    print(" 2. Антивирус или корпоративный брандмауэр блокирует скачивание утилит.")
-    print()
-    print(" РЕШЕНИЕ ВРУЧНУЮ:")
-    print(" 1. Скачайте официальный файл 'cloudflared-windows-amd64.exe':")
-    print("    https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe")
-    print(" 2. Переименуйте его в 'cloudflared.exe' и положите в эту же папку ReconcileHub.")
-    print(" 3. Запустите 'start_tunnel.bat' снова.")
+    print(" 2. Антивирус или корпоративный брандмауэр блокирует исходящий порт 443.")
+    print(" 3. Для работы внутри офиса используйте Режим 1 (Локальная сеть).")
     print("=" * 76)
     print()
     try:

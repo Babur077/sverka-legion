@@ -27,24 +27,41 @@ if not defined PYTHON_BIN (
     exit /b 1
 )
 
-:: Проверяем наличие установленного streamlit
-%PYTHON_BIN% -c "import streamlit" >nul 2>nul
+:: Проверяем наличие всех необходимых библиотек
+echo [1/3] Проверка библиотек (Streamlit, Pandas, Polars, OpenPyXL, Plotly)...
+%PYTHON_BIN% -c "import streamlit, pandas, polars, openpyxl, plotly" >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [INFO] Установка необходимых библиотек (requirements.txt)...
+    echo [INFO] Установка или обновление библиотек из requirements.txt...
     %PYTHON_BIN% -m pip install -r requirements.txt
     if %errorlevel% neq 0 (
-        echo [ОШИБКА] Не удалось установить зависимости.
+        echo [ОШИБКА] Не удалось автоматически установить библиотеки.
+        echo Попробуйте вручную выполнить команду в консоли:
+        echo   %PYTHON_BIN% -m pip install -r requirements.txt
+        echo.
         pause
         exit /b 1
     )
 )
 
-echo [OK] Проверка порта 8501 и запуск сетевого сервера...
-powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8501 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+echo [2/3] Освобождение порта 8501 от старых процессов...
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8501 -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -gt 4 } | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+
+echo [3/3] Запуск сетевого сервера ReconcileHub...
+echo.
+
 %PYTHON_BIN% start_network.py
 
 if %errorlevel% neq 0 (
     echo.
-    echo [ВНИМАНИЕ] Сервер завершил работу с ошибкой.
-    pause
+    echo ===============================================================
+    echo [ВНИМАНИЕ] Сервер завершил работу с кодом ошибки %errorlevel%.
+    echo ===============================================================
+    echo Запуск прямого режима Streamlit...
+    %PYTHON_BIN% -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true --browser.gatherUsageStats false
 )
+
+echo.
+echo ===============================================================
+echo  Сервер ReconcileHub остановлен.
+echo ===============================================================
+pause

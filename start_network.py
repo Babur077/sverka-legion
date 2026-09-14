@@ -87,6 +87,33 @@ def get_all_local_ips():
 
     return primary_ip, lan_ips, other_ips
 
+def check_dependencies():
+    """Проверяет наличие всех критически важных библиотек и устанавливает их при необходимости."""
+    required = ["streamlit", "pandas", "polars", "openpyxl", "plotly"]
+    missing = []
+    for pkg in required:
+        try:
+            __import__(pkg)
+        except ImportError:
+            missing.append(pkg)
+
+    if missing:
+        print("\n" + "=" * 72)
+        print(f" [!] Внимание: отсутствуют необходимые пакеты: {', '.join(missing)}")
+        print("     Выполняется автоматическая установка через pip...")
+        print("=" * 72 + "\n")
+        try:
+            subprocess.run([sys.executable, "-m", "pip", "install", *missing], check=True)
+            print("\n [✓] Все пакеты успешно установлены!\n")
+        except Exception as e:
+            print(f"\n [❌ ОШИБКА] Не удалось автоматически установить пакеты: {e}")
+            print(f" Выполните команду вручную: pip install {' '.join(missing)}")
+            try:
+                input("\nНажмите Enter, чтобы закрыть окно...")
+            except Exception:
+                pass
+            sys.exit(1)
+
 def is_port_listening(port: int = PORT) -> bool:
     """Проверяет, отвечает ли порт 8501."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -104,7 +131,7 @@ def check_and_free_port(port: int = PORT):
     if sys.platform == "win32":
         # Шаг 1: Точечное завершение процесса, держащего порт через PowerShell
         try:
-            ps_kill = f'powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}"'
+            ps_kill = f'powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | Where-Object {{ $_.OwningProcess -gt 4 }} | ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}"'
             subprocess.run(ps_kill, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
@@ -116,7 +143,7 @@ def check_and_free_port(port: int = PORT):
                 if "LISTENING" in line:
                     parts = line.strip().split()
                     pid = parts[-1]
-                    if pid and pid != "0" and pid != str(os.getpid()):
+                    if pid and pid.isdigit() and int(pid) > 4 and pid != str(os.getpid()):
                         subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
@@ -136,6 +163,7 @@ def check_and_free_port(port: int = PORT):
     print("     [i] Порт остался активен — возможно, сервер уже запущен.")
 
 def main():
+    check_dependencies()
     port = PORT
     check_and_free_port(port)
 
@@ -189,11 +217,33 @@ def main():
     try:
         res = subprocess.run(cmd)
         if res.returncode != 0:
-            print(f"\n[!] Streamlit завершился с кодом {res.returncode}.")
+            print("\n" + "=" * 72)
+            print(f" [❌ ОШИБКА] Streamlit завершился с кодом {res.returncode}.")
+            print("=" * 72)
+            print(" Возможные причины:")
+            print(" 1. Ошибка в коде приложения или конфликт версий библиотек.")
+            print(" 2. Порт 8501 заблокирован другой программой или антивирусом.")
+            print(" 3. Запустите напрямую команду: streamlit run app.py")
+            print("=" * 72)
+            try:
+                input("\nНажмите Enter, чтобы закрыть окно...")
+            except Exception:
+                pass
+            sys.exit(res.returncode)
     except KeyboardInterrupt:
-        print("\n[✓] Сервер ReconcileHub успешно остановлен.")
+        print("\n[✓] Сервер ReconcileHub остановлен пользователем.")
+        try:
+            input("\nНажмите Enter для выхода...")
+        except Exception:
+            pass
+        sys.exit(0)
     except Exception as e:
-        print(f"\n[!] Ошибка запуска: {e}")
+        print(f"\n[❌ ОШИБКА] Не удалось запустить Streamlit: {e}")
+        try:
+            input("\nНажмите Enter, чтобы закрыть окно...")
+        except Exception:
+            pass
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
