@@ -182,6 +182,11 @@ def show_banner(public_url: str, tunnel_type: str = "Cloudflare"):
     print("  [✓] Отправьте эту ссылку коллегам в Telegram, WhatsApp, Teams или почту.")
     print("  [✓] Коллеги могут открывать её на любых компьютерах, смартфонах и планшетах.")
     print("  [✓] Не требуется настраивать Wi-Fi роутер или отключать брандмауэр.")
+    if "pinggy" in tunnel_type.lower():
+        print("-" * 76)
+        print("  💡 ЕСЛИ В БРАУЗЕРЕ ОТКРЫЛАСЬ СТРАНИЦА PINGGY:")
+        print("     Просто нажмите кнопку «Click here to continue» (или «Visit Site»).")
+        print("     Регистрироваться, вводить логин или платить НЕ нужно!")
     print("-" * 76)
     print("  ⚠️  НЕ ЗАКРЫВАЙТЕ ЭТО ОКНО: пока оно открыто, коллеги могут работать.")
     print("     Для остановки нажмите Ctrl + C или просто закройте это окно.")
@@ -386,7 +391,8 @@ def try_pinggy() -> bool:
         return False
 
     found_url = None
-    url_pattern = re.compile(r"https://[a-zA-Z0-9\-]+\.[a-zA-Z0-9\.\-]*pinggy\.(?:link|io)")
+    # Ссылка туннеля Pinggy ВСЕГДА заканчивается на .pinggy.link
+    url_pattern = re.compile(r"https://[a-zA-Z0-9\-]+(?:\.[a-zA-Z0-9\-]+)*\.pinggy\.link")
 
     try:
         start_time = time.time()
@@ -398,6 +404,10 @@ def try_pinggy() -> bool:
                     proc.stdin.flush()
                 except Exception:
                     pass
+
+            # Игнорируем ссылки на личный кабинет dashboard.pinggy.io
+            if "dashboard.pinggy.io" in line:
+                continue
 
             match = url_pattern.search(line)
             if match and not found_url:
