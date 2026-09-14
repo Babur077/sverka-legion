@@ -2,14 +2,14 @@ import React, { useState, useMemo } from 'react';
 import {
   Upload, FileSpreadsheet, Play, Download, Save, CheckCircle2, AlertTriangle, XCircle,
   HelpCircle, ChevronDown, ChevronUp, Filter, Sparkles, RefreshCw, BarChart2, Eye
-, Settings, UploadCloud, Landmark, CalendarDays, Key, Coins, Tag as TagIcon, Settings2, Unlink, Percent, CalendarRange, Search, AlertCircle, Copy, FileText, CheckSquare, Square, FileCheck, Layers} from 'lucide-react';
+, Settings, UploadCloud, Landmark, CalendarDays, Key, Coins, Tag as TagIcon, Settings2, Unlink, Percent, CalendarRange, Search, AlertCircle, Copy, FileText, CheckSquare, Square, FileCheck, Layers, Building2, Plus} from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
 import { RawRow, ReconciliationConfig, ReconciliationResult, UnmatchedRow, AmountMismatchRow, DateSummaryRow, SystemSettings, User } from '../types';
 import { parseFile, guessCol, exportReconciliationToExcel, generateSampleData } from '../utils/fileParser';
 import { runReconciliation } from '../utils/reconEngine';
-import { getStoredEpos, saveReconciliation, logAction } from '../utils/storage';
+import { getStoredEpos, saveReconciliation, logAction, getStoredBanks, addStoredBank } from '../utils/storage';
 
 interface RrnPageProps {
   user: User;
@@ -59,8 +59,35 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [reconData, setReconData] = useState<ReconciliationResult | null>(null);
   const [activeTab, setActiveTab] = useState<'summary' | 'charts' | 'unmatched' | 'mismatches' | 'dups'>('summary');
   const [selectedDrilldownDate, setSelectedDrilldownDate] = useState<string | null>(null);
-  const [commissionPct, setCommissionPct] = useState<number>(0);
+  const [commissionPct, setCommissionPct] = useState<number>(1.2);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Bank selection state (Quick Bank Select)
+  const [availableBanks, setAvailableBanks] = useState<string[]>(getStoredBanks());
+  const [selectedBank, setSelectedBank] = useState<string>('Aloqa Bank');
+  const [showAddBank, setShowAddBank] = useState<boolean>(false);
+  const [newBankInput, setNewBankInput] = useState<string>('');
+
+  const handleSelectBank = (bankName: string) => {
+    setSelectedBank(bankName);
+    const eposList = getStoredEpos();
+    const bankEpos = eposList.find(t => t.bank_acquirer.toLowerCase() === bankName.toLowerCase() && t.is_active);
+    if (bankEpos) {
+      setCommissionPct(bankEpos.commission_pct);
+    }
+  };
+
+  const handleAddNewBank = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newBankInput.trim();
+    if (!clean) return;
+    addStoredBank(clean);
+    const updated = getStoredBanks();
+    setAvailableBanks(updated);
+    setSelectedBank(clean);
+    setNewBankInput('');
+    setShowAddBank(false);
+  };
 
   // Unmatched items bulk actions
   const [filterDateOur, setFilterDateOur] = useState('(Все)');
@@ -306,9 +333,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   // Save to Archive
   const handleSaveToArchive = () => {
     if (!dynamicCalculations || !reconData) return;
+    const bankNameForArchive = selectedBank || bankFile?.name.replace(/\.[^/.]+$/, '') || 'Банк';
     const res = saveReconciliation(
       user.username,
-      bankFile?.name.replace(/\.[^/.]+$/, '') || 'Банк',
+      bankNameForArchive,
       dynamicCalculations.totalOurSum,
       dynamicCalculations.totalBankSum,
       dynamicCalculations.totalDiff,
@@ -320,7 +348,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
     if (res.success) {
       setSaveSuccessMsg('Сверка успешно записана в архив!');
-      logAction(user.username, 'SAVE_RECON', `Сохранена сверка по банку (${bankFile?.name || 'Банк'})`);
+      logAction(user.username, 'SAVE_RECON', `Сохранена сверка по банку (${bankNameForArchive})`);
     } else {
       alert(res.message);
     }
@@ -371,6 +399,77 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
           <span>Загрузить демо-файлы 1С & Банк</span>
         </button>
+      </div>
+
+      {/* ─── ВЫБОР БАНКА-ЭКВАЙЕРА (БЫСТРЫЙ НАБОР) ─── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+              <Landmark className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Банк-эквайер для сверки</h2>
+              <p className="text-xs text-slate-500">Быстрый выбор банка или добавление нового в систему</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Выбран банк:</span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold">
+              <Building2 className="w-3.5 h-3.5" />
+              <span>{selectedBank}</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {availableBanks.map((b) => {
+            const isSelected = selectedBank.toLowerCase() === b.toLowerCase();
+            return (
+              <button
+                key={b}
+                type="button"
+                onClick={() => handleSelectBank(b)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                  isSelected
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-2 ring-indigo-200'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                }`}
+              >
+                {isSelected ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Building2 className="w-3 h-3 text-slate-400" />}
+                <span>{b}</span>
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => setShowAddBank(!showAddBank)}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/80 transition-colors flex items-center gap-1 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Добавить банк</span>
+          </button>
+        </div>
+
+        {showAddBank && (
+          <form onSubmit={handleAddNewBank} className="flex items-center gap-2 pt-2 border-t border-slate-100 max-w-md">
+            <input
+              type="text"
+              value={newBankInput}
+              onChange={(e) => setNewBankInput(e.target.value)}
+              placeholder="Название нового банка (напр. Agrobank)"
+              className="flex-1 py-1.5 px-3 border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500"
+              autoFocus
+            />
+            <button
+              type="submit"
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors shrink-0 cursor-pointer"
+            >
+              Добавить
+            </button>
+          </form>
+        )}
       </div>
 
       {/* ─── UPLOAD BOXES ─── */}
@@ -439,7 +538,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 font-semibold text-sm text-slate-900">
               <Upload className="w-4 h-4 text-emerald-600" />
-              <span>Данные Банка (Excel / CSV)</span>
+              <span>Данные {selectedBank} (Excel / CSV)</span>
             </div>
             {bankFile && (
               <button

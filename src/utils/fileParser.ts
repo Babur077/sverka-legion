@@ -115,7 +115,7 @@ export function generateSampleData(): {
   bankData: { fileName: string; rows: RawRow[]; columns: string[] };
 } {
   const dates = ['10.09.2026', '11.09.2026', '12.09.2026'];
-  const tids = ['98234011', '98234012', '98234013', '98234014'];
+  const tids = ['98234001', '98234002', '98234003', '98234004', '98234005'];
 
   const ourRows: RawRow[] = [];
   const bankRows: RawRow[] = [];

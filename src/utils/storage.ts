@@ -1,10 +1,19 @@
 import { User, EposTerminal, AuditLog, ReconciliationArchive, SystemSettings } from '../types';
 
 const USERS_KEY = 'reconcile_users';
-const EPOS_KEY = 'reconcile_epos';
+const EPOS_KEY = 'reconcile_epos_banks_v2';
+const BANKS_KEY = 'reconcile_available_banks_v2';
 const LOGS_KEY = 'reconcile_logs';
 const ARCHIVE_KEY = 'reconcile_archive';
 const SETTINGS_KEY = 'reconcile_settings';
+
+export const DEFAULT_BANKS: string[] = [
+  'Aloqa Bank',
+  'Open Bank',
+  'Saderat Bank',
+  'Davr Bank',
+  'Hamkor Bank',
+];
 
 const DEFAULT_USERS: Array<User & { passwordHash: string }> = [
   { id: 1, username: 'admin', role: 'admin', passwordHash: 'admin123' },
@@ -13,10 +22,11 @@ const DEFAULT_USERS: Array<User & { passwordHash: string }> = [
 ];
 
 const DEFAULT_EPOS: EposTerminal[] = [
-  { terminal_id: '98234011', merchant_id: 'MID_LEGION_01', bank_acquirer: 'Kapital', legal_entity: 'ООО «Легион Трейд» (Центр)', commission_pct: 1.2, is_active: true },
-  { terminal_id: '98234012', merchant_id: 'MID_LEGION_02', bank_acquirer: 'Soliq', legal_entity: 'Филиал Север', commission_pct: 0.8, is_active: true },
-  { terminal_id: '98234013', merchant_id: 'MID_LEGION_03', bank_acquirer: 'NBU', legal_entity: 'Филиал Юг', commission_pct: 1.5, is_active: true },
-  { terminal_id: '98234014', merchant_id: 'MID_LEGION_04', bank_acquirer: 'Davr', legal_entity: 'Онлайн-эквайринг', commission_pct: 1.0, is_active: true },
+  { terminal_id: '98234001', merchant_id: 'MID_ALOQA_01', bank_acquirer: 'Aloqa Bank', commission_pct: 1.2, is_active: true },
+  { terminal_id: '98234002', merchant_id: 'MID_OPEN_01', bank_acquirer: 'Open Bank', commission_pct: 1.0, is_active: true },
+  { terminal_id: '98234003', merchant_id: 'MID_SADERAT_01', bank_acquirer: 'Saderat Bank', commission_pct: 1.5, is_active: true },
+  { terminal_id: '98234004', merchant_id: 'MID_DAVR_01', bank_acquirer: 'Davr Bank', commission_pct: 1.0, is_active: true },
+  { terminal_id: '98234005', merchant_id: 'MID_HAMKOR_01', bank_acquirer: 'Hamkor Bank', commission_pct: 1.2, is_active: true },
 ];
 
 const DEFAULT_SETTINGS: SystemSettings = {
@@ -73,6 +83,37 @@ export function deleteUser(id: number): boolean {
   users = users.filter(u => u.id !== id);
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
   return true;
+}
+
+export function getStoredBanks(): string[] {
+  try {
+    const raw = localStorage.getItem(BANKS_KEY);
+    if (!raw) {
+      localStorage.setItem(BANKS_KEY, JSON.stringify(DEFAULT_BANKS));
+      return DEFAULT_BANKS;
+    }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // Ensure the 5 primary banks are always included
+      const merged = Array.from(new Set([...DEFAULT_BANKS, ...parsed]));
+      return merged;
+    }
+    return DEFAULT_BANKS;
+  } catch {
+    return DEFAULT_BANKS;
+  }
+}
+
+export function addStoredBank(bankName: string): boolean {
+  const clean = bankName.trim();
+  if (!clean) return false;
+  const banks = getStoredBanks();
+  if (!banks.some(b => b.toLowerCase() === clean.toLowerCase())) {
+    banks.push(clean);
+    localStorage.setItem(BANKS_KEY, JSON.stringify(banks));
+    return true;
+  }
+  return false;
 }
 
 export function getStoredEpos(): EposTerminal[] {

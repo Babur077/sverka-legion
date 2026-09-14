@@ -389,10 +389,10 @@ def main_app():
         </div>
         """, unsafe_allow_html=True)
 
-        # Пункты меню зависят от роли. "Реестр EPOS" и "Настройки" — только для admin
+        # Пункты меню зависят от роли. "Реестр банков" и "Настройки" — только для admin
         menu_items = ["Сверка по RRN"]
         if st.session_state["role"] == "admin":
-            menu_items.append("Реестр EPOS")
+            menu_items.append("Реестр банков")
         menu_items.append("Аналитика")
         if st.session_state["role"] == "admin":
             menu_items.append("Настройки")
@@ -431,7 +431,7 @@ def main_app():
     # ─── Роутер страниц ───
     if "Сверка по RRN" in app_mode:
         rrn_page.show_page()
-    elif "Реестр EPOS" in app_mode:
+    elif "Реестр банков" in app_mode or "Реестр EPOS" in app_mode:
         epos_page.show_page()
     elif "Аналитика" in app_mode:
         analytics_page.show_page()

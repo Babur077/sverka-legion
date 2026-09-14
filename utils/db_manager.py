@@ -115,6 +115,20 @@ def init_db():
                 ("admin", admin_hash, "admin"),
             )
 
+        cursor.execute("SELECT COUNT(*) FROM epos_registry")
+        if cursor.fetchone()[0] == 0:
+            default_banks = [
+                ('98234001', 'MID_ALOQA_01', 'Aloqa Bank', '', 1.2, 1),
+                ('98234002', 'MID_OPEN_01', 'Open Bank', '', 1.0, 1),
+                ('98234003', 'MID_SADERAT_01', 'Saderat Bank', '', 1.5, 1),
+                ('98234004', 'MID_DAVR_01', 'Davr Bank', '', 1.0, 1),
+                ('98234005', 'MID_HAMKOR_01', 'Hamkor Bank', '', 1.2, 1),
+            ]
+            cursor.executemany(
+                "INSERT INTO epos_registry (terminal_id, merchant_id, bank_acquirer, legal_entity, commission_pct, is_active) VALUES (?, ?, ?, ?, ?, ?)",
+                default_banks
+            )
+
         conn.commit()
 
 
@@ -143,7 +157,7 @@ def log_action(username: str, action: str, details: str = ""):
         conn.commit()
 
 
-def add_epos_terminal(tid, mid, bank, entity, com_pct):
+def add_epos_terminal(tid, mid, bank, entity="", com_pct=0.0):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         try:
@@ -152,7 +166,7 @@ def add_epos_terminal(tid, mid, bank, entity, com_pct):
                 VALUES (?, ?, ?, ?, ?, 1)
             ''', (tid, mid, bank, entity, com_pct))
             conn.commit()
-            return True, "Терминал успешно добавлен!"
+            return True, "Терминал/банк успешно добавлен!"
         except sqlite3.IntegrityError:
             return False, f"Ошибка: Терминал с TID {tid} уже существует!"
         except Exception as e:

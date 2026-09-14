@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Smartphone, BarChart3, Settings, LogOut, Shield, ShieldCheck, UserCheck, Zap } from 'lucide-react';
+import { RefreshCw, Building2, BarChart3, Settings, LogOut, Shield, ShieldCheck, UserCheck, Zap } from 'lucide-react';
 import { User } from '../types';
 
 interface NavbarProps {
@@ -29,7 +29,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const navItems = [
     { id: 'rrn', label: 'Сверка по RRN', icon: RefreshCw, adminOnly: false },
-    { id: 'epos', label: 'Реестр EPOS', icon: Smartphone, adminOnly: true },
+    { id: 'epos', label: 'Реестр банков', icon: Building2, adminOnly: true },
     { id: 'analytics', label: 'Аналитика', icon: BarChart3, adminOnly: false },
     { id: 'admin', label: 'Настройки', icon: Settings, adminOnly: true },
   ].filter(item => !item.adminOnly || user.role === 'admin');

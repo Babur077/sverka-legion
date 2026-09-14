@@ -126,10 +126,10 @@ def load_demo_data_to_session():
     st.session_state["preview_our_v2"] = pl_our.head(5).to_pandas()
 
     st.session_state["df_cache_bank_v2"] = pl_bank
-    st.session_state["name_cache_bank_v2"] = "Выписка_KapitalBank.xlsx"
+    st.session_state["name_cache_bank_v2"] = "Выписка_AloqaBank.xlsx"
     st.session_state["preview_bank_v2"] = pl_bank.head(5).to_pandas()
 
-    st.session_state["chosen_bank"] = "Kapital Bank"
+    st.session_state["chosen_bank"] = "Aloqa Bank"
 
 
 # ─── ИНТЕРФЕЙС СТРАНИЦЫ ───
@@ -156,7 +156,29 @@ def show_page():
             load_demo_data_to_session()
             st.rerun()
 
-    bank_name = st.session_state.get("chosen_bank", "Банк")
+    # ─── БЫСТРЫЙ ВЫБОР БАНКА-ЭКВАЙЕРА ───
+    with st.container(border=True):
+        st.markdown("""
+        <div style='display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: #0f172a; margin-bottom: 6px;'>
+            <span style='color: #4f46e5; font-size: 16px;'>🏦</span>
+            <span>Банк-эквайер для сверки</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        bank_list = ["Aloqa Bank", "Open Bank", "Saderat Bank", "Davr Bank", "Hamkor Bank", "Другой банк (ввести вручную)..."]
+        cur_bank = st.session_state.get("chosen_bank", "Aloqa Bank")
+        
+        idx = bank_list.index(cur_bank) if cur_bank in bank_list else (len(bank_list) - 1)
+        selected_b = st.selectbox("Выберите банк из быстрого набора или добавьте свой", bank_list, index=idx, key="sb_quick_bank")
+        
+        if selected_b == "Другой банк (ввести вручную)...":
+            custom_bank_name = st.text_input("Название нового банка*", value="" if cur_bank in bank_list else cur_bank, placeholder="напр. Agrobank")
+            if custom_bank_name.strip():
+                st.session_state["chosen_bank"] = custom_bank_name.strip()
+        else:
+            st.session_state["chosen_bank"] = selected_b
+
+    bank_name = st.session_state.get("chosen_bank", "Aloqa Bank")
 
     # Две отдельные карточки загрузки файлов точно как в Preview
     c1, c2 = st.columns(2)
@@ -179,15 +201,6 @@ def show_page():
             </div>
             """, unsafe_allow_html=True)
             df_bank_raw = upload_with_preview(f"Данные {bank_name} (Excel / CSV)", "bank_v2")
-
-    with st.expander("🏦 Настройка названия банка (для отчетов и архива)", expanded=False):
-        bank_name_input = st.text_input(
-            "Название банка",
-            value=st.session_state.get("chosen_bank", "Kapital Bank"),
-            placeholder="напр. Kapital Bank",
-            key="bank_name_input_v2",
-        )
-        st.session_state["chosen_bank"] = bank_name_input.strip() or "Банк"
 
     if df_our_raw is not None and df_bank_raw is not None:
         with st.container(border=True):

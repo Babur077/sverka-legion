@@ -8,9 +8,9 @@ export interface User {
 
 export interface EposTerminal {
   terminal_id: string;
-  merchant_id: string;
+  merchant_id?: string;
   bank_acquirer: string;
-  legal_entity: string;
+  legal_entity?: string;
   commission_pct: number;
   is_active: boolean;
 }
