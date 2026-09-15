@@ -31,14 +31,20 @@ if not defined REAL_PY (
 
 echo [1/4] Удаление старых или блокирующих правил...
 netsh advfirewall firewall delete rule name="ReconcileHub Port 8501" >nul 2>&1
+netsh advfirewall firewall delete rule name="ReconcileHub Port 3000" >nul 2>&1
+netsh advfirewall firewall delete rule name="ReconcileHub Port 8000" >nul 2>&1
 netsh advfirewall firewall delete rule name="ReconcileHub Python" >nul 2>&1
 
-echo [2/4] Открытие входящего порта 8501 (TCP и UDP) для всех профилей сети...
+echo [2/4] Открытие входящих портов 8501 (Streamlit), 3000 (React) и 8000 (FastAPI)...
 netsh advfirewall firewall add rule name="ReconcileHub Port 8501" dir=in action=allow protocol=TCP localport=8501 profile=any enable=yes >nul 2>&1
 netsh advfirewall firewall add rule name="ReconcileHub Port 8501 UDP" dir=in action=allow protocol=UDP localport=8501 profile=any enable=yes >nul 2>&1
+netsh advfirewall firewall add rule name="ReconcileHub Port 3000" dir=in action=allow protocol=TCP localport=3000 profile=any enable=yes >nul 2>&1
+netsh advfirewall firewall add rule name="ReconcileHub Port 3000 UDP" dir=in action=allow protocol=UDP localport=3000 profile=any enable=yes >nul 2>&1
+netsh advfirewall firewall add rule name="ReconcileHub Port 8000" dir=in action=allow protocol=TCP localport=8000 profile=any enable=yes >nul 2>&1
+netsh advfirewall firewall add rule name="ReconcileHub Port 8000 UDP" dir=in action=allow protocol=UDP localport=8000 profile=any enable=yes >nul 2>&1
 
 if %errorlevel% == 0 (
-    echo   [✓] Порт 8501 успешно открыт!
+    echo   [✓] Порты 8501, 3000 и 8000 успешно открыты!
 ) else (
     echo   [!] Предупреждение: не удалось добавить правило порта.
 )

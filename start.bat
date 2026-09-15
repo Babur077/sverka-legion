@@ -33,11 +33,12 @@ echo.
 echo  [2] Онлайн-ссылка для удаленных коллег (Cloudflare / Pinggy Туннель)
 echo      --^> Для работы из дома или других филиалов через интернет.
 echo.
-echo  [3] Настройка Брандмауэра Windows (открыть порт 8501)
+echo  [3] Настройка Брандмауэра Windows (открыть порты 8501, 3000, 8000)
 echo  [4] Диагностика сети (проверить подключение коллег)
-echo  [5] React Web App (локальный браузерный интерфейс)
+echo  [5] React Web App (автономный браузерный интерфейс)
+echo  [6] FastAPI + React (Высокопроизводительный сервер с Polars и Swagger UI)
 echo.
-set /p CHOICE="Введите номер действия (1-5, по умолчанию 1 - Локальная сеть): "
+set /p CHOICE="Введите номер действия (1-6, по умолчанию 1 - Локальная сеть): "
 
 if "%CHOICE%"=="" set CHOICE=1
 if "%CHOICE%"=="1" goto run_streamlit
@@ -45,6 +46,7 @@ if "%CHOICE%"=="2" goto run_tunnel
 if "%CHOICE%"=="3" goto run_firewall
 if "%CHOICE%"=="4" goto run_diag
 if "%CHOICE%"=="5" goto run_react
+if "%CHOICE%"=="6" goto run_fastapi
 goto run_streamlit
 
 :run_streamlit
@@ -77,6 +79,20 @@ if %errorlevel% == 0 (
 )
 echo [ОШИБКА] Не удалось запустить React.
 pause
+goto end
+
+:run_fastapi
+if exist "start_fastapi.bat" (
+    call start_fastapi.bat
+    goto end
+)
+if exist "api.py" (
+    %PYTHON_CMD% api.py
+    goto end
+)
+echo [ОШИБКА] Файл api.py не найден.
+pause
+goto end
 
 :end
 echo.

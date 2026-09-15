@@ -5,6 +5,8 @@
 """
 import os
 import sys
+import socket
+import subprocess
 import mimetypes
 import webbrowser
 from http.server import SimpleHTTPRequestHandler
@@ -132,19 +134,58 @@ def create_server():
     return server, server.server_port
 
 
+def get_local_ip():
+    """Определяет локальный IP-адрес для доступа коллег по локальной сети."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.3)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        pass
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if not ip.startswith("127.") and not ip.startswith("169.254."):
+                return ip
+    except Exception:
+        pass
+    return None
+
+
+def copy_to_clipboard(text: str):
+    """Копирует ссылку в буфер обмена."""
+    try:
+        if sys.platform == "win32":
+            subprocess.run("clip", input=text.strip().encode("cp1251", errors="ignore"), shell=True)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def main():
     server, port = create_server()
-    url = f"http://127.0.0.1:{port}"
+    local_url = f"http://localhost:{port}"
+    lan_ip = get_local_ip()
+    network_url = f"http://{lan_ip}:{port}" if lan_ip else None
 
-    print("=" * 60)
-    print("🚀 Reconcile Hub (Production режим) успешно запущен!")
-    print(f"🌐 Адрес в браузере: {url}")
-    print(f"📁 Раздача статики из: {DIST_DIR}")
+    print("=" * 65)
+    print("🚀 Reconcile Hub (React Web App) успешно запущен!")
+    print(f"💻 На этом компьютере:            {local_url}")
+    if network_url:
+        print(f"👥 Ссылка для коллег (в офисе/LAN): {network_url}")
+        copy_to_clipboard(network_url)
+        print("   (Ссылка для коллег уже скопирована в буфер обмена!)")
+    print(f"📁 Раздача статики из:            {DIST_DIR}")
     print("⚡ Для остановки сервера нажмите Ctrl+C")
-    print("=" * 60)
+    print("=" * 65)
 
     try:
-        webbrowser.open(url)
+        webbrowser.open(local_url)
     except Exception:
         pass
 

@@ -1,9 +1,26 @@
-export type Role = 'admin' | 'accountant' | 'auditor';
+export type Role = 'admin' | 'accountant' | 'auditor' | 'finance_manager';
 
 export interface User {
   id: number;
   username: string;
   role: Role;
+  permissions?: string[];
+}
+
+export interface ReconciliationModuleManifest {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  category: string;
+  icon: string;
+  author: string;
+  status: 'active' | 'draft' | 'deprecated';
+  required_permissions: string[];
+  required_files: Array<{
+    key: string;
+    label: string;
+  }>;
 }
 
 export interface EposTerminal {

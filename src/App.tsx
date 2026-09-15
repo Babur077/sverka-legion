@@ -5,6 +5,7 @@ import { RrnPage } from './components/RrnPage';
 import { EposPage } from './components/EposPage';
 import { AnalyticsPage } from './components/AnalyticsPage';
 import { AdminPage } from './components/AdminPage';
+import { ModuleWorkspace } from './components/ModuleWorkspace';
 import { User, SystemSettings } from './types';
 import { getStoredSettings, logAction } from './utils/storage';
 
@@ -17,7 +18,7 @@ export const App: React.FC = () => {
       return null;
     }
   });
-  const [currentTab, setCurrentTab] = useState<string>('rrn');
+  const [currentTab, setCurrentTab] = useState<string>('modules');
   const [settings, setSettings] = useState<SystemSettings>(getStoredSettings());
 
   const handleLogout = () => {
@@ -35,7 +36,7 @@ export const App: React.FC = () => {
       sessionStorage.setItem('reconcile_active_user', JSON.stringify(loggedInUser));
     } catch {}
     setUser(loggedInUser);
-    setCurrentTab('rrn');
+    setCurrentTab('modules');
   };
 
   if (!user) {
@@ -52,6 +53,12 @@ export const App: React.FC = () => {
       />
 
       <main className="flex-1 overflow-y-auto">
+        {currentTab === 'modules' && (
+          <ModuleWorkspace 
+            user={user} 
+            onSelectRrnModule={() => setCurrentTab('rrn')} 
+          />
+        )}
         {currentTab === 'rrn' && <RrnPage user={user} settings={settings} />}
         {currentTab === 'epos' && user.role === 'admin' && <EposPage user={user} />}
         {currentTab === 'analytics' && <AnalyticsPage user={user} />}

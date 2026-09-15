@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Building2, BarChart3, Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X } from 'lucide-react';
+import { RefreshCw, Building2, BarChart3, Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X, Layers } from 'lucide-react';
 import { User } from '../types';
 
 interface NavbarProps {
@@ -18,22 +18,32 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const roleLabel = {
+  const roleLabel: Record<string, string> = {
     admin: 'Администратор',
     accountant: 'Бухгалтер',
     auditor: 'Аудитор',
-  }[user.role] || user.role;
+    finance_manager: 'Фин. менеджер',
+  };
+  const currentRoleLabel = roleLabel[user.role] || user.role;
 
-  const roleBadgeColor = {
+  const roleBadgeColor: Record<string, string> = {
     admin: 'bg-indigo-50 text-indigo-700 border-indigo-200',
     accountant: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     auditor: 'bg-amber-50 text-amber-700 border-amber-200',
-  }[user.role] || 'bg-slate-50 text-slate-700 border-slate-200';
+    finance_manager: 'bg-purple-50 text-purple-700 border-purple-200',
+  };
+  const currentRoleBadgeColor = roleBadgeColor[user.role] || 'bg-slate-50 text-slate-700 border-slate-200';
 
   const navItems = [
+    {
+      id: 'modules',
+      label: 'Модули сверок',
+      icon: Layers,
+      adminOnly: false
+    },
     { 
       id: 'rrn', 
-      label: user.role === 'auditor' ? 'Сверка (Просмотр)' : 'Сверка по RRN', 
+      label: user.role === 'auditor' ? 'Сверка RRN (Аудит)' : 'Сверка по RRN', 
       icon: RefreshCw, 
       adminOnly: false 
     },
@@ -146,8 +156,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             {!collapsed && (
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-semibold text-slate-900 truncate">{user.username}</div>
-                <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${roleBadgeColor}`}>
-                  {roleLabel}
+                <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${currentRoleBadgeColor}`}>
+                  {currentRoleLabel}
                 </span>
               </div>
             )}
