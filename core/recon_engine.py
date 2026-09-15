@@ -4,7 +4,7 @@ import polars as pl
 import pandas as pd
 import numpy as np
 from core.parsers import clean_amount_polars, clean_date_polars, clean_rrn_polars
-from utils.db_manager import get_epos_registry
+
 
 def apply_reversals(df: pl.DataFrame, status_col: str, action: str, amt_col: str, rev_words: list) -> pl.DataFrame:
     if not status_col or status_col not in df.columns or not rev_words:
@@ -12,12 +12,6 @@ def apply_reversals(df: pl.DataFrame, status_col: str, action: str, amt_col: str
 
     status_norm = pl.col(status_col).cast(pl.Utf8).str.to_lowercase().str.strip_chars()
 
-    # ВАЖНО: маркеры возврата матчатся по ВХОЖДЕНИЮ подстроки (а не по точному
-    # совпадению всей строки статуса), как и подсказывает UI ("Маркеры возврата
-    # ... через запятую"). Раньше здесь стояло is_in(rev_words), из-за чего статус
-    # вида "REFUND - client request" не распознавался как возврат, хотя
-    # find_offsetting_rrns_by_status() на странице сверки уже искал именно по
-    # вхождению — из-за расхождения возвраты могли не гаситься в расчёте сумм.
     rev_mask = functools.reduce(
         lambda acc, w: acc | status_norm.str.contains(w, literal=True),
         rev_words[1:],
@@ -34,6 +28,7 @@ def apply_reversals(df: pl.DataFrame, status_col: str, action: str, amt_col: str
             pl.when(rev_mask).then(-pl.col(amt_col).abs()).otherwise(pl.col(amt_col)).alias(amt_col)
         )
     return df
+
 
 def date_summary(pl_our: pl.DataFrame, pl_bank: pl.DataFrame) -> pd.DataFrame:
     so = (
@@ -66,22 +61,23 @@ def date_summary(pl_our: pl.DataFrame, pl_bank: pl.DataFrame) -> pd.DataFrame:
     s = s.sort("date", descending=True)
     return s.to_pandas()
 
+
 def terminal_summary(pl_bank: pl.DataFrame, tid_col: str = "terminal_id") -> pd.DataFrame:
     """Агрегированная статистика по терминалам эквайринга (обороты, комиссии)"""
     if pl_bank is None or getattr(pl_bank, "height", 0) == 0:
         return pd.DataFrame(columns=["terminal_id", "tx_count", "total_volume", "commission_pct", "commission_amount", "net_volume", "legal_entity"])
-    
+
     col_name = tid_col if (tid_col and tid_col in pl_bank.columns) else ("terminal_id" if "terminal_id" in pl_bank.columns else None)
     if not col_name:
         return pd.DataFrame()
-    
+
     amt_col = "raw_amount" if "raw_amount" in pl_bank.columns else ("net_amount_bank" if "net_amount_bank" in pl_bank.columns else ("amount" if "amount" in pl_bank.columns else None))
     if not amt_col:
         return pd.DataFrame()
 
     has_legal = "legal_entity" in pl_bank.columns
     has_comm = "commission_pct" in pl_bank.columns
-    
+
     agg_exprs = [
         pl.len().alias("tx_count"),
         pl.col(amt_col).sum().alias("total_volume"),
@@ -106,20 +102,33 @@ def terminal_summary(pl_bank: pl.DataFrame, tid_col: str = "terminal_id") -> pd.
         t_df["legal_entity"] = ""
     return t_df
 
-def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, cfg: dict) -> dict:
-    # 1. Выбор колонок
+
+def run_rrn_reconciliation(
+    pl_our_raw: pl.DataFrame,
+    pl_bank_raw: pl.DataFrame,
+    cfg: dict,
+    epos_registry: pd.DataFrame | None = None,
+) -> dict:
+    """Run RRN reconciliation using only supplied data and configuration.
+
+    The engine deliberately does not access the database. The caller is responsible
+    for loading the current EPOS registry and passing it via ``epos_registry``.
+    """
     our_cols = list(dict.fromkeys([c for c in [cfg["our_date"], cfg["our_rrn"], cfg["our_amt"], cfg["our_status"]] if c]))
     bank_cols = list(dict.fromkeys([c for c in [cfg["bank_date"], cfg["bank_rrn"], cfg["bank_amt"], cfg["bank_tid"], cfg["bank_status"]] if c]))
-    
+
     pl_our = pl_our_raw.select(our_cols).rename({cfg["our_date"]: "date", cfg["our_rrn"]: "RRN"})
     pl_bank = pl_bank_raw.select(bank_cols).rename({cfg["bank_date"]: "date", cfg["bank_rrn"]: "RRN"})
-    
-    if cfg["our_amt"]: pl_our = pl_our.rename({cfg["our_amt"]: "amount"})
-    if cfg["our_status"]: pl_our = pl_our.rename({cfg["our_status"]: "status_our"})
-    if cfg["bank_amt"]: pl_bank = pl_bank.rename({cfg["bank_amt"]: "amount"})
-    if cfg["bank_status"]: pl_bank = pl_bank.rename({cfg["bank_status"]: "status_bank"})
-    
-    # 2. Очистка
+
+    if cfg["our_amt"]:
+        pl_our = pl_our.rename({cfg["our_amt"]: "amount"})
+    if cfg["our_status"]:
+        pl_our = pl_our.rename({cfg["our_status"]: "status_our"})
+    if cfg["bank_amt"]:
+        pl_bank = pl_bank.rename({cfg["bank_amt"]: "amount"})
+    if cfg["bank_status"]:
+        pl_bank = pl_bank.rename({cfg["bank_status"]: "status_bank"})
+
     pl_our = pl_our.with_columns([
         clean_date_polars("date").alias("date"),
         (clean_amount_polars("amount") if cfg["our_amt"] else pl.lit(0.0)).alias("net_amount_our"),
@@ -131,22 +140,36 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         (clean_amount_polars("amount").alias("raw_amount") if cfg["bank_amt"] else pl.lit(0.0).alias("raw_amount")),
         clean_rrn_polars("RRN", "bank").alias("RRN")
     ])
-    
-    # 3. Интеграция с EPOS
+
     if cfg["bank_tid"]:
-        df_epos = get_epos_registry()
-        pl_epos = pl.from_pandas(df_epos).select(["terminal_id", "legal_entity", "commission_pct"])
-        if cfg["bank_tid"] != "terminal_id":
-            pl_bank = pl_bank.rename({cfg["bank_tid"]: "terminal_id"})
-        pl_bank = pl_bank.with_columns(pl.col("terminal_id").cast(pl.Utf8))
-        pl_epos = pl_epos.with_columns([pl.col("terminal_id").cast(pl.Utf8), pl.col("commission_pct").cast(pl.Float64)])
-        pl_bank = pl_bank.join(pl_epos, on="terminal_id", how="left")
-        pl_bank = pl_bank.with_columns(pl.col("commission_pct").fill_null(0.0))
-    
-    # 4. Возвраты
+        if epos_registry is not None and not epos_registry.empty:
+            required_epos = {"terminal_id", "legal_entity", "commission_pct"}
+            missing_epos = required_epos.difference(epos_registry.columns)
+            if missing_epos:
+                raise ValueError(f"EPOS registry is missing columns: {sorted(missing_epos)}")
+
+            pl_epos = pl.from_pandas(epos_registry[["terminal_id", "legal_entity", "commission_pct"]])
+            if cfg["bank_tid"] != "terminal_id":
+                pl_bank = pl_bank.rename({cfg["bank_tid"]: "terminal_id"})
+            pl_bank = pl_bank.with_columns(pl.col("terminal_id").cast(pl.Utf8))
+            pl_epos = pl_epos.with_columns([
+                pl.col("terminal_id").cast(pl.Utf8),
+                pl.col("commission_pct").cast(pl.Float64),
+            ])
+            pl_bank = pl_bank.join(pl_epos, on="terminal_id", how="left")
+            pl_bank = pl_bank.with_columns(pl.col("commission_pct").fill_null(0.0))
+        else:
+            if cfg["bank_tid"] != "terminal_id":
+                pl_bank = pl_bank.rename({cfg["bank_tid"]: "terminal_id"})
+            pl_bank = pl_bank.with_columns([
+                pl.col("terminal_id").cast(pl.Utf8),
+                pl.lit(0.0).alias("commission_pct"),
+                pl.lit("").alias("legal_entity"),
+            ])
+
     pl_our = apply_reversals(pl_our, "status_our" if cfg["our_status"] else None, cfg["our_rev"], "net_amount_our", cfg["rev_words"])
     pl_bank = apply_reversals(pl_bank, "status_bank" if cfg["bank_status"] else None, cfg["bank_rev"], "raw_amount", cfg["rev_words"])
-    
+
     deduct_comm = bool(cfg.get("deduct_commission", False))
     if "commission_pct" in pl_bank.columns:
         pl_bank = pl_bank.with_columns(
@@ -157,10 +180,7 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
                 (pl.col("raw_amount") - pl.col("commission_amount")).alias("net_amount_bank")
             )
         else:
-            # Режим брутто: суммы операций сравниваются напрямую, комиссия не искажает сверку сумм
-            pl_bank = pl_bank.with_columns(
-                pl.col("raw_amount").alias("net_amount_bank")
-            )
+            pl_bank = pl_bank.with_columns(pl.col("raw_amount").alias("net_amount_bank"))
     else:
         pl_bank = pl_bank.with_columns([
             pl.lit(0.0).alias("commission_pct"),
@@ -168,7 +188,6 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
             pl.col("raw_amount").alias("net_amount_bank")
         ])
 
-    # 5. Дубликаты
     dups_our_pl = pl_our.filter(pl.col("RRN").is_duplicated())
     dups_bank_pl = pl_bank.filter(pl.col("RRN").is_duplicated())
 
@@ -182,16 +201,14 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         pl_our = pl_our.filter(~pl.col("RRN").is_in(dups_our_pl["RRN"]))
         pl_bank = pl_bank.filter(~pl.col("RRN").is_in(dups_bank_pl["RRN"]))
     else:
-        # Для варианта "Оставить все дубликаты" нумеруем их, чтобы избежать декартова произведения при слиянии
         pl_our = pl_our.with_columns(pl.col("RRN").cum_count().over("RRN").alias("_dup_idx"))
         pl_bank = pl_bank.with_columns(pl.col("RRN").cum_count().over("RRN").alias("_dup_idx"))
 
-    # 6. Слияние
     if "_dup_idx" in pl_our.columns:
         merged_pl = pl_our.join(pl_bank, on=["RRN", "_dup_idx"], how="full", coalesce=True, suffix="_bank")
     else:
         merged_pl = pl_our.join(pl_bank, on="RRN", how="full", coalesce=True, suffix="_bank")
-    
+
     merged_pl = merged_pl.with_columns(pl.coalesce(["date", "date_bank"]).alias("date_unified"))
     merged_pl = merged_pl.with_columns([
         pl.col("date_unified").dt.strftime("%d.%m.%Y").fill_null("").alias("date_str"),
@@ -201,13 +218,16 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     ])
 
     tolerance = cfg["tolerance"]
-    amt_mismatches_pl = merged_pl.filter((pl.col("_merge") == "both") & ((pl.col("net_amount_bank").fill_null(0.0) - pl.col("net_amount_our").fill_null(0.0)).abs() > tolerance))
-    
+    amt_mismatches_pl = merged_pl.filter(
+        (pl.col("_merge") == "both")
+        & ((pl.col("net_amount_bank").fill_null(0.0) - pl.col("net_amount_our").fill_null(0.0)).abs() > tolerance)
+    )
+
     only_our = merged_pl.filter(pl.col("_merge") == "left_only").to_pandas()
     only_bank = merged_pl.filter(pl.col("_merge") == "right_only").to_pandas()
     amt_mismatches = amt_mismatches_pl.to_pandas()
     merged = merged_pl.to_pandas()
-    
+
     comm_only_diff_count = 0
     if not amt_mismatches.empty:
         amt_mismatches["Δ сумма"] = amt_mismatches["net_amount_bank"].fillna(0.0) - amt_mismatches["net_amount_our"].fillna(0.0)
@@ -215,23 +235,24 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
             amt_mismatches["raw_delta"] = amt_mismatches["raw_amount"].fillna(0.0) - amt_mismatches["net_amount_our"].fillna(0.0)
             comm_only_diff_count = int(((amt_mismatches["raw_delta"].abs() <= tolerance) & (amt_mismatches["Δ сумма"].abs() > tolerance)).sum())
 
-    # 7. Разрыв связей
     unbound_count = 0
     if cfg["unbind_mismatches"] and not amt_mismatches.empty:
         mismatched_rrns_set = set(amt_mismatches['RRN'].dropna().unique())
         unbound_count = len(mismatched_rrns_set)
-        
+
         our_part = amt_mismatches.copy()
         for col in our_part.columns:
-            if col not in {'date', 'net_amount_our', 'status_our', 'RRN', 'date_unified', 'date_str'}: our_part[col] = np.nan
+            if col not in {'date', 'net_amount_our', 'status_our', 'RRN', 'date_unified', 'date_str'}:
+                our_part[col] = np.nan
         our_part['_merge'] = 'left_only'
-        
+
         bank_part = amt_mismatches.copy()
         for col in bank_part.columns:
-            if col not in {'date_bank', 'net_amount_bank', 'status_bank', 'RRN', 'date_unified', 'date_str'}: bank_part[col] = np.nan
+            if col not in {'date_bank', 'net_amount_bank', 'status_bank', 'RRN', 'date_unified', 'date_str'}:
+                bank_part[col] = np.nan
         bank_part['date_unified'] = bank_part['date_bank']
         bank_part['_merge'] = 'right_only'
-        
+
         merged = merged[~((merged['_merge'] == 'both') & (merged['RRN'].isin(mismatched_rrns_set)))]
         merged = pd.concat([merged, our_part, bank_part], ignore_index=True)
         only_our = pd.concat([only_our, our_part], ignore_index=True)
@@ -252,7 +273,7 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     tot_our_raw = float(summary["Сумма_у_нас"].sum())
     tot_bank_raw = float(summary["Сумма_в_банке"].sum())
     summary["date"] = summary["date"].apply(lambda x: x.strftime("%d.%m.%Y") if hasattr(x, "strftime") and pd.notnull(x) else (str(x) if pd.notnull(x) and x else ""))
-    
+
     total_row = pd.DataFrame([{
         "date": "📊 ИТОГО (исходно)",
         "Кол_во_у_нас": summary["Кол_во_у_нас"].sum(),
@@ -264,7 +285,6 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     }])
     summary = pd.concat([summary, total_row], ignore_index=True)
 
-    # Аналитика по терминалам и месяцам
     terminal_summary_list = []
     total_commission = 0.0
     detected_months = []
@@ -281,12 +301,12 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
 
     return {
         "summary": summary,
-        "only_our": only_our, 
+        "only_our": only_our,
         "only_bank": only_bank,
         "amt_mismatches": amt_mismatches,
-        "dups_our": dups_our_pl.to_pandas(), 
+        "dups_our": dups_our_pl.to_pandas(),
         "dups_bank": dups_bank_pl.to_pandas(),
-        "dup_our_c": dups_our_pl.height, 
+        "dup_our_c": dups_our_pl.height,
         "dup_bank_c": dups_bank_pl.height,
         "matched_count": merged_pl.filter(pl.col("_merge") == "both").height - unbound_count,
         "mismatch_count": 0 if cfg["unbind_mismatches"] else amt_mismatches_pl.height,
