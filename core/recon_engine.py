@@ -35,21 +35,36 @@ def apply_reversals(df: pl.DataFrame, status_col: str, action: str, amt_col: str
         )
     return df
 
-def date_summary(dfo, dfb):
-    if "net_amount_our" not in dfo.columns:
-        dfo = dfo.assign(net_amount_our=0.0)
-    if "net_amount_bank" not in dfb.columns:
-        dfb = dfb.assign(net_amount_bank=0.0)
-    so = dfo.groupby("date", as_index=False).agg(Кол_во_у_нас=("RRN","count"), Сумма_у_нас=("net_amount_our","sum")) if not dfo.empty else pd.DataFrame(columns=["date", "Кол_во_у_нас", "Сумма_у_нас"])
-    sb = dfb.groupby("date", as_index=False).agg(Кол_во_в_банке=("RRN","count"), Сумма_в_банке=("net_amount_bank","sum")) if not dfb.empty else pd.DataFrame(columns=["date", "Кол_во_в_банке", "Сумма_в_банке"])
-    s = pd.merge(so, sb, on="date", how="outer").fillna(0)
-    for col in ["Сумма_в_банке", "Сумма_у_нас"]:
-        if col not in s.columns: s[col] = 0.0
-    for col in ["Кол_во_в_банке", "Кол_во_у_нас"]:
-        if col not in s.columns: s[col] = 0
-    s["Δ суммы"] = s["Сумма_в_банке"] - s["Сумма_у_нас"]
-    s["Δ кол-во"] = s["Кол_во_в_банке"] - s["Кол_во_у_нас"]
-    return s.sort_values("date", ascending=False).reset_index(drop=True)
+def date_summary(pl_our: pl.DataFrame, pl_bank: pl.DataFrame) -> pd.DataFrame:
+    so = (
+        pl_our.group_by("date").agg([
+            pl.len().alias("Кол_во_у_нас"),
+            pl.col("net_amount_our").sum().alias("Сумма_у_нас")
+        ])
+        if pl_our.height > 0
+        else pl.DataFrame(schema={"date": pl.Date, "Кол_во_у_нас": pl.UInt32, "Сумма_у_нас": pl.Float64})
+    )
+    sb = (
+        pl_bank.group_by("date").agg([
+            pl.len().alias("Кол_во_в_банке"),
+            pl.col("net_amount_bank").sum().alias("Сумма_в_банке")
+        ])
+        if pl_bank.height > 0
+        else pl.DataFrame(schema={"date": pl.Date, "Кол_во_в_банке": pl.UInt32, "Сумма_в_банке": pl.Float64})
+    )
+    s = so.join(sb, on="date", how="full", coalesce=True)
+    s = s.with_columns([
+        pl.col("Кол_во_у_нас").fill_null(0),
+        pl.col("Сумма_у_нас").fill_null(0.0),
+        pl.col("Кол_во_в_банке").fill_null(0),
+        pl.col("Сумма_в_банке").fill_null(0.0),
+    ])
+    s = s.with_columns([
+        (pl.col("Сумма_в_банке") - pl.col("Сумма_у_нас")).alias("Δ суммы"),
+        (pl.col("Кол_во_в_банке") - pl.col("Кол_во_у_нас")).alias("Δ кол-во"),
+    ])
+    s = s.sort("date", descending=True)
+    return s.to_pandas()
 
 def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, cfg: dict) -> dict:
     # 1. Выбор колонок
@@ -92,10 +107,26 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     pl_our = apply_reversals(pl_our, "status_our" if cfg["our_status"] else None, cfg["our_rev"], "net_amount_our", cfg["rev_words"])
     pl_bank = apply_reversals(pl_bank, "status_bank" if cfg["bank_status"] else None, cfg["bank_rev"], "raw_amount", cfg["rev_words"])
     
+    deduct_comm = bool(cfg.get("deduct_commission", False))
     if "commission_pct" in pl_bank.columns:
-        pl_bank = pl_bank.with_columns((pl.col("raw_amount") - (pl.col("raw_amount") * (pl.col("commission_pct") / 100.0))).alias("net_amount_bank"))
+        pl_bank = pl_bank.with_columns(
+            (pl.col("raw_amount") * (pl.col("commission_pct") / 100.0)).alias("commission_amount")
+        )
+        if deduct_comm:
+            pl_bank = pl_bank.with_columns(
+                (pl.col("raw_amount") - pl.col("commission_amount")).alias("net_amount_bank")
+            )
+        else:
+            # Режим брутто: суммы операций сравниваются напрямую, комиссия не искажает сверку сумм
+            pl_bank = pl_bank.with_columns(
+                pl.col("raw_amount").alias("net_amount_bank")
+            )
     else:
-        pl_bank = pl_bank.with_columns(pl.col("raw_amount").alias("net_amount_bank"))
+        pl_bank = pl_bank.with_columns([
+            pl.lit(0.0).alias("commission_pct"),
+            pl.lit(0.0).alias("commission_amount"),
+            pl.col("raw_amount").alias("net_amount_bank")
+        ])
 
     # 5. Дубликаты
     dups_our_pl = pl_our.filter(pl.col("RRN").is_duplicated())
@@ -120,12 +151,14 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         merged_pl = pl_our.join(pl_bank, on=["RRN", "_dup_idx"], how="full", coalesce=True, suffix="_bank")
     else:
         merged_pl = pl_our.join(pl_bank, on="RRN", how="full", coalesce=True, suffix="_bank")
+    
     merged_pl = merged_pl.with_columns(pl.coalesce(["date", "date_bank"]).alias("date_unified"))
-    merged_pl = merged_pl.with_columns(
+    merged_pl = merged_pl.with_columns([
+        pl.col("date_unified").dt.strftime("%d.%m.%Y").fill_null("").alias("date_str"),
         pl.when(pl.col("date").is_not_null() & pl.col("date_bank").is_null()).then(pl.lit("left_only"))
         .when(pl.col("date").is_null() & pl.col("date_bank").is_not_null()).then(pl.lit("right_only"))
         .otherwise(pl.lit("both")).alias("_merge")
-    )
+    ])
 
     tolerance = cfg["tolerance"]
     amt_mismatches_pl = merged_pl.filter((pl.col("_merge") == "both") & ((pl.col("net_amount_bank").fill_null(0.0) - pl.col("net_amount_our").fill_null(0.0)).abs() > tolerance))
@@ -135,8 +168,12 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     amt_mismatches = amt_mismatches_pl.to_pandas()
     merged = merged_pl.to_pandas()
     
+    comm_only_diff_count = 0
     if not amt_mismatches.empty:
         amt_mismatches["Δ сумма"] = amt_mismatches["net_amount_bank"].fillna(0.0) - amt_mismatches["net_amount_our"].fillna(0.0)
+        if "raw_amount" in amt_mismatches.columns:
+            amt_mismatches["raw_delta"] = amt_mismatches["raw_amount"].fillna(0.0) - amt_mismatches["net_amount_our"].fillna(0.0)
+            comm_only_diff_count = int(((amt_mismatches["raw_delta"].abs() <= tolerance) & (amt_mismatches["Δ сумма"].abs() > tolerance)).sum())
 
     # 7. Разрыв связей
     unbound_count = 0
@@ -146,12 +183,12 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         
         our_part = amt_mismatches.copy()
         for col in our_part.columns:
-            if col not in {'date', 'net_amount_our', 'status_our', 'RRN', 'date_unified'}: our_part[col] = np.nan
+            if col not in {'date', 'net_amount_our', 'status_our', 'RRN', 'date_unified', 'date_str'}: our_part[col] = np.nan
         our_part['_merge'] = 'left_only'
         
         bank_part = amt_mismatches.copy()
         for col in bank_part.columns:
-            if col not in {'date_bank', 'net_amount_bank', 'status_bank', 'RRN', 'date_unified'}: bank_part[col] = np.nan
+            if col not in {'date_bank', 'net_amount_bank', 'status_bank', 'RRN', 'date_unified', 'date_str'}: bank_part[col] = np.nan
         bank_part['date_unified'] = bank_part['date_bank']
         bank_part['_merge'] = 'right_only'
         
@@ -161,18 +198,20 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         only_bank = pd.concat([only_bank, bank_part], ignore_index=True)
         amt_mismatches = pd.DataFrame(columns=amt_mismatches.columns)
 
-    only_our["date_str"] = pd.to_datetime(only_our["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y").fillna("")
-    only_bank["date_str"] = pd.to_datetime(only_bank["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y").fillna("")
+    if "date_str" not in only_our.columns:
+        only_our["date_str"] = pd.to_datetime(only_our["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y").fillna("")
+    if "date_str" not in only_bank.columns:
+        only_bank["date_str"] = pd.to_datetime(only_bank["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y").fillna("")
 
     only_our.insert(0, "✅", True)
     only_bank.insert(0, "✅", True)
     only_our["📝 Причина"] = ""
     only_bank["📝 Причина"] = ""
 
-    summary = date_summary(pl_our.to_pandas(), pl_bank.to_pandas())
+    summary = date_summary(pl_our, pl_bank)
     tot_our_raw = float(summary["Сумма_у_нас"].sum())
     tot_bank_raw = float(summary["Сумма_в_банке"].sum())
-    summary["date"] = summary["date"].apply(lambda x: x.strftime("%d.%m.%Y") if pd.notnull(x) and x else "")
+    summary["date"] = summary["date"].apply(lambda x: x.strftime("%d.%m.%Y") if hasattr(x, "strftime") and pd.notnull(x) else (str(x) if pd.notnull(x) and x else ""))
     
     total_row = pd.DataFrame([{
         "date": "📊 ИТОГО (исходно)",
@@ -196,6 +235,8 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         "dup_bank_c": dups_bank_pl.height,
         "matched_count": merged_pl.filter(pl.col("_merge") == "both").height - unbound_count,
         "mismatch_count": 0 if cfg["unbind_mismatches"] else amt_mismatches_pl.height,
+        "comm_only_diff_count": comm_only_diff_count,
+        "deduct_commission": deduct_comm,
         "merged": merged,
         "dup_action": cfg["dup_action"],
     }

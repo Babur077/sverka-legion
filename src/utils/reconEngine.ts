@@ -161,7 +161,9 @@ export function runReconciliation(
       commissionPct = eposMap.get(tid.toUpperCase()) || 0;
     }
 
-    const netAmount = commissionPct > 0 ? amount - (amount * (commissionPct / 100)) : amount;
+    const netAmount = (cfg.deduct_commission && commissionPct > 0)
+      ? amount - (amount * (commissionPct / 100))
+      : amount;
 
     return {
       _idx: idx,

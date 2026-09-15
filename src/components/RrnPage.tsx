@@ -93,6 +93,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [bankRev, setBankRev] = useState('Удалить строку');
   const [dupAction, setDupAction] = useState('Ничего не делать (оставить все)');
   const [unbindMismatches, setUnbindMismatches] = useState(false);
+  const [deductCommission, setDeductCommission] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Calculation & Results
@@ -366,6 +367,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         dup_action: dupAction,
         unbind_mismatches: unbindMismatches,
         tolerance: settings.amount_tolerance,
+        deduct_commission: deductCommission,
       };
 
       const result = await runReconciliationAsync(ourFile.rows, bankFile.rows, cfg, eposList);
@@ -1090,6 +1092,39 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                         <span>{opt}</span>
                       </label>
                     ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-3">
+                  <label className="block font-semibold text-slate-700 mb-1">3. Режим сверки сумм при наличии комиссии EPOS:</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <label className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer text-xs ${!deductCommission ? 'border-emerald-300 bg-emerald-50/50 text-emerald-950' : 'border-slate-200 bg-slate-50/50 text-slate-700'}`}>
+                      <input
+                        type="radio"
+                        name="deductCommissionRadio"
+                        checked={!deductCommission}
+                        onChange={() => setDeductCommission(false)}
+                        className="mt-0.5 text-emerald-600"
+                      />
+                      <div>
+                        <div className="font-semibold">🟢 Сверять суммы операций брутто (без вычета комиссии)</div>
+                        <div className="text-[11px] text-slate-500">Сравниваются номинальные суммы платежей. Рекомендуется, когда файлы содержат исходные суммы покупок.</div>
+                      </div>
+                    </label>
+
+                    <label className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer text-xs ${deductCommission ? 'border-indigo-300 bg-indigo-50/50 text-indigo-950' : 'border-slate-200 bg-slate-50/50 text-slate-700'}`}>
+                      <input
+                        type="radio"
+                        name="deductCommissionRadio"
+                        checked={deductCommission}
+                        onChange={() => setDeductCommission(true)}
+                        className="mt-0.5 text-indigo-600"
+                      />
+                      <div>
+                        <div className="font-semibold">💳 Сверять зачисление нетто (за вычетом комиссии)</div>
+                        <div className="text-[11px] text-slate-500">Из суммы банка вычитается ставка комиссии эквайера из реестра EPOS.</div>
+                      </div>
+                    </label>
                   </div>
                 </div>
 
