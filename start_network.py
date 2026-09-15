@@ -251,6 +251,10 @@ def main():
         "--server.address", "0.0.0.0",
         "--server.port", str(port),
         "--server.headless", "true",
+        "--server.maxUploadSize", "500",
+        "--server.maxMessageSize", "500",
+        "--server.enableXsrfProtection", "false",
+        "--server.enableCORS", "false",
         "--browser.gatherUsageStats", "false"
     ]
 

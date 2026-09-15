@@ -57,7 +57,7 @@ if %errorlevel% neq 0 (
     echo [ВНИМАНИЕ] Сервер завершил работу с кодом ошибки %errorlevel%.
     echo ===============================================================
     echo Запуск прямого режима Streamlit...
-    %PYTHON_BIN% -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true --browser.gatherUsageStats false
+    %PYTHON_BIN% -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true --server.maxUploadSize 500 --server.maxMessageSize 500 --server.enableXsrfProtection false --server.enableCORS false --browser.gatherUsageStats false
 )
 
 echo.

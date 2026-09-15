@@ -53,7 +53,7 @@ def is_port_listening(host: str = "127.0.0.1", port: int = PORT) -> bool:
 
 def check_dependencies():
     """Проверяет наличие всех критически важных библиотек."""
-    required = ["streamlit", "pandas", "polars", "openpyxl", "plotly"]
+    required = ["streamlit", "pandas", "polars", "openpyxl", "plotly", "fastexcel"]
     missing = []
     for pkg in required:
         try:
@@ -84,6 +84,10 @@ def ensure_streamlit_running():
         "--server.address", "0.0.0.0",
         "--server.port", str(PORT),
         "--server.headless", "true",
+        "--server.maxUploadSize", "500",
+        "--server.maxMessageSize", "500",
+        "--server.enableXsrfProtection", "false",
+        "--server.enableCORS", "false",
         "--browser.gatherUsageStats", "false"
     ]
 
