@@ -226,34 +226,33 @@ def show_page():
         with st.container(border=True):
             st.markdown("### Настройка колонок")
             
-            df_our_pd, df_bank_pd = df_our_raw.to_pandas(), df_bank_raw.to_pandas()
             t1, t2 = st.tabs(["Ваши данные", "Данные банка"])
             
             # Селектор колонок для НАШИХ данных
             with t1:
-                cols_o = list(df_our_pd.columns)
+                cols_o = list(df_our_raw.columns)
                 ca, cb = st.columns(2)
                 with ca:
-                    our_date = st.selectbox("Дата", cols_o, index=cols_o.index(guess_col(df_our_pd, ["date","дата"])) if guess_col(df_our_pd, ["date","дата"]) else 0, key="our_d")
-                    our_rrn = st.selectbox("RRN", cols_o, index=cols_o.index(guess_col(df_our_pd, ["rrn","ref"])) if guess_col(df_our_pd, ["rrn","ref"]) else 0, key="our_r")
+                    our_date = st.selectbox("Дата", cols_o, index=cols_o.index(guess_col(df_our_raw, ["date","дата"])) if guess_col(df_our_raw, ["date","дата"]) else 0, key="our_d")
+                    our_rrn = st.selectbox("RRN", cols_o, index=cols_o.index(guess_col(df_our_raw, ["rrn","ref"])) if guess_col(df_our_raw, ["rrn","ref"]) else 0, key="our_r")
                 with cb:
-                    _amt_o = guess_col(df_our_pd, ["amount","сумма"])
+                    _amt_o = guess_col(df_our_raw, ["amount","сумма"])
                     our_amt = st.selectbox("Сумма", ["(нет)"] + cols_o, index=cols_o.index(_amt_o)+1 if _amt_o else 0, key="our_a")
                     our_status = st.selectbox("Статус", ["(нет)"] + cols_o, key="our_s")
 
             # Селектор колонок для БАНКА
             with t2:
-                cols_b = list(df_bank_pd.columns)
+                cols_b = list(df_bank_raw.columns)
                 ca2, cb2, cc2 = st.columns(3)
                 with ca2:
-                    bank_date = st.selectbox("Дата", cols_b, index=cols_b.index(guess_col(df_bank_pd, ["date","дата"])) if guess_col(df_bank_pd, ["date","дата"]) else 0, key="bank_d")
-                    bank_rrn = st.selectbox("RRN", cols_b, index=cols_b.index(guess_col(df_bank_pd, ["rrn","ref"])) if guess_col(df_bank_pd, ["rrn","ref"]) else 0, key="bank_r")
+                    bank_date = st.selectbox("Дата", cols_b, index=cols_b.index(guess_col(df_bank_raw, ["date","дата"])) if guess_col(df_bank_raw, ["date","дата"]) else 0, key="bank_d")
+                    bank_rrn = st.selectbox("RRN", cols_b, index=cols_b.index(guess_col(df_bank_raw, ["rrn","ref"])) if guess_col(df_bank_raw, ["rrn","ref"]) else 0, key="bank_r")
                 with cb2:
-                    _amt_b = guess_col(df_bank_pd, ["amount","сумма"])
+                    _amt_b = guess_col(df_bank_raw, ["amount","сумма"])
                     bank_amt = st.selectbox("Сумма", ["(нет)"] + cols_b, index=cols_b.index(_amt_b)+1 if _amt_b else 0, key="bank_a")
                     bank_status = st.selectbox("Статус", ["(нет)"] + cols_b, key="bank_s")
                 with cc2:
-                    _tid_b = guess_col(df_bank_pd, ["tid","terminal","терминал"])
+                    _tid_b = guess_col(df_bank_raw, ["tid","terminal","терминал"])
                     bank_tid = st.selectbox("Terminal ID (TID)", ["(нет)"] + cols_b, index=cols_b.index(_tid_b)+1 if _tid_b else 0, key="bank_t", help="Связывает транзакцию с Реестром EPOS")
 
             our_amt = None if our_amt == "(нет)" else our_amt
@@ -296,7 +295,21 @@ def show_page():
                 )
 
                 st.divider()
-                st.markdown("#### 3️⃣ Строгое соответствие сумм")
+                st.markdown("#### 3️⃣ Режим сверки сумм и комиссия EPOS")
+                recon_mode = st.radio(
+                    "Сверка сумм при наличии EPOS-терминалов:",
+                    [
+                        "🟢 Сверять суммы операций брутто (без вычета комиссии) [Рекомендуется]",
+                        "💳 Сверять зачисление нетто (за вычетом комиссии банка по EPOS)"
+                    ],
+                    index=0,
+                    key="recon_mode_select",
+                    help="В режиме брутто суммы покупок сравниваются напрямую по номиналу (202,207.52 == 202,207.52). Комиссия EPOS рассчитывается информационно. В режиме нетто из суммы банка вычитается % комиссии эквайера."
+                )
+                deduct_commission = ("нетто" in recon_mode)
+
+                st.divider()
+                st.markdown("#### 4️⃣ Строгое соответствие сумм")
                 st.checkbox(
                     "💔 Разрывать связи при расхождении сумм", 
                     value=False,
@@ -312,7 +325,8 @@ def show_page():
                     "our_date": our_date, "our_rrn": our_rrn, "our_amt": our_amt, "our_status": our_status,
                     "bank_date": bank_date, "bank_rrn": bank_rrn, "bank_amt": bank_amt, "bank_tid": bank_tid, "bank_status": bank_status,
                     "rev_words": rev_words, "our_rev": our_rev, "bank_rev": bank_rev,
-                    "dup_action": dup_action, 
+                    "dup_action": dup_action,
+                    "deduct_commission": deduct_commission,
                     "unbind_mismatches": st.session_state.get("unbind_mismatches", False),
                     "tolerance": st.session_state["settings"]["amount_tolerance"]
                 }
@@ -347,23 +361,25 @@ def show_page():
             return grouped[grouped["has_normal"] & grouped["has_reversal"]].index.tolist()
 
         with tabs[2]:
-            st.info("💡 Здесь собраны все несопоставленные транзакции. Вы можете управлять галочками и указывать причины раздельно для каждой панели.")
+            st.info("💡 Здесь собраны все несопоставленные транзакции. Вы можете управлять галочками и указывать причины раздельно для каждой панели. Для высокой производительности таблицы отображаются постранично, а массовые операции и экспорт применяются ко всему массиву данных.")
             
             col_left, col_right = st.columns(2)
             
             with col_left:
-                st.markdown(f"### 🔴 Отсутствуют в банке ({len(data['only_our'])})")
+                st.markdown(f"### 🔴 Отсутствуют в банке ({len(data['only_our']):,})")
                 df_target_our = st.session_state["res"]["only_our"]
                 
                 if not is_auditor:
                     with st.expander("🛠 Массовое управление (Наши данные)", expanded=False):
-                        has_date_our = "date_unified" in df_target_our.columns
+                        has_date_our = "date_str" in df_target_our.columns
                         dates_opts_our = ["(Все)"]
-                        if has_date_our: dates_opts_our += list(pd.to_datetime(df_target_our["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y").dropna().unique())
+                        if has_date_our:
+                            dates_opts_our += sorted([str(d) for d in df_target_our["date_str"].dropna().unique() if str(d).strip()])
                         
                         stat_col_our = "status_our" if "status_our" in df_target_our.columns else None
                         stat_opts_our = ["(Все)"]
-                        if stat_col_our: stat_opts_our += list(df_target_our[stat_col_our].dropna().astype(str).unique())
+                        if stat_col_our:
+                            stat_opts_our += sorted([str(s) for s in df_target_our[stat_col_our].dropna().unique() if str(s).strip()])
 
                         c_d, c_s = st.columns(2)
                         ex_date_our = c_d.selectbox("Фильтр по дате (Наши):", dates_opts_our, key="bulk_d_our")
@@ -372,18 +388,16 @@ def show_page():
                         c_b1, c_b2 = st.columns(2)
                         if c_b1.button("➖ Снять ✅ (Наши)", use_container_width=True, key="btn_rem_our"):
                             mask = pd.Series(True, index=df_target_our.index)
-                            if has_date_our and ex_date_our != "(Все)": mask &= (pd.to_datetime(df_target_our["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_our)
+                            if has_date_our and ex_date_our != "(Все)": mask &= (df_target_our["date_str"] == ex_date_our)
                             if stat_col_our and ex_stat_our != "(Все)": mask &= (df_target_our[stat_col_our].astype(str) == ex_stat_our)
                             st.session_state["res"]["only_our"].loc[mask, "✅"] = False
-                            if "ed_our_v2" in st.session_state: del st.session_state["ed_our_v2"] 
                             st.rerun()
 
                         if c_b2.button("➕ Вернуть ✅ (Наши)", use_container_width=True, key="btn_add_our"):
                             mask = pd.Series(True, index=df_target_our.index)
-                            if has_date_our and ex_date_our != "(Все)": mask &= (pd.to_datetime(df_target_our["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_our)
+                            if has_date_our and ex_date_our != "(Все)": mask &= (df_target_our["date_str"] == ex_date_our)
                             if stat_col_our and ex_stat_our != "(Все)": mask &= (df_target_our[stat_col_our].astype(str) == ex_stat_our)
                             st.session_state["res"]["only_our"].loc[mask, "✅"] = True
-                            if "ed_our_v2" in st.session_state: del st.session_state["ed_our_v2"]
                             st.rerun()
 
                         st.divider()
@@ -397,7 +411,6 @@ def show_page():
                                 mask = st.session_state["res"]["only_our"]["RRN"].isin(offset_rrns_our)
                                 st.session_state["res"]["only_our"].loc[mask, "✅"] = False
                                 st.session_state["res"]["only_our"].loc[mask, "📝 Причина"] = "Технический возврат"
-                                if "ed_our_v2" in st.session_state: del st.session_state["ed_our_v2"]
                                 st.success("Компенсирующие транзакции исключены!")
                                 st.rerun()
                         else:
@@ -405,12 +418,34 @@ def show_page():
                 else:
                     st.caption("🔒 Массовое управление строками заблокировано в режиме аудитора (только чтение).")
 
+                # Быстрый поиск по RRN
+                q_our = st.text_input("🔍 Поиск по RRN (Наши):", key="search_our_v3", placeholder="Введите RRN или его часть...").strip().upper()
+                filtered_our = df_target_our
+                if q_our:
+                    filtered_our = df_target_our[df_target_our["RRN"].astype(str).str.contains(q_our, na=False)]
+
+                total_our_len = len(filtered_our)
+                page_size_our = 100
+
+                if total_our_len > page_size_our:
+                    total_pages_our = max(1, (total_our_len + page_size_our - 1) // page_size_our)
+                    c_p1, c_p2 = st.columns([1, 2])
+                    with c_p1:
+                        cur_p_our = st.number_input(f"Стр. (всего {total_pages_our:,})", min_value=1, max_value=total_pages_our, value=1, step=1, key="p_our_nav")
+                    with c_p2:
+                        s_idx = (cur_p_our - 1) * page_size_our
+                        e_idx = min(s_idx + page_size_our, total_our_len)
+                        st.caption(f"Строки {s_idx + 1:,}–{e_idx:,} из {total_our_len:,}")
+                    slice_our = filtered_our.iloc[s_idx:e_idx].copy()
+                else:
+                    slice_our = filtered_our.copy()
+
                 show_cols_our = ["✅", "date_str", "RRN", "net_amount_our", "📝 Причина"]
-                if "status_our" in df_target_our.columns: show_cols_our.append("status_our")
+                if "status_our" in slice_our.columns: show_cols_our.append("status_our")
 
                 disabled_our = show_cols_our if is_auditor else [c for c in show_cols_our if c not in ["✅","📝 Причина"]]
-                edited_only_our = st.data_editor(
-                    st.session_state["res"]["only_our"][show_cols_our],
+                edited_page_our = st.data_editor(
+                    slice_our[show_cols_our],
                     column_config={
                         "✅": st.column_config.CheckboxColumn("Вкл.", default=True, width="small"),
                         "📝 Причина": st.column_config.SelectboxColumn("Причина", options=REASON_OPTIONS, width="medium"),
@@ -418,25 +453,27 @@ def show_page():
                         "net_amount_our": num_cfg("Сумма"),
                     },
                     disabled=disabled_our,
-                    use_container_width=True, hide_index=True, key="ed_our_v2",
+                    use_container_width=True, hide_index=False, key=f"ed_our_v3_{cur_p_our if total_our_len > page_size_our else 1}",
                 )
-                if not is_auditor:
-                    st.session_state["res"]["only_our"]["✅"] = edited_only_our["✅"]
-                    st.session_state["res"]["only_our"]["📝 Причина"] = edited_only_our["📝 Причина"]
+                if not is_auditor and not edited_page_our.empty:
+                    st.session_state["res"]["only_our"].loc[edited_page_our.index, "✅"] = edited_page_our["✅"]
+                    st.session_state["res"]["only_our"].loc[edited_page_our.index, "📝 Причина"] = edited_page_our["📝 Причина"]
 
             with col_right:
-                st.markdown(f"### 🔵 Лишние данные банка ({len(data['only_bank'])})")
+                st.markdown(f"### 🔵 Лишние данные банка ({len(data['only_bank']):,})")
                 df_target_bank = st.session_state["res"]["only_bank"]
                 
                 if not is_auditor:
                     with st.expander("🛠 Массовое управление (Данные банка)", expanded=False):
-                        has_date_bank = "date_unified" in df_target_bank.columns
+                        has_date_bank = "date_str" in df_target_bank.columns
                         dates_opts_bank = ["(Все)"]
-                        if has_date_bank: dates_opts_bank += list(pd.to_datetime(df_target_bank["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y").dropna().unique())
+                        if has_date_bank:
+                            dates_opts_bank += sorted([str(d) for d in df_target_bank["date_str"].dropna().unique() if str(d).strip()])
                         
                         stat_col_bank = "status_bank" if "status_bank" in df_target_bank.columns else None
                         stat_opts_bank = ["(Все)"]
-                        if stat_col_bank: stat_opts_bank += list(df_target_bank[stat_col_bank].dropna().astype(str).unique())
+                        if stat_col_bank:
+                            stat_opts_bank += sorted([str(s) for s in df_target_bank[stat_col_bank].dropna().unique() if str(s).strip()])
 
                         c_d_b, c_s_b = st.columns(2)
                         ex_date_bank = c_d_b.selectbox("Фильтр по дате (Банк):", dates_opts_bank, key="bulk_d_bank")
@@ -445,18 +482,16 @@ def show_page():
                         c_b1_b, c_b2_b = st.columns(2)
                         if c_b1_b.button("➖ Снять ✅ (Банк)", use_container_width=True, key="btn_rem_bank"):
                             mask = pd.Series(True, index=df_target_bank.index)
-                            if has_date_bank and ex_date_bank != "(Все)": mask &= (pd.to_datetime(df_target_bank["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_bank)
+                            if has_date_bank and ex_date_bank != "(Все)": mask &= (df_target_bank["date_str"] == ex_date_bank)
                             if stat_col_bank and ex_stat_bank != "(Все)": mask &= (df_target_bank[stat_col_bank].astype(str) == ex_stat_bank)
                             st.session_state["res"]["only_bank"].loc[mask, "✅"] = False
-                            if "ed_bank_v2" in st.session_state: del st.session_state["ed_bank_v2"]
                             st.rerun()
 
                         if c_b2_b.button("➕ Вернуть ✅ (Банк)", use_container_width=True, key="btn_add_bank"):
                             mask = pd.Series(True, index=df_target_bank.index)
-                            if has_date_bank and ex_date_bank != "(Все)": mask &= (pd.to_datetime(df_target_bank["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_bank)
+                            if has_date_bank and ex_date_bank != "(Все)": mask &= (df_target_bank["date_str"] == ex_date_bank)
                             if stat_col_bank and ex_stat_bank != "(Все)": mask &= (df_target_bank[stat_col_bank].astype(str) == ex_stat_bank)
                             st.session_state["res"]["only_bank"].loc[mask, "✅"] = True
-                            if "ed_bank_v2" in st.session_state: del st.session_state["ed_bank_v2"]
                             st.rerun()
 
                         st.divider()
@@ -470,7 +505,6 @@ def show_page():
                                 mask = st.session_state["res"]["only_bank"]["RRN"].isin(offset_rrns_bank)
                                 st.session_state["res"]["only_bank"].loc[mask, "✅"] = False
                                 st.session_state["res"]["only_bank"].loc[mask, "📝 Причина"] = "Технический возврат"
-                                if "ed_bank_v2" in st.session_state: del st.session_state["ed_bank_v2"]
                                 st.success("Компенсирующие транзакции исключены!")
                                 st.rerun()
                         else:
@@ -478,12 +512,34 @@ def show_page():
                 else:
                     st.caption("🔒 Массовое управление строками заблокировано в режиме аудитора (только чтение).")
 
+                # Быстрый поиск по RRN
+                q_bank = st.text_input("🔍 Поиск по RRN (Банк):", key="search_bank_v3", placeholder="Введите RRN или его часть...").strip().upper()
+                filtered_bank = df_target_bank
+                if q_bank:
+                    filtered_bank = df_target_bank[df_target_bank["RRN"].astype(str).str.contains(q_bank, na=False)]
+
+                total_bank_len = len(filtered_bank)
+                page_size_bank = 100
+
+                if total_bank_len > page_size_bank:
+                    total_pages_bank = max(1, (total_bank_len + page_size_bank - 1) // page_size_bank)
+                    c_p1_b, c_p2_b = st.columns([1, 2])
+                    with c_p1_b:
+                        cur_p_bank = st.number_input(f"Стр. (всего {total_pages_bank:,})", min_value=1, max_value=total_pages_bank, value=1, step=1, key="p_bank_nav")
+                    with c_p2_b:
+                        s_idx_b = (cur_p_bank - 1) * page_size_bank
+                        e_idx_b = min(s_idx_b + page_size_bank, total_bank_len)
+                        st.caption(f"Строки {s_idx_b + 1:,}–{e_idx_b:,} из {total_bank_len:,}")
+                    slice_bank = filtered_bank.iloc[s_idx_b:e_idx_b].copy()
+                else:
+                    slice_bank = filtered_bank.copy()
+
                 show_cols_bank = ["✅", "date_str", "RRN", "net_amount_bank", "📝 Причина"]
-                if "status_bank" in df_target_bank.columns: show_cols_bank.append("status_bank")
+                if "status_bank" in slice_bank.columns: show_cols_bank.append("status_bank")
 
                 disabled_bank = show_cols_bank if is_auditor else [c for c in show_cols_bank if c not in ["✅","📝 Причина"]]
-                edited_only_bank = st.data_editor(
-                    st.session_state["res"]["only_bank"][show_cols_bank],
+                edited_page_bank = st.data_editor(
+                    slice_bank[show_cols_bank],
                     column_config={
                         "✅": st.column_config.CheckboxColumn("Вкл.", default=True, width="small"),
                         "📝 Причина": st.column_config.SelectboxColumn("Причина", options=REASON_OPTIONS, width="medium"),
@@ -491,29 +547,49 @@ def show_page():
                         "net_amount_bank": num_cfg("Сумма"),
                     },
                     disabled=disabled_bank,
-                    use_container_width=True, hide_index=True, key="ed_bank_v2",
+                    use_container_width=True, hide_index=False, key=f"ed_bank_v3_{cur_p_bank if total_bank_len > page_size_bank else 1}",
                 )
-                if not is_auditor:
-                    st.session_state["res"]["only_bank"]["✅"] = edited_only_bank["✅"]
-                    st.session_state["res"]["only_bank"]["📝 Причина"] = edited_only_bank["📝 Причина"]
+                if not is_auditor and not edited_page_bank.empty:
+                    st.session_state["res"]["only_bank"].loc[edited_page_bank.index, "✅"] = edited_page_bank["✅"]
+                    st.session_state["res"]["only_bank"].loc[edited_page_bank.index, "📝 Причина"] = edited_page_bank["📝 Причина"]
 
         with tabs[3]:
             if st.session_state.get("unbind_mismatches", False):
                 st.info("ℹ️ Опция «Разрывать связи при расхождении сумм» активна. Все транзакции с разницей в суммах были автоматически разделены и перенесены во вкладку «Несопоставленные» (как отсутствующие в банке и лишние данные банка).")
             elif data["amt_mismatches"].empty:
-                st.success(f"🎉 Нет расхождений в суммах! Все сопоставлённые RRN имеют идентичные суммы.")
+                st.success("🎉 Нет расхождений в суммах! Все сопоставлённые RRN имеют идентичные суммы.")
             else:
+                comm_only = data.get("comm_only_diff_count", 0)
+                if comm_only > 0:
+                    st.warning(
+                        f"💡 **Обратите внимание**: у **{comm_only:,}** транзакций исходные суммы операций в файлах **ПОЛНОСТЬЮ СОВПАДАЮТ**!\n\n"
+                        f"Расхождение возникло из-за того, что был включён режим «Сверять зачисление нетто (за вычетом комиссии банка по EPOS)». "
+                        f"Если вам нужно сверить номинальные суммы транзакций (брутто), выберите в блоке «3️⃣ Режим сверки сумм» вариант **«🟢 Сверять суммы операций брутто (без вычета комиссии)»** и нажмите «Запустить сверку»."
+                    )
+
                 total_delta = float(data["amt_mismatches"]["Δ сумма"].sum())
                 c1, c2 = st.columns(2)
-                c1.metric(f"Транзакций с расхождением суммы", data["mismatch_count"])
-                c2.metric(f"Суммарная разница", f"{total_delta:+,.2f}")
+                c1.metric("Транзакций с расхождением суммы", data["mismatch_count"])
+                c2.metric("Суммарная разница", f"{total_delta:+,.2f}")
+                
                 disp = data["amt_mismatches"].drop(columns=["_merge"], errors="ignore")
-                st.dataframe(disp, use_container_width=True, hide_index=True, column_config={
+                
+                cfg_cols = {
                     "RRN": st.column_config.TextColumn("RRN"),
                     "net_amount_our": num_cfg("Сумма (Мы)"),
-                    "net_amount_bank": num_cfg("Сумма (Банк)"),
+                    "raw_amount": num_cfg("Сумма банка (Брутто)"),
+                    "commission_pct": st.column_config.NumberColumn("Комиссия %", format="%.2f%%"),
+                    "commission_amount": num_cfg("Комиссия EPOS"),
+                    "net_amount_bank": num_cfg("Сумма банка (Нетто)"),
                     "Δ сумма": st.column_config.NumberColumn("Δ Разница", format="%+,.2f"),
-                })
+                }
+                
+                st.dataframe(
+                    disp,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config=cfg_cols
+                )
 
         with tabs[4]:
             if "остав" in data["dup_action"].lower() or "ничего" in data["dup_action"].lower():
@@ -533,8 +609,8 @@ def show_page():
         # ── Dynamic recalculation ─────────────────────────
         adj = data["summary"][~data["summary"]["date"].str.contains("ИТОГО")].copy()
         
-        ig_our = edited_only_our[~edited_only_our["✅"]].copy()
-        ig_bank = edited_only_bank[~edited_only_bank["✅"]].copy()
+        ig_our = st.session_state["res"]["only_our"][~st.session_state["res"]["only_our"]["✅"]].copy()
+        ig_bank = st.session_state["res"]["only_bank"][~st.session_state["res"]["only_bank"]["✅"]].copy()
 
         def subtract_exclusions(adj_df, ig_df, cnt_col, sum_col, amt_col):
             if ig_df.empty or amt_col not in ig_df.columns: return adj_df
@@ -713,8 +789,8 @@ def show_page():
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf, engine="openpyxl") as w:
                     adj_full.to_excel(w, sheet_name="Сводка_по_датам", index=False)
-                    edited_only_our.to_excel(w, sheet_name="Нет_в_банке", index=False)
-                    edited_only_bank.to_excel(w, sheet_name="Лишнее_от_банка", index=False)
+                    st.session_state["res"]["only_our"].to_excel(w, sheet_name="Нет_в_банке", index=False)
+                    st.session_state["res"]["only_bank"].to_excel(w, sheet_name="Лишнее_от_банка", index=False)
                     if not data["amt_mismatches"].empty: data["amt_mismatches"].drop(columns=["_merge"], errors="ignore").to_excel(w, sheet_name="Расхождения_сумм", index=False)
                     if data["dup_our_c"] > 0: data["dups_our"].to_excel(w, sheet_name="Дубликаты_наши", index=False)
                     if data["dup_bank_c"] > 0: data["dups_bank"].to_excel(w, sheet_name="Дубликаты_банк", index=False)

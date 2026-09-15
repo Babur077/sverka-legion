@@ -63,6 +63,7 @@ export interface ReconciliationConfig {
   dup_action: string;
   unbind_mismatches: boolean;
   tolerance: number;
+  deduct_commission?: boolean;
 }
 
 export interface DateSummaryRow {
