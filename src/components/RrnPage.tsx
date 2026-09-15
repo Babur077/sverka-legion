@@ -125,8 +125,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         timestamp: new Date().toISOString(),
         selectedBank,
         commissionPct,
-        ourFile: ourFile ? { name: ourFile.name, columns: ourFile.columns, rows: ourFile.rows.slice(0, 1500) } : null,
-        bankFile: bankFile ? { name: bankFile.name, columns: bankFile.columns, rows: bankFile.rows.slice(0, 1500) } : null,
+        ourFile: ourFile ? { name: ourFile.name, columns: ourFile.columns, rows: ourFile.rows } : null,
+        bankFile: bankFile ? { name: bankFile.name, columns: bankFile.columns, rows: bankFile.rows } : null,
         columns: {
           ourDateCol, ourRrnCol, ourAmtCol, ourStatusCol,
           bankDateCol, bankRrnCol, bankAmtCol, bankStatusCol, bankTidCol,

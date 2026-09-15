@@ -1,3 +1,4 @@
+import html
 import streamlit as st
 
 # ВАЖНО: set_page_config должен быть самой первой Streamlit-командой в скрипте.
@@ -401,7 +402,8 @@ def main_app():
 
         # Карточка пользователя внизу сайдбара точно как в Preview
         cur_user = st.session_state.get("username", "admin") or "admin"
-        user_initials = cur_user[:2].upper()
+        safe_user = html.escape(str(cur_user))
+        user_initials = html.escape(cur_user[:2].upper())
         role_key = st.session_state.get("role", "admin")
         if role_key == "admin":
             role_title = "Администратор"
@@ -415,6 +417,7 @@ def main_app():
         else:
             role_title = "Пользователь"
             role_badge_style = "color: #475569; background: #f1f5f9; border: 1px solid #cbd5e1;"
+        safe_role_title = html.escape(role_title)
 
         st.markdown(f"""
         <div style='margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9;'>
@@ -423,9 +426,9 @@ def main_app():
                     {user_initials}
                 </div>
                 <div style='overflow: hidden;'>
-                    <div style='font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.2;'>{cur_user}</div>
+                    <div style='font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.2;'>{safe_user}</div>
                     <div style='display: inline-block; font-size: 10px; font-weight: 600; {role_badge_style} border-radius: 4px; padding: 1px 6px; margin-top: 2px;'>
-                        {role_title}
+                        {safe_role_title}
                     </div>
                 </div>
             </div>

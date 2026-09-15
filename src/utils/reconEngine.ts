@@ -268,14 +268,28 @@ export function runReconciliation(
     bankRows = bankRows.filter(r => !badBank.has(r.RRN));
   }
 
-  // 5. Build lookup maps
-  const ourMap = new Map<string, typeof ourRows[0]>();
-  ourRows.forEach(r => ourMap.set(r.RRN, r));
+  // 5. Build lookup maps with duplicate occurrence indexing (matching Python cum_count().over("RRN"))
+  const ourRrnCounts = new Map<string, number>();
+  const ourRowsWithIdx = ourRows.map(r => {
+    const idx = ourRrnCounts.get(r.RRN) || 0;
+    ourRrnCounts.set(r.RRN, idx + 1);
+    return { ...r, _dup_idx: idx };
+  });
 
-  const bankMap = new Map<string, typeof bankRows[0]>();
-  bankRows.forEach(r => bankMap.set(r.RRN, r));
+  const bankRrnCounts = new Map<string, number>();
+  const bankRowsWithIdx = bankRows.map(r => {
+    const idx = bankRrnCounts.get(r.RRN) || 0;
+    bankRrnCounts.set(r.RRN, idx + 1);
+    return { ...r, _dup_idx: idx };
+  });
 
-  const allRrns = Array.from(new Set([...ourMap.keys(), ...bankMap.keys()]));
+  const ourMap = new Map<string, typeof ourRowsWithIdx[0]>();
+  ourRowsWithIdx.forEach(r => ourMap.set(`${r.RRN}___${r._dup_idx}`, r));
+
+  const bankMap = new Map<string, typeof bankRowsWithIdx[0]>();
+  bankRowsWithIdx.forEach(r => bankMap.set(`${r.RRN}___${r._dup_idx}`, r));
+
+  const allKeys = Array.from(new Set([...ourMap.keys(), ...bankMap.keys()]));
 
   const onlyOur: UnmatchedRow[] = [];
   const onlyBank: UnmatchedRow[] = [];
@@ -284,9 +298,10 @@ export function runReconciliation(
 
   const mergedRows: ReconciliationResult['merged_rows'] = [];
 
-  allRrns.forEach(rrn => {
-    const o = ourMap.get(rrn);
-    const b = bankMap.get(rrn);
+  allKeys.forEach(key => {
+    const o = ourMap.get(key);
+    const b = bankMap.get(key);
+    const rrn = o ? o.RRN : b!.RRN;
 
     if (o && b) {
       const delta = b.net_amount - o.net_amount;

@@ -58,6 +58,7 @@ def show_page():
 
                     new_tid = st.text_input("Terminal ID (TID)*", placeholder="напр. 98234015")
                     new_mid = st.text_input("Merchant ID (MID)", placeholder="напр. MID_ALOQA_01")
+                    new_entity = st.text_input("Юридическое лицо (компания)", placeholder="напр. ООО «Ритейл Групп»")
                     new_comm = st.number_input("Комиссия (%)*", min_value=0.0, max_value=100.0, value=1.2, step=0.05)
                     
                     submitted = st.form_submit_button("Сохранить терминал", type="primary", use_container_width=True)
@@ -72,8 +73,9 @@ def show_page():
                         else:
                             tid_val = new_tid.strip()
                             mid_val = new_mid.strip() or f"MID_{bank_name.replace(' ', '_').upper()}"
+                            entity_val = new_entity.strip()
                             
-                            success, msg = add_epos_terminal(tid_val, mid_val, bank_name, "", new_comm)
+                            success, msg = add_epos_terminal(tid_val, mid_val, bank_name, entity_val, new_comm)
                             if success:
                                 st.success(f"Терминал {tid_val} ({bank_name}) успешно добавлен!")
                                 log_action(current_user, "ADD_EPOS", f"Добавлен терминал {tid_val} ({bank_name}, {new_comm}%)")
@@ -167,12 +169,12 @@ def show_page():
                 if filter_bank != "(Все банки)" and not view_df.empty:
                     view_df = view_df[view_df["bank_acquirer"] == filter_bank]
 
-                display_cols = ["bank_acquirer", "terminal_id", "merchant_id", "commission_pct", "is_active"]
+                display_cols = ["bank_acquirer", "terminal_id", "merchant_id", "legal_entity", "commission_pct", "is_active"]
                 available_cols = [c for c in display_cols if c in view_df.columns]
                 filtered_view = view_df[available_cols].copy()
                 filtered_view["is_active"] = filtered_view["is_active"].astype(bool)
 
-                st.caption("💡 Вы можете изменять комиссию и статус активности прямо в таблице, затем нажать кнопку сохранения ниже:")
+                st.caption("💡 Вы можете изменять комиссию, юр. лицо и статус активности прямо в таблице, затем нажать кнопку сохранения ниже:")
                 
                 edited_df = st.data_editor(
                     filtered_view,
@@ -180,6 +182,7 @@ def show_page():
                         "bank_acquirer": st.column_config.TextColumn("Банк-эквайер", disabled=True),
                         "terminal_id": st.column_config.TextColumn("TID", disabled=True),
                         "merchant_id": st.column_config.TextColumn("MID", disabled=True),
+                        "legal_entity": st.column_config.TextColumn("Юр. лицо"),
                         "commission_pct": st.column_config.NumberColumn("Комиссия (%)", format="%.2f%%", min_value=0.0, max_value=100.0, step=0.05),
                         "is_active": st.column_config.CheckboxColumn("Активен")
                     },

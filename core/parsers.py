@@ -27,6 +27,18 @@ def clean_amount_polars(col_name: str) -> pl.Expr:
     c = pl.col(col_name).cast(pl.Utf8)
     c = c.str.replace_all(r"[^\d\.,\-]", "")
 
+    has_both = c.str.contains(",") & c.str.contains(r"\.")
+    # Если есть и запятые, и точка:
+    # 1. Европейский формат: последняя запятая идет после последней точки (напр. "1.234,56" или "1.234.567,89")
+    # -> убираем точки (разделители тысяч), а запятую меняем на точку
+    is_euro_both = has_both & c.str.contains(r"\..*,[^\.]*$")
+    # 2. Стандартный/US формат: последняя точка идет после последней запятой (напр. "1,234.56" или "1,234,567.89")
+    # -> убираем запятые
+    is_std_both = has_both & c.str.contains(r",.*\.[^,]*$")
+
+    c = pl.when(is_euro_both).then(c.str.replace_all(r"\.", "").str.replace(",", ".")).otherwise(c)
+    c = pl.when(is_std_both).then(c.str.replace_all(",", "")).otherwise(c)
+
     # Запятая с 1-2 цифрами после и без точки — десятичный разделитель (напр. "1234,56").
     is_decimal_comma = c.str.contains(r"^-?\d+,\d{1,2}$")
     # Запятая(-ые), разбивающая(-ие) число на группы РОВНО по 3 цифры, без точки —
@@ -35,8 +47,10 @@ def clean_amount_polars(col_name: str) -> pl.Expr:
 
     c = pl.when(is_decimal_comma).then(c.str.replace(",", ".")).otherwise(c)
     c = pl.when(is_thousands_comma).then(c.str.replace_all(",", "")).otherwise(c)
-    # Если есть и запятые, и точка — запятые это разделители тысяч, точка — десятичная (напр. "1,234.56").
-    c = pl.when(c.str.contains(",") & c.str.contains(r"\.")).then(c.str.replace_all(",", "")).otherwise(c)
+
+    # Несколько точек без запятых как разделители тысяч: "1.234.567"
+    is_thousands_dots = c.str.contains(r"^-?\d{1,3}(\.\d{3})+$")
+    c = pl.when(is_thousands_dots).then(c.str.replace_all(r"\.", "")).otherwise(c)
 
     return c.cast(pl.Float64, strict=False).fill_null(0.0)
 

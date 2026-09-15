@@ -9,10 +9,13 @@ import { User, SystemSettings } from './types';
 import { getStoredSettings, logAction } from './utils/storage';
 
 export const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>({
-    id: 1,
-    username: 'admin',
-    role: 'admin',
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('reconcile_active_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
   const [currentTab, setCurrentTab] = useState<string>('rrn');
   const [settings, setSettings] = useState<SystemSettings>(getStoredSettings());
@@ -21,10 +24,16 @@ export const App: React.FC = () => {
     if (user) {
       logAction(user.username, 'LOGOUT', 'Выход из системы');
     }
+    try {
+      sessionStorage.removeItem('reconcile_active_user');
+    } catch {}
     setUser(null);
   };
 
   const handleLoginSuccess = (loggedInUser: User) => {
+    try {
+      sessionStorage.setItem('reconcile_active_user', JSON.stringify(loggedInUser));
+    } catch {}
     setUser(loggedInUser);
     setCurrentTab('rrn');
   };

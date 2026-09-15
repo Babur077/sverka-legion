@@ -206,7 +206,7 @@ def bulk_upsert_epos(records: list[dict]):
                 continue
             bank = str(r.get("bank_acquirer") or r.get("Банк") or "Неизвестный банк").strip()
             mid = str(r.get("merchant_id") or r.get("MID") or f"MID_{tid}").strip()
-            entity = str(r.get("legal_entity") or "").strip()
+            entity = str(r.get("legal_entity") or r.get("Юр. лицо") or "").strip()
             try:
                 raw_pct = r.get("commission_pct") or r.get("Комиссия (%)") or r.get("Комиссия") or 0.0
                 com_pct = float(str(raw_pct).replace("%", "").replace(",", ".").strip() or 0.0)
@@ -220,7 +220,7 @@ def bulk_upsert_epos(records: list[dict]):
                 ON CONFLICT(terminal_id) DO UPDATE SET
                     merchant_id = excluded.merchant_id,
                     bank_acquirer = excluded.bank_acquirer,
-                    legal_entity = excluded.legal_entity,
+                    legal_entity = CASE WHEN excluded.legal_entity != '' THEN excluded.legal_entity ELSE epos_registry.legal_entity END,
                     commission_pct = excluded.commission_pct,
                     is_active = excluded.is_active
             ''', (tid, mid, bank, entity, com_pct, is_active))

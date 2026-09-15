@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import datetime as dt_mod
+import html
 
 # Импортируем ядро и парсеры
 from core.parsers import load_file_polars, guess_col
@@ -26,7 +27,8 @@ def upload_with_preview(label: str, key: str):
     if cached_df is not None:
         c_info, c_btn = st.columns([3, 1])
         with c_info:
-            st.markdown(f"<div style='font-size:12px; color:#475569; margin-top:6px;'>📄 <strong>{cached_name or 'Загружен файл'}</strong> ({len(cached_df)} строк, {len(cached_df.columns)} колонок)</div>", unsafe_allow_html=True)
+            safe_name = html.escape(str(cached_name or 'Загружен файл'))
+            st.markdown(f"<div style='font-size:12px; color:#475569; margin-top:6px;'>📄 <strong>{safe_name}</strong> ({len(cached_df)} строк, {len(cached_df.columns)} колонок)</div>", unsafe_allow_html=True)
         with c_btn:
             if st.button("✕ Сброс", key=f"reset_{key}", use_container_width=True):
                 st.session_state.pop(f"df_cache_{key}", None)
@@ -211,10 +213,11 @@ def show_page():
 
     with c2:
         with st.container(border=True):
+            safe_bank_name = html.escape(str(bank_name))
             st.markdown(f"""
             <div style='display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: #0f172a; margin-bottom: 8px;'>
                 <span style='color: #059669; font-size: 16px;'>↑</span>
-                <span>Данные {bank_name} (Excel / CSV)</span>
+                <span>Данные {safe_bank_name} (Excel / CSV)</span>
             </div>
             """, unsafe_allow_html=True)
             df_bank_raw = upload_with_preview(f"Данные {bank_name} (Excel / CSV)", "bank_v2")
@@ -352,52 +355,55 @@ def show_page():
                 st.markdown(f"### 🔴 Отсутствуют в банке ({len(data['only_our'])})")
                 df_target_our = st.session_state["res"]["only_our"]
                 
-                with st.expander("🛠 Массовое управление (Наши данные)", expanded=False):
-                    has_date_our = "date_unified" in df_target_our.columns
-                    dates_opts_our = ["(Все)"]
-                    if has_date_our: dates_opts_our += list(pd.to_datetime(df_target_our["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y").dropna().unique())
-                    
-                    stat_col_our = "status_our" if "status_our" in df_target_our.columns else None
-                    stat_opts_our = ["(Все)"]
-                    if stat_col_our: stat_opts_our += list(df_target_our[stat_col_our].dropna().astype(str).unique())
+                if not is_auditor:
+                    with st.expander("🛠 Массовое управление (Наши данные)", expanded=False):
+                        has_date_our = "date_unified" in df_target_our.columns
+                        dates_opts_our = ["(Все)"]
+                        if has_date_our: dates_opts_our += list(pd.to_datetime(df_target_our["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y").dropna().unique())
+                        
+                        stat_col_our = "status_our" if "status_our" in df_target_our.columns else None
+                        stat_opts_our = ["(Все)"]
+                        if stat_col_our: stat_opts_our += list(df_target_our[stat_col_our].dropna().astype(str).unique())
 
-                    c_d, c_s = st.columns(2)
-                    ex_date_our = c_d.selectbox("Фильтр по дате (Наши):", dates_opts_our, key="bulk_d_our")
-                    ex_stat_our = c_s.selectbox("Фильтр по статусу (Наши):", stat_opts_our, key="bulk_s_our")
-                    
-                    c_b1, c_b2 = st.columns(2)
-                    if c_b1.button("➖ Снять ✅ (Наши)", use_container_width=True, key="btn_rem_our"):
-                        mask = pd.Series(True, index=df_target_our.index)
-                        if has_date_our and ex_date_our != "(Все)": mask &= (pd.to_datetime(df_target_our["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_our)
-                        if stat_col_our and ex_stat_our != "(Все)": mask &= (df_target_our[stat_col_our].astype(str) == ex_stat_our)
-                        st.session_state["res"]["only_our"].loc[mask, "✅"] = False
-                        if "ed_our_v2" in st.session_state: del st.session_state["ed_our_v2"] 
-                        st.rerun()
-
-                    if c_b2.button("➕ Вернуть ✅ (Наши)", use_container_width=True, key="btn_add_our"):
-                        mask = pd.Series(True, index=df_target_our.index)
-                        if has_date_our and ex_date_our != "(Все)": mask &= (pd.to_datetime(df_target_our["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_our)
-                        if stat_col_our and ex_stat_our != "(Все)": mask &= (df_target_our[stat_col_our].astype(str) == ex_stat_our)
-                        st.session_state["res"]["only_our"].loc[mask, "✅"] = True
-                        if "ed_our_v2" in st.session_state: del st.session_state["ed_our_v2"]
-                        st.rerun()
-
-                    st.divider()
-                    st.markdown("##### 🔄 Автоматическая компенсация (Офсеты)")
-                    status_col_our = "status_our" if "status_our" in df_target_our.columns else None
-                    active_rev_words = st.session_state.get("rev_words", ["reversed", "возврат", "refund", "отказ", "ошибка"])
-                    offset_rrns_our = find_offsetting_rrns_by_status(df_target_our, status_col_our, active_rev_words)
-                    if offset_rrns_our:
-                        st.warning(f"Найдено **{len(offset_rrns_our)}** компенсирующих RRN.")
-                        if st.button("🪄 Исключить компенсирующие пары (Наши)", use_container_width=True, key="btn_offset_our"):
-                            mask = st.session_state["res"]["only_our"]["RRN"].isin(offset_rrns_our)
+                        c_d, c_s = st.columns(2)
+                        ex_date_our = c_d.selectbox("Фильтр по дате (Наши):", dates_opts_our, key="bulk_d_our")
+                        ex_stat_our = c_s.selectbox("Фильтр по статусу (Наши):", stat_opts_our, key="bulk_s_our")
+                        
+                        c_b1, c_b2 = st.columns(2)
+                        if c_b1.button("➖ Снять ✅ (Наши)", use_container_width=True, key="btn_rem_our"):
+                            mask = pd.Series(True, index=df_target_our.index)
+                            if has_date_our and ex_date_our != "(Все)": mask &= (pd.to_datetime(df_target_our["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_our)
+                            if stat_col_our and ex_stat_our != "(Все)": mask &= (df_target_our[stat_col_our].astype(str) == ex_stat_our)
                             st.session_state["res"]["only_our"].loc[mask, "✅"] = False
-                            st.session_state["res"]["only_our"].loc[mask, "📝 Причина"] = "Технический возврат"
-                            if "ed_our_v2" in st.session_state: del st.session_state["ed_our_v2"]
-                            st.success("Компенсирующие транзакции исключены!")
+                            if "ed_our_v2" in st.session_state: del st.session_state["ed_our_v2"] 
                             st.rerun()
-                    else:
-                        st.info("ℹ️ Компенсирующих транзакций по статусу не обнаружено.")
+
+                        if c_b2.button("➕ Вернуть ✅ (Наши)", use_container_width=True, key="btn_add_our"):
+                            mask = pd.Series(True, index=df_target_our.index)
+                            if has_date_our and ex_date_our != "(Все)": mask &= (pd.to_datetime(df_target_our["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_our)
+                            if stat_col_our and ex_stat_our != "(Все)": mask &= (df_target_our[stat_col_our].astype(str) == ex_stat_our)
+                            st.session_state["res"]["only_our"].loc[mask, "✅"] = True
+                            if "ed_our_v2" in st.session_state: del st.session_state["ed_our_v2"]
+                            st.rerun()
+
+                        st.divider()
+                        st.markdown("##### 🔄 Автоматическая компенсация (Офсеты)")
+                        status_col_our = "status_our" if "status_our" in df_target_our.columns else None
+                        active_rev_words = st.session_state.get("rev_words", ["reversed", "возврат", "refund", "отказ", "ошибка"])
+                        offset_rrns_our = find_offsetting_rrns_by_status(df_target_our, status_col_our, active_rev_words)
+                        if offset_rrns_our:
+                            st.warning(f"Найдено **{len(offset_rrns_our)}** компенсирующих RRN.")
+                            if st.button("🪄 Исключить компенсирующие пары (Наши)", use_container_width=True, key="btn_offset_our"):
+                                mask = st.session_state["res"]["only_our"]["RRN"].isin(offset_rrns_our)
+                                st.session_state["res"]["only_our"].loc[mask, "✅"] = False
+                                st.session_state["res"]["only_our"].loc[mask, "📝 Причина"] = "Технический возврат"
+                                if "ed_our_v2" in st.session_state: del st.session_state["ed_our_v2"]
+                                st.success("Компенсирующие транзакции исключены!")
+                                st.rerun()
+                        else:
+                            st.info("ℹ️ Компенсирующих транзакций по статусу не обнаружено.")
+                else:
+                    st.caption("🔒 Массовое управление строками заблокировано в режиме аудитора (только чтение).")
 
                 show_cols_our = ["✅", "date_str", "RRN", "net_amount_our", "📝 Причина"]
                 if "status_our" in df_target_our.columns: show_cols_our.append("status_our")
@@ -422,52 +428,55 @@ def show_page():
                 st.markdown(f"### 🔵 Лишние данные банка ({len(data['only_bank'])})")
                 df_target_bank = st.session_state["res"]["only_bank"]
                 
-                with st.expander("🛠 Массовое управление (Данные банка)", expanded=False):
-                    has_date_bank = "date_unified" in df_target_bank.columns
-                    dates_opts_bank = ["(Все)"]
-                    if has_date_bank: dates_opts_bank += list(pd.to_datetime(df_target_bank["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y").dropna().unique())
-                    
-                    stat_col_bank = "status_bank" if "status_bank" in df_target_bank.columns else None
-                    stat_opts_bank = ["(Все)"]
-                    if stat_col_bank: stat_opts_bank += list(df_target_bank[stat_col_bank].dropna().astype(str).unique())
+                if not is_auditor:
+                    with st.expander("🛠 Массовое управление (Данные банка)", expanded=False):
+                        has_date_bank = "date_unified" in df_target_bank.columns
+                        dates_opts_bank = ["(Все)"]
+                        if has_date_bank: dates_opts_bank += list(pd.to_datetime(df_target_bank["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y").dropna().unique())
+                        
+                        stat_col_bank = "status_bank" if "status_bank" in df_target_bank.columns else None
+                        stat_opts_bank = ["(Все)"]
+                        if stat_col_bank: stat_opts_bank += list(df_target_bank[stat_col_bank].dropna().astype(str).unique())
 
-                    c_d_b, c_s_b = st.columns(2)
-                    ex_date_bank = c_d_b.selectbox("Фильтр по дате (Банк):", dates_opts_bank, key="bulk_d_bank")
-                    ex_stat_bank = c_s_b.selectbox("Фильтр по статусу (Банк):", stat_opts_bank, key="bulk_s_bank")
-                    
-                    c_b1_b, c_b2_b = st.columns(2)
-                    if c_b1_b.button("➖ Снять ✅ (Банк)", use_container_width=True, key="btn_rem_bank"):
-                        mask = pd.Series(True, index=df_target_bank.index)
-                        if has_date_bank and ex_date_bank != "(Все)": mask &= (pd.to_datetime(df_target_bank["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_bank)
-                        if stat_col_bank and ex_stat_bank != "(Все)": mask &= (df_target_bank[stat_col_bank].astype(str) == ex_stat_bank)
-                        st.session_state["res"]["only_bank"].loc[mask, "✅"] = False
-                        if "ed_bank_v2" in st.session_state: del st.session_state["ed_bank_v2"]
-                        st.rerun()
-
-                    if c_b2_b.button("➕ Вернуть ✅ (Банк)", use_container_width=True, key="btn_add_bank"):
-                        mask = pd.Series(True, index=df_target_bank.index)
-                        if has_date_bank and ex_date_bank != "(Все)": mask &= (pd.to_datetime(df_target_bank["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_bank)
-                        if stat_col_bank and ex_stat_bank != "(Все)": mask &= (df_target_bank[stat_col_bank].astype(str) == ex_stat_bank)
-                        st.session_state["res"]["only_bank"].loc[mask, "✅"] = True
-                        if "ed_bank_v2" in st.session_state: del st.session_state["ed_bank_v2"]
-                        st.rerun()
-
-                    st.divider()
-                    st.markdown("##### 🔄 Автоматическая компенсация (Офсеты)")
-                    status_col_bank = "status_bank" if "status_bank" in df_target_bank.columns else None
-                    active_rev_words = st.session_state.get("rev_words", ["reversed", "возврат", "refund", "отказ", "ошибка"])
-                    offset_rrns_bank = find_offsetting_rrns_by_status(df_target_bank, status_col_bank, active_rev_words)
-                    if offset_rrns_bank:
-                        st.warning(f"Найдено **{len(offset_rrns_bank)}** компенсирующих RRN.")
-                        if st.button("🪄 Исключить компенсирующие пары (Банк)", use_container_width=True, key="btn_offset_bank"):
-                            mask = st.session_state["res"]["only_bank"]["RRN"].isin(offset_rrns_bank)
+                        c_d_b, c_s_b = st.columns(2)
+                        ex_date_bank = c_d_b.selectbox("Фильтр по дате (Банк):", dates_opts_bank, key="bulk_d_bank")
+                        ex_stat_bank = c_s_b.selectbox("Фильтр по статусу (Банк):", stat_opts_bank, key="bulk_s_bank")
+                        
+                        c_b1_b, c_b2_b = st.columns(2)
+                        if c_b1_b.button("➖ Снять ✅ (Банк)", use_container_width=True, key="btn_rem_bank"):
+                            mask = pd.Series(True, index=df_target_bank.index)
+                            if has_date_bank and ex_date_bank != "(Все)": mask &= (pd.to_datetime(df_target_bank["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_bank)
+                            if stat_col_bank and ex_stat_bank != "(Все)": mask &= (df_target_bank[stat_col_bank].astype(str) == ex_stat_bank)
                             st.session_state["res"]["only_bank"].loc[mask, "✅"] = False
-                            st.session_state["res"]["only_bank"].loc[mask, "📝 Причина"] = "Технический возврат"
                             if "ed_bank_v2" in st.session_state: del st.session_state["ed_bank_v2"]
-                            st.success("Компенсирующие транзакции исключены!")
                             st.rerun()
-                    else:
-                        st.info("ℹ️ Компенсирующих транзакций по статусу не обнаружено.")
+
+                        if c_b2_b.button("➕ Вернуть ✅ (Банк)", use_container_width=True, key="btn_add_bank"):
+                            mask = pd.Series(True, index=df_target_bank.index)
+                            if has_date_bank and ex_date_bank != "(Все)": mask &= (pd.to_datetime(df_target_bank["date_unified"], errors="coerce").dt.strftime("%d.%m.%Y") == ex_date_bank)
+                            if stat_col_bank and ex_stat_bank != "(Все)": mask &= (df_target_bank[stat_col_bank].astype(str) == ex_stat_bank)
+                            st.session_state["res"]["only_bank"].loc[mask, "✅"] = True
+                            if "ed_bank_v2" in st.session_state: del st.session_state["ed_bank_v2"]
+                            st.rerun()
+
+                        st.divider()
+                        st.markdown("##### 🔄 Автоматическая компенсация (Офсеты)")
+                        status_col_bank = "status_bank" if "status_bank" in df_target_bank.columns else None
+                        active_rev_words = st.session_state.get("rev_words", ["reversed", "возврат", "refund", "отказ", "ошибка"])
+                        offset_rrns_bank = find_offsetting_rrns_by_status(df_target_bank, status_col_bank, active_rev_words)
+                        if offset_rrns_bank:
+                            st.warning(f"Найдено **{len(offset_rrns_bank)}** компенсирующих RRN.")
+                            if st.button("🪄 Исключить компенсирующие пары (Банк)", use_container_width=True, key="btn_offset_bank"):
+                                mask = st.session_state["res"]["only_bank"]["RRN"].isin(offset_rrns_bank)
+                                st.session_state["res"]["only_bank"].loc[mask, "✅"] = False
+                                st.session_state["res"]["only_bank"].loc[mask, "📝 Причина"] = "Технический возврат"
+                                if "ed_bank_v2" in st.session_state: del st.session_state["ed_bank_v2"]
+                                st.success("Компенсирующие транзакции исключены!")
+                                st.rerun()
+                        else:
+                            st.info("ℹ️ Компенсирующих транзакций по статусу не обнаружено.")
+                else:
+                    st.caption("🔒 Массовое управление строками заблокировано в режиме аудитора (только чтение).")
 
                 show_cols_bank = ["✅", "date_str", "RRN", "net_amount_bank", "📝 Причина"]
                 if "status_bank" in df_target_bank.columns: show_cols_bank.append("status_bank")
