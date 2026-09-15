@@ -1,10 +1,32 @@
 import io
+from typing import Union, Optional
 import polars as pl
 import pandas as pd
 
-def load_file_polars(file_name: str, file_bytes: bytes, sheet_name=0) -> pl.DataFrame:
+def load_file_polars(first_arg, second_arg=None, sheet_name=0) -> pl.DataFrame:
+    """
+    Универсальный загрузчик файлов в Polars DataFrame.
+    Поддерживает вызовы:
+      load_file_polars(filename, file_bytes)
+      load_file_polars(file_bytes, filename)
+      load_file_polars(file_path_str)
+    """
+    if isinstance(first_arg, (bytes, bytearray)):
+        file_bytes = bytes(first_arg)
+        file_name = str(second_arg or "data.xlsx")
+    elif isinstance(second_arg, (bytes, bytearray)):
+        file_name = str(first_arg or "data.xlsx")
+        file_bytes = bytes(second_arg)
+    elif isinstance(first_arg, str) and second_arg is None:
+        file_name = first_arg
+        with open(first_arg, "rb") as f:
+            file_bytes = f.read()
+    else:
+        file_name = str(first_arg or "data.xlsx")
+        file_bytes = bytes(second_arg or b"")
+
     if file_name.lower().endswith((".xlsx", ".xls")):
-        sheet_id = 1 if sheet_name in (0, None) else sheet_name + 1
+        sheet_id = 1 if sheet_name in (0, None) else (sheet_name + 1 if isinstance(sheet_name, int) else 1)
         try:
             return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id, engine="calamine")
         except Exception:
@@ -23,7 +45,11 @@ def load_file_polars(file_name: str, file_bytes: bytes, sheet_name=0) -> pl.Data
         except Exception:
             return pl.read_csv(io.BytesIO(file_bytes), separator=",", ignore_errors=True)
 
-def clean_amount_polars(col_name: str) -> pl.Expr:
+# Синоним для совместимости с модульным API
+parse_file_to_polars = load_file_polars
+
+
+def _clean_amount_expr(col_name: str) -> pl.Expr:
     c = pl.col(col_name).cast(pl.Utf8)
     c = c.str.replace_all(r"[^\d\.,\-]", "")
 
@@ -54,7 +80,21 @@ def clean_amount_polars(col_name: str) -> pl.Expr:
 
     return c.cast(pl.Float64, strict=False).fill_null(0.0)
 
-def clean_date_polars(col_name: str) -> pl.Expr:
+
+def clean_amount_polars(first_arg, col_name: Optional[str] = None):
+    """
+    Поддерживает:
+      clean_amount_polars(col_name) -> pl.Expr
+      clean_amount_polars(df, col_name) -> pl.DataFrame
+    """
+    if isinstance(first_arg, (pl.DataFrame, pl.LazyFrame)):
+        if col_name and col_name in first_arg.columns:
+            return first_arg.with_columns(_clean_amount_expr(col_name).alias(col_name))
+        return first_arg
+    return _clean_amount_expr(str(first_arg))
+
+
+def _clean_date_expr(col_name: str) -> pl.Expr:
     c = pl.col(col_name).cast(pl.Utf8).str.strip_chars()
     return pl.coalesce([
         c.str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S%.f", strict=False).cast(pl.Date),
@@ -66,11 +106,41 @@ def clean_date_polars(col_name: str) -> pl.Expr:
         c.str.strptime(pl.Date, "%d-%m-%Y", strict=False),
     ])
 
-def clean_rrn_polars(col_name: str, prefix: str) -> pl.Expr:
+
+def clean_date_polars(first_arg, col_name: Optional[str] = None):
+    """
+    Поддерживает:
+      clean_date_polars(col_name) -> pl.Expr
+      clean_date_polars(df, col_name) -> pl.DataFrame
+    """
+    if isinstance(first_arg, (pl.DataFrame, pl.LazyFrame)):
+        if col_name and col_name in first_arg.columns:
+            return first_arg.with_columns(_clean_date_expr(col_name).alias(col_name))
+        return first_arg
+    return _clean_date_expr(str(first_arg))
+
+
+def _clean_rrn_expr(col_name: str, prefix: str = "norm") -> pl.Expr:
     row_index_str = pl.int_range(0, pl.len()).cast(pl.Utf8)
     empty_filler = pl.lit(f"_EMPTY_{prefix.upper()}_") + row_index_str
     normalized = pl.col(col_name).cast(pl.Utf8).str.strip_chars().str.to_uppercase().str.replace(r"\.0$", "")
     return pl.when(normalized.is_in(["", "NAN", "NONE", "NAT"]) | normalized.is_null()).then(empty_filler).otherwise(normalized)
+
+
+def clean_rrn_polars(first_arg, second_arg: str = "norm", prefix: str = "norm"):
+    """
+    Поддерживает:
+      clean_rrn_polars(col_name, prefix) -> pl.Expr
+      clean_rrn_polars(df, col_name, prefix="norm") -> pl.DataFrame
+    """
+    if isinstance(first_arg, (pl.DataFrame, pl.LazyFrame)):
+        col_name = second_arg
+        pref = prefix if prefix != "norm" else "norm"
+        if col_name and col_name in first_arg.columns:
+            return first_arg.with_columns(_clean_rrn_expr(col_name, pref).alias(col_name))
+        return first_arg
+    return _clean_rrn_expr(str(first_arg), prefix=str(second_arg or prefix))
+
 
 def guess_col(df, keywords: list):
     if df is None or getattr(df, "is_empty", lambda: getattr(df, "empty", True))(): return None

@@ -50,14 +50,20 @@ if not exist "dist" (
     )
 )
 
-echo [2/2] Запуск сервера FastAPI + React на порту 8000...
+echo [2/3] Освобождение порта 8000 от старых процессов...
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -gt 4 } | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+
+echo [3/3] Запуск сервера FastAPI + React на порту 8000...
 echo.
 echo ===============================================================
-echo  Интерфейс React и API будут доступны по адресу:
-echo    Локально:            http://localhost:8000
+echo  Интерфейс React и API запускаются по адресу:
+echo    Локально:             http://localhost:8000
 echo    Документация Swagger: http://localhost:8000/docs
 echo ===============================================================
 echo.
+
+:: Автоматическое открытие в браузере
+start "" http://localhost:8000
 
 %PYTHON_BIN% api.py
 

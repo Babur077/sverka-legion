@@ -249,5 +249,17 @@ if os.path.exists(DIST_DIR):
         return JSONResponse({"message": "React index.html not found"}, status_code=404)
 
 if __name__ == "__main__":
+    import threading
+    import webbrowser
+
+    def _auto_open_browser():
+        time.sleep(1.2)
+        try:
+            webbrowser.open("http://localhost:8000")
+        except Exception:
+            pass
+
+    threading.Thread(target=_auto_open_browser, daemon=True).start()
+
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

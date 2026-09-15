@@ -109,8 +109,22 @@ class BankRrnModule(BaseReconciliationModule):
         if bank_status_col and rev_words:
             pl_bank = apply_reversals(pl_bank, bank_status_col, bank_rev_action, bank_amt_col, rev_words)
 
-        pl_our = pl_our.rename({our_date_col: "date", our_rrn_col: "RRN", our_amt_col: "net_amount_our"})
-        pl_bank = pl_bank.rename({bank_date_col: "date", bank_rrn_col: "RRN", bank_amt_col: "net_amount_bank"})
+        our_renames = {k: v for k, v in {our_date_col: "date", our_rrn_col: "RRN", our_amt_col: "net_amount_our"}.items() if k and k != v and k in pl_our.columns}
+        if our_renames:
+            pl_our = pl_our.rename(our_renames)
+
+        bank_renames = {k: v for k, v in {bank_date_col: "date", bank_rrn_col: "RRN", bank_amt_col: "net_amount_bank"}.items() if k and k != v and k in pl_bank.columns}
+        if bank_renames:
+            pl_bank = pl_bank.rename(bank_renames)
+
+        if "net_amount_our" not in pl_our.columns:
+            pl_our = pl_our.with_columns(pl.lit(0.0).alias("net_amount_our"))
+        if "net_amount_bank" not in pl_bank.columns:
+            pl_bank = pl_bank.with_columns(pl.lit(0.0).alias("net_amount_bank"))
+        if "RRN" not in pl_our.columns:
+            pl_our = pl_our.with_columns(pl.lit("").alias("RRN"))
+        if "RRN" not in pl_bank.columns:
+            pl_bank = pl_bank.with_columns(pl.lit("").alias("RRN"))
 
         # 4. Расчеты
         total_our_cnt = pl_our.height

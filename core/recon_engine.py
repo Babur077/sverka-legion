@@ -66,6 +66,46 @@ def date_summary(pl_our: pl.DataFrame, pl_bank: pl.DataFrame) -> pd.DataFrame:
     s = s.sort("date", descending=True)
     return s.to_pandas()
 
+def terminal_summary(pl_bank: pl.DataFrame, tid_col: str = "terminal_id") -> pd.DataFrame:
+    """Агрегированная статистика по терминалам эквайринга (обороты, комиссии)"""
+    if pl_bank is None or getattr(pl_bank, "height", 0) == 0:
+        return pd.DataFrame(columns=["terminal_id", "tx_count", "total_volume", "commission_pct", "commission_amount", "net_volume", "legal_entity"])
+    
+    col_name = tid_col if (tid_col and tid_col in pl_bank.columns) else ("terminal_id" if "terminal_id" in pl_bank.columns else None)
+    if not col_name:
+        return pd.DataFrame()
+    
+    amt_col = "raw_amount" if "raw_amount" in pl_bank.columns else ("net_amount_bank" if "net_amount_bank" in pl_bank.columns else ("amount" if "amount" in pl_bank.columns else None))
+    if not amt_col:
+        return pd.DataFrame()
+
+    has_legal = "legal_entity" in pl_bank.columns
+    has_comm = "commission_pct" in pl_bank.columns
+    
+    agg_exprs = [
+        pl.len().alias("tx_count"),
+        pl.col(amt_col).sum().alias("total_volume"),
+    ]
+    if has_comm:
+        agg_exprs.append(pl.col("commission_pct").first().alias("commission_pct"))
+        if "commission_amount" in pl_bank.columns:
+            agg_exprs.append(pl.col("commission_amount").sum().alias("commission_amount"))
+    if has_legal:
+        agg_exprs.append(pl.col("legal_entity").first().alias("legal_entity"))
+
+    t_agg = pl_bank.group_by(col_name).agg(agg_exprs)
+    t_df = t_agg.to_pandas()
+    if col_name != "terminal_id" and "terminal_id" not in t_df.columns:
+        t_df["terminal_id"] = t_df[col_name]
+    if "commission_pct" not in t_df.columns:
+        t_df["commission_pct"] = 0.0
+    if "commission_amount" not in t_df.columns:
+        t_df["commission_amount"] = t_df["total_volume"] * (t_df["commission_pct"] / 100.0)
+    t_df["net_volume"] = t_df["total_volume"] - t_df["commission_amount"]
+    if "legal_entity" not in t_df.columns:
+        t_df["legal_entity"] = ""
+    return t_df
+
 def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, cfg: dict) -> dict:
     # 1. Выбор колонок
     our_cols = list(dict.fromkeys([c for c in [cfg["our_date"], cfg["our_rrn"], cfg["our_amt"], cfg["our_status"]] if c]))
@@ -225,7 +265,7 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     summary = pd.concat([summary, total_row], ignore_index=True)
 
     # Аналитика по терминалам и месяцам
-    terminal_summary = []
+    terminal_summary_list = []
     total_commission = 0.0
     detected_months = []
 
@@ -234,25 +274,10 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         detected_months = sorted(list(set(dates_series)), reverse=True)
 
     if "terminal_id" in pl_bank.columns:
-        has_legal = "legal_entity" in pl_bank.columns
-        agg_exprs = [
-            pl.len().alias("tx_count"),
-            pl.col("raw_amount").sum().alias("total_volume"),
-            pl.col("commission_pct").first().alias("commission_pct"),
-            pl.col("commission_amount").sum().alias("commission_amount"),
-        ]
-        if has_legal:
-            agg_exprs.append(pl.col("legal_entity").first().alias("legal_entity"))
-
-        t_agg = pl_bank.group_by("terminal_id").agg(agg_exprs)
-        t_df = t_agg.to_pandas()
-        t_df["commission_pct"] = t_df["commission_pct"].fillna(0.0)
-        t_df["commission_amount"] = t_df["total_volume"] * (t_df["commission_pct"] / 100.0)
-        t_df["net_volume"] = t_df["total_volume"] - t_df["commission_amount"]
-        if not has_legal:
-            t_df["legal_entity"] = ""
-        total_commission = float(t_df["commission_amount"].sum())
-        terminal_summary = t_df.to_dict(orient="records")
+        t_df = terminal_summary(pl_bank, "terminal_id")
+        if not t_df.empty:
+            total_commission = float(t_df["commission_amount"].sum())
+            terminal_summary_list = t_df.to_dict(orient="records")
 
     return {
         "summary": summary,
@@ -267,7 +292,7 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         "mismatch_count": 0 if cfg["unbind_mismatches"] else amt_mismatches_pl.height,
         "comm_only_diff_count": comm_only_diff_count,
         "deduct_commission": deduct_comm,
-        "terminal_summary": terminal_summary,
+        "terminal_summary": terminal_summary_list,
         "total_commission": total_commission,
         "detected_months": detected_months,
         "merged": merged,
