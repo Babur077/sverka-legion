@@ -341,12 +341,14 @@ def show_page():
 
         dash_ph = st.container()
 
+        terminals_count = len(data.get("terminal_summary", []))
         tabs = st.tabs([
             "Сводка по датам",
             "Графики",
             f"Несопоставленные ({len(data.get('only_our', [])) + len(data.get('only_bank', []))})",
             f"Расхождения сумм ({data.get('mismatch_count', 0)})",
             f"Дубликаты ({data.get('dup_our_c', 0) + data.get('dup_bank_c', 0)})",
+            f"📟 Терминалы ({terminals_count})",
         ])
 
         num_cfg = lambda lbl: st.column_config.NumberColumn(lbl, format="%,.2f")
@@ -776,6 +778,43 @@ def show_page():
                 fig3.update_layout(title="Водопадная диаграмма сверки", template="plotly_white", showlegend=False)
                 st.plotly_chart(fig3, use_container_width=True)
 
+        # ── Terminals tab ─────────────────────────────────
+        with tabs[5]:
+            st.markdown("### 📟 Аналитика по терминалам и комиссии EPOS")
+            st.caption("Фактический оборот, комиссии банка и суммы к перечислению в разрезе каждого терминала")
+            term_list = data.get("terminal_summary", [])
+            if not term_list:
+                st.info("Терминалы не найдены в банковском файле или колонка TID не была выбрана при настройке.")
+            else:
+                df_terms = pd.DataFrame(term_list)
+                tot_vol = float(df_terms["total_volume"].sum()) if "total_volume" in df_terms.columns else 0.0
+                tot_comm = float(df_terms["commission_amount"].sum()) if "commission_amount" in df_terms.columns else 0.0
+                tot_net = float(df_terms["net_volume"].sum()) if "net_volume" in df_terms.columns else 0.0
+                eff_rate = (tot_comm / tot_vol * 100.0) if tot_vol > 0 else 0.0
+
+                ct1, ct2, ct3, ct4 = st.columns(4)
+                ct1.metric("Всего терминалов (TID)", len(df_terms))
+                ct2.metric(f"Совокупный оборот ({cur})", f"{tot_vol:,.2f}")
+                ct3.metric(f"Комиссия эквайринга ({cur})", f"{tot_comm:,.2f}", delta=f"{eff_rate:.2f}% ставка", delta_color="inverse")
+                ct4.metric(f"К зачислению нетто ({cur})", f"{tot_net:,.2f}")
+
+                st.markdown("---")
+                st.dataframe(
+                    df_terms,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "terminal_id": "TID Терминала",
+                        "bank_acquirer": "Банк-эквайер",
+                        "legal_entity": "Юр. лицо / Точка",
+                        "tx_count": st.column_config.NumberColumn("Сделок"),
+                        "total_volume": st.column_config.NumberColumn("Оборот (UZS)", format="%,.2f"),
+                        "commission_pct": st.column_config.NumberColumn("Ставка %", format="%.2f%%"),
+                        "commission_amount": st.column_config.NumberColumn("Комиссия (UZS)", format="%,.2f"),
+                        "net_volume": st.column_config.NumberColumn("К зачислению (UZS)", format="%,.2f"),
+                    }
+                )
+
         # ── Export ───────────────────────────────────────
         st.markdown("---")
         st.markdown("### 💾 Экспорт и сохранение")
@@ -785,7 +824,7 @@ def show_page():
         with col_export:
             with st.container(border=True):
                 st.markdown("#### 📥 Выгрузка отчета")
-                st.caption("Скачать результаты в формате Excel")
+                st.caption("Скачать результаты в формате Excel со всеми вкладками")
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf, engine="openpyxl") as w:
                     adj_full.to_excel(w, sheet_name="Сводка_по_датам", index=False)
@@ -794,21 +833,44 @@ def show_page():
                     if not data["amt_mismatches"].empty: data["amt_mismatches"].drop(columns=["_merge"], errors="ignore").to_excel(w, sheet_name="Расхождения_сумм", index=False)
                     if data["dup_our_c"] > 0: data["dups_our"].to_excel(w, sheet_name="Дубликаты_наши", index=False)
                     if data["dup_bank_c"] > 0: data["dups_bank"].to_excel(w, sheet_name="Дубликаты_банк", index=False)
+                    if term_list: pd.DataFrame(term_list).to_excel(w, sheet_name="Терминалы_и_Комиссия", index=False)
                 st.download_button(label="Скачать Excel-отчет", data=buf.getvalue(), file_name=f"Сверка_{dt_mod.datetime.now():%Y%m%d_%H%M}.xlsx", type="primary", use_container_width=True)
                 
         with col_save:
             with st.container(border=True):
                 st.markdown("#### 🗄 Сохранить в Архив")
                 st.caption("Записать результаты в общую базу данных для аналитики")
+
+                # Список доступных месяцев
+                detected_m = data.get("detected_months", [])
+                now_dt = dt_mod.datetime.now()
+                month_opts = list(detected_m)
+                for i in range(12):
+                    m_str = (now_dt - dt_mod.timedelta(days=i * 30)).strftime("%Y-%m")
+                    if m_str not in month_opts:
+                        month_opts.append(m_str)
+
+                chosen_archive_month = st.selectbox("📅 Отчётный месяц архива:", month_opts, index=0)
+
                 if is_auditor:
                     st.info("🔒 Сохранение в архив недоступно в режиме аудитора (только чтение).")
                 else:
                     if st.button("Сохранить результат в БД", use_container_width=True, type="primary"):
                         user = st.session_state.get("username", "unknown")
                         bank_name = st.session_state.get("chosen_bank", "Банк")
-                        success, msg = save_reconciliation(user=user, bank_name=bank_name, tot_our=adj_tot_our, tot_bank=adj_tot_bank, diff=adj_diff, matched_c=data["matched_count"], mismatch_c=data["mismatch_count"], only_our_c=len(ig_our), only_bank_c=len(ig_bank))
+                        tot_comm = data.get("total_commission", 0.0)
+                        terms_data = data.get("terminal_summary", [])
+                        success, msg = save_reconciliation(
+                            user=user, bank_name=bank_name,
+                            tot_our=adj_tot_our, tot_bank=adj_tot_bank, diff=adj_diff,
+                            matched_c=data["matched_count"], mismatch_c=data["mismatch_count"],
+                            only_our_c=len(ig_our), only_bank_c=len(ig_bank),
+                            period_month=chosen_archive_month,
+                            total_commission=tot_comm,
+                            terminals_data=terms_data
+                        )
                         if success:
-                            st.success(msg)
-                            log_action(user, "SAVE_RECON", f"Сохранена сверка по банку {bank_name}")
+                            st.success(f"{msg} (Месяц: {chosen_archive_month})")
+                            log_action(user, "SAVE_RECON", f"Сохранена сверка по банку {bank_name} за месяц {chosen_archive_month}")
                         else:
                             st.error(msg)

@@ -324,14 +324,19 @@ export function saveReconciliation(
   matched_count: number,
   mismatch_count: number,
   only_our_count: number,
-  only_bank_count: number
+  only_bank_count: number,
+  period_month?: string,
+  total_commission?: number,
+  terminals_summary?: import('../types').TerminalSummaryItem[]
 ): { success: boolean; message: string } {
   try {
     const raw = localStorage.getItem(ARCHIVE_KEY);
     const archive: ReconciliationArchive[] = raw ? JSON.parse(raw) : [];
+    const nowIso = new Date().toISOString();
+    const resolvedMonth = period_month || nowIso.slice(0, 7);
     const newEntry: ReconciliationArchive = {
       id: Date.now(),
-      timestamp: new Date().toISOString(),
+      timestamp: nowIso,
       username,
       bank_name,
       total_our,
@@ -341,6 +346,9 @@ export function saveReconciliation(
       mismatch_count,
       only_our_count,
       only_bank_count,
+      period_month: resolvedMonth,
+      total_commission: total_commission || 0,
+      terminals_summary: terminals_summary || [],
     };
     archive.unshift(newEntry);
     localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archive));
@@ -354,13 +362,13 @@ export function getArchiveData(): ReconciliationArchive[] {
   try {
     const raw = localStorage.getItem(ARCHIVE_KEY);
     if (!raw) {
-      // Seed realistic archive entries for sample demonstration
+      // Seed realistic archive entries with terminal metrics
       const initial: ReconciliationArchive[] = [
         {
           id: 1,
           timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
           username: 'admin',
-          bank_name: 'Kapital Bank',
+          bank_name: 'Aloqa Bank',
           total_our: 145000000,
           total_bank: 145000000,
           difference: 0,
@@ -368,25 +376,43 @@ export function getArchiveData(): ReconciliationArchive[] {
           mismatch_count: 0,
           only_our_count: 0,
           only_bank_count: 0,
+          period_month: '2026-09',
+          total_commission: 841000,
+          terminals_summary: [
+            { terminal_id: '97008516', bank_acquirer: 'Aloqa Bank', merchant_id: 'MID_ALOQA_01', legal_entity: 'ООО Retail Plus', tx_count: 180, total_volume: 85000000, commission_pct: 0.58, commission_amount: 493000, net_volume: 84507000 },
+            { terminal_id: '1963301C', bank_acquirer: 'Aloqa Bank', merchant_id: 'MID_ALOQA_02', legal_entity: 'ООО Retail Plus', tx_count: 162, total_volume: 60000000, commission_pct: 0.58, commission_amount: 348000, net_volume: 59652000 },
+          ]
         },
         {
           id: 2,
-          timestamp: new Date(Date.now() - 86400000).toISOString(),
+          timestamp: new Date(Date.now() - 86400000 * 15).toISOString(),
           username: 'accountant',
-          bank_name: 'Soliq',
+          bank_name: 'Hamkor Bank',
           total_our: 89400000,
-          total_bank: 89350000,
-          difference: -50000,
+          total_bank: 89400000,
+          difference: 0,
           matched_count: 215,
-          mismatch_count: 1,
-          only_our_count: 2,
+          mismatch_count: 0,
+          only_our_count: 0,
           only_bank_count: 0,
+          period_month: '2026-08',
+          total_commission: 670500,
+          terminals_summary: [
+            { terminal_id: '91500844', bank_acquirer: 'Hamkor Bank', merchant_id: 'MID_HAMKOR_01', legal_entity: 'ООО Торг Мастер', tx_count: 120, total_volume: 49400000, commission_pct: 0.75, commission_amount: 370500, net_volume: 49029500 },
+            { terminal_id: '91500845', bank_acquirer: 'Hamkor Bank', merchant_id: 'MID_HAMKOR_02', legal_entity: 'ООО Торг Мастер', tx_count: 95, total_volume: 40000000, commission_pct: 0.75, commission_amount: 300000, net_volume: 39700000 },
+          ]
         }
       ];
       localStorage.setItem(ARCHIVE_KEY, JSON.stringify(initial));
       return initial;
     }
-    return JSON.parse(raw);
+    const parsed: ReconciliationArchive[] = JSON.parse(raw);
+    return parsed.map(item => ({
+      ...item,
+      period_month: item.period_month || item.timestamp.slice(0, 7),
+      total_commission: item.total_commission || 0,
+      terminals_summary: item.terminals_summary || [],
+    }));
   } catch {
     return [];
   }

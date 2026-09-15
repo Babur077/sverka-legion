@@ -99,9 +99,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   // Calculation & Results
   const [isProcessing, setIsProcessing] = useState(false);
   const [reconData, setReconData] = useState<ReconciliationResult | null>(null);
-  const [activeTab, setActiveTab] = useState<'summary' | 'charts' | 'unmatched' | 'mismatches' | 'dups'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'charts' | 'terminals' | 'unmatched' | 'mismatches' | 'dups'>('summary');
   const [selectedDrilldownDate, setSelectedDrilldownDate] = useState<string | null>(null);
   const [commissionPct, setCommissionPct] = useState<number>(1.2);
+  const [selectedArchiveMonth, setSelectedArchiveMonth] = useState<string>(new Date().toISOString().slice(0, 7));
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   // Bank selection state (Quick Bank Select)
@@ -372,6 +373,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
       const result = await runReconciliationAsync(ourFile.rows, bankFile.rows, cfg, eposList);
       setReconData(result);
+      if (result.detected_months && result.detected_months.length > 0) {
+        setSelectedArchiveMonth(result.detected_months[0]);
+      }
       setSelectedDrilldownDate(null);
     } catch (err: any) {
       setAlertState({
@@ -546,6 +550,43 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     };
   }, [reconData]);
 
+  // Generate selectable months (detected from file dates + last 12 calendar months)
+  const availableMonths = useMemo(() => {
+    const list: { value: string; label: string }[] = [];
+    const added = new Set<string>();
+
+    const monthNames = [
+      'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+      'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+    ];
+
+    const formatMonthLabel = (mStr: string) => {
+      const [y, m] = mStr.split('-');
+      const mIdx = parseInt(m, 10) - 1;
+      return `${monthNames[mIdx] || m} ${y} (${mStr})`;
+    };
+
+    if (reconData?.detected_months) {
+      reconData.detected_months.forEach(m => {
+        if (!added.has(m)) {
+          added.add(m);
+          list.push({ value: m, label: `Обнаружен: ${formatMonthLabel(m)}` });
+        }
+      });
+    }
+
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!added.has(val)) {
+        added.add(val);
+        list.push({ value: val, label: formatMonthLabel(val) });
+      }
+    }
+    return list;
+  }, [reconData]);
+
   // Save to Archive
   const handleSaveToArchive = () => {
     if (isAuditor) {
@@ -569,16 +610,19 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       reconData.matched_count,
       reconData.mismatch_count,
       reconData.only_our.filter(x => x.checked).length,
-      reconData.only_bank.filter(x => x.checked).length
+      reconData.only_bank.filter(x => x.checked).length,
+      selectedArchiveMonth,
+      reconData.total_commission || 0,
+      reconData.terminal_summary || []
     );
 
     if (res.success) {
-      setSaveSuccessMsg('Сверка успешно записана в архив!');
-      logAction(user.username, 'SAVE_RECON', `Сохранена сверка по банку (${bankNameForArchive})`);
+      setSaveSuccessMsg(`Сверка за ${selectedArchiveMonth} успешно записана в архив!`);
+      logAction(user.username, 'SAVE_RECON', `Сохранена сверка по банку (${bankNameForArchive}) за месяц ${selectedArchiveMonth}`);
       setAlertState({
         isOpen: true,
         title: 'Успешно сохранено',
-        message: 'Сверка успешно записана в системный архив базы данных.',
+        message: `Сверка по банку "${bankNameForArchive}" за месяц ${selectedArchiveMonth} успешно зафиксирована в архиве с аналитикой по терминалам.`,
         type: 'success',
       });
     } else {
@@ -600,7 +644,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       reconData.only_bank,
       reconData.amt_mismatches,
       reconData.dups_our,
-      reconData.dups_bank
+      reconData.dups_bank,
+      reconData.terminal_summary
     );
   };
 
@@ -1237,12 +1282,46 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             </div>
           </div>
 
-          {/* Quick Commission Calculator */}
-          {/* FIX: flex-wrap + min-w-0 + break-words tabular-nums so large commission
-              figures wrap onto a new line on narrower screens instead of being clipped. */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold text-slate-700"><div className="flex items-center gap-1.5"><Percent className="w-4 h-4 text-slate-500"/> Быстрый расчет комиссии (%):</div></span>
+          {/* Commission & EPOS Analysis Banner */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-700">
+                  <Building2 className="w-4 h-4" />
+                </span>
+                <div>
+                  <div className="font-bold text-slate-900">
+                    Комиссия эквайринга EPOS:
+                    <span className="ml-1.5 text-rose-600 font-extrabold tabular-nums">
+                      {fmt(reconData.total_commission || 0)} {currency}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    Эффективная ставка: <strong className="text-slate-800">{reconData.effective_commission_rate?.toFixed(2) || 0}%</strong> по совпавшим терминалам
+                  </div>
+                </div>
+              </div>
+
+              <div className="hidden sm:block border-l border-slate-200 pl-4">
+                <span className="text-slate-500">К зачислению (нетто): </span>
+                <strong className="text-emerald-700 tabular-nums">
+                  {fmt(dynamicCalculations.totalBankSum - (reconData.total_commission || 0))} {currency}
+                </strong>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('terminals')}
+                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                Детализация по {reconData.terminal_summary?.length || 0} терминалам →
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100 w-full lg:w-auto justify-end text-xs">
+              <span className="text-slate-500 flex items-center gap-1 font-medium">
+                <Percent className="w-3.5 h-3.5 text-slate-400"/> Фикс. ставка (%):
+              </span>
               <input
                 type="number"
                 min="0"
@@ -1250,21 +1329,13 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 step="0.1"
                 value={commissionPct}
                 onChange={(e) => setCommissionPct(parseFloat(e.target.value) || 0)}
-                className="w-24 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900"
+                className="w-20 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900"
+                title="Ручная проверка комиссии"
               />
+              <span className="text-slate-600 tabular-nums font-semibold">
+                = {fmt(dynamicCalculations.totalBankSum * (commissionPct / 100))} {currency}
+              </span>
             </div>
-            {commissionPct > 0 && (
-              <div className="flex flex-wrap items-center gap-4 text-xs min-w-0">
-                <div className="min-w-0">
-                  <span className="text-slate-500">Комиссия банка: </span>
-                  <strong className="text-slate-800 break-words tabular-nums">{fmt(dynamicCalculations.totalBankSum * (commissionPct / 100))} {currency}</strong>
-                </div>
-                <div className="border-l border-slate-200 pl-4 min-w-0">
-                  <span className="text-slate-500">Чистыми: </span>
-                  <strong className="text-emerald-700 break-words tabular-nums">{fmt(dynamicCalculations.totalBankSum * (1 - commissionPct / 100))} {currency}</strong>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Tab Navigation */}
@@ -1284,6 +1355,16 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               }`}
             >
               <div className="flex items-center gap-1.5"><BarChart2 className="w-4 h-4"/> Графики</div>
+            </button>
+            <button
+              onClick={() => setActiveTab('terminals')}
+              className={`pb-3 px-3 text-xs font-semibold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === 'terminals' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <Building2 className="w-4 h-4"/> Терминалы и комиссия ({reconData.terminal_summary?.length || 0})
+              </div>
             </button>
             <button
               onClick={() => setActiveTab('unmatched')}
@@ -1476,6 +1557,99 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─── TAB: TERMINALS & EPOS COMMISSION ─── */}
+          {activeTab === 'terminals' && (
+            <div className="space-y-4">
+              {/* Cards row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Всего терминалов (TID)</div>
+                  <div className="text-xl font-bold text-slate-900 mt-1">{reconData.terminal_summary?.length || 0}</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">В текущей банковской выписке</div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Общий оборот терминалов</div>
+                  <div className="text-base font-bold text-slate-900 mt-1 break-words tabular-nums">
+                    {fmt(reconData.terminal_summary?.reduce((a, b) => a + b.total_volume, 0) || 0)} {currency}
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">Номинальная сумма операций</div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Начислено комиссии EPOS</div>
+                  <div className="text-base font-bold text-rose-600 mt-1 break-words tabular-nums">
+                    {fmt(reconData.total_commission || 0)} {currency}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    Средняя ставка: <span className="font-semibold text-slate-700">{reconData.effective_commission_rate?.toFixed(2) || 0}%</span>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">К зачислению (нетто)</div>
+                  <div className="text-base font-bold text-emerald-600 mt-1 break-words tabular-nums">
+                    {fmt((reconData.terminal_summary?.reduce((a, b) => a + b.total_volume, 0) || 0) - (reconData.total_commission || 0))} {currency}
+                  </div>
+                  <div className="text-[11px] text-emerald-700 mt-0.5">Оборот минус комиссия банка</div>
+                </div>
+              </div>
+
+              {/* Terminals Table */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Реестр терминалов и аналитика комиссии</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Комиссия рассчитывается по ставке каждого терминала из справочника EPOS по всем совпавшим транзакциям.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-3">TID Терминала</th>
+                        <th className="py-2.5 px-3">Банк-эквайер</th>
+                        <th className="py-2.5 px-3">Мерчант / Организация</th>
+                        <th className="py-2.5 px-3 text-right">Транзакций</th>
+                        <th className="py-2.5 px-3 text-right">Оборот ({currency})</th>
+                        <th className="py-2.5 px-3 text-right">Ставка %</th>
+                        <th className="py-2.5 px-3 text-right">Комиссия ({currency})</th>
+                        <th className="py-2.5 px-3 text-right">К зачислению ({currency})</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {reconData.terminal_summary && reconData.terminal_summary.length > 0 ? (
+                        reconData.terminal_summary.map((t, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{t.terminal_id}</td>
+                            <td className="py-2.5 px-3 text-slate-700">{t.bank_acquirer || '—'}</td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              {t.legal_entity || t.merchant_id || '—'}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-medium text-slate-700">{t.tx_count}</td>
+                            <td className="py-2.5 px-3 text-right font-semibold text-slate-900 tabular-nums">{fmt(t.total_volume)}</td>
+                            <td className="py-2.5 px-3 text-right font-medium text-indigo-600">{t.commission_pct}%</td>
+                            <td className="py-2.5 px-3 text-right font-semibold text-rose-600 tabular-nums">{fmt(t.commission_amount)}</td>
+                            <td className="py-2.5 px-3 text-right font-bold text-emerald-600 tabular-nums">{fmt(t.net_volume)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={8} className="py-8 text-center text-slate-400">
+                            Терминалы не найдены или колонка TID не выбрана в выписке банка.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -1778,11 +1952,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           )}
 
           {/* ─── EXPORT & SAVE BUTTONS ─── */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Экспорт и фиксация в системе</h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Выгрузите готовый сводный отчет со всеми вкладками в Excel или сохраните данные в системный архив.
+                Выгрузите готовый сводный отчет со всеми вкладками в Excel или сохраните результаты в системный архив базы данных.
               </p>
               {saveSuccessMsg && (
                 <div className="mt-2 text-xs font-semibold text-emerald-600 flex items-center gap-1.5">
@@ -1792,7 +1966,24 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               )}
             </div>
 
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto justify-end">
+              {/* Month Selector for Archive */}
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs">
+                <CalendarDays className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span className="font-semibold text-slate-700 whitespace-nowrap">Месяц архива:</span>
+                <select
+                  value={selectedArchiveMonth}
+                  onChange={(e) => setSelectedArchiveMonth(e.target.value)}
+                  className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                >
+                  {availableMonths.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <button
                 id="btn-export-excel"
                 type="button"

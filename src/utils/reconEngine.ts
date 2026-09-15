@@ -1,4 +1,4 @@
-import { RawRow, ReconciliationConfig, ReconciliationResult, DateSummaryRow, UnmatchedRow, AmountMismatchRow, EposTerminal } from '../types';
+import { RawRow, ReconciliationConfig, ReconciliationResult, DateSummaryRow, UnmatchedRow, AmountMismatchRow, EposTerminal, TerminalSummaryItem } from '../types';
 
 export function cleanAmount(val: any): number {
   if (val === null || val === undefined || val === '') return 0.0;
@@ -117,10 +117,10 @@ export function runReconciliation(
   cfg: ReconciliationConfig,
   eposList: EposTerminal[]
 ): ReconciliationResult {
-  const eposMap = new Map<string, number>();
+  const eposInfoMap = new Map<string, EposTerminal>();
   eposList.forEach(t => {
     if (t.is_active) {
-      eposMap.set(String(t.terminal_id).trim().toUpperCase(), Number(t.commission_pct) || 0);
+      eposInfoMap.set(String(t.terminal_id).trim().toUpperCase(), t);
     }
   });
 
@@ -146,7 +146,7 @@ export function runReconciliation(
     };
   });
 
-  // 2. Process BANK rows
+  // 2. Process BANK rows (сверка всегда по номинальным суммам, комиссия рассчитывается отдельно)
   let bankRows = rawBank.map((row, idx) => {
     const dateRaw = row[cfg.bank_date];
     const { display: dateStr, iso: dateIso } = cleanDate(dateRaw);
@@ -157,13 +157,9 @@ export function runReconciliation(
     
     // Commission check from EPOS
     let commissionPct = 0;
-    if (tid && eposMap.has(tid.toUpperCase())) {
-      commissionPct = eposMap.get(tid.toUpperCase()) || 0;
+    if (tid && eposInfoMap.has(tid.toUpperCase())) {
+      commissionPct = Number(eposInfoMap.get(tid.toUpperCase())?.commission_pct) || 0;
     }
-
-    const netAmount = (cfg.deduct_commission && commissionPct > 0)
-      ? amount - (amount * (commissionPct / 100))
-      : amount;
 
     return {
       _idx: idx,
@@ -171,8 +167,9 @@ export function runReconciliation(
       date_iso: dateIso,
       RRN: rrn,
       raw_amount: amount,
-      net_amount: netAmount,
+      net_amount: amount, // Всегда номинал операции для сравнения с нашей суммой
       commission_pct: commissionPct,
+      commission_amount: amount * (commissionPct / 100),
       terminal_id: tid,
       status: status,
       raw: row,
@@ -471,6 +468,74 @@ export function runReconciliation(
     'Δ суммы': totBankSum - totOurSum,
   });
 
+  // 7. Terminal Summary & Analytical Commission Calculation
+  const termMap = new Map<string, {
+    terminal_id: string;
+    merchant_id?: string;
+    bank_acquirer?: string;
+    legal_entity?: string;
+    tx_count: number;
+    total_volume: number;
+    commission_pct: number;
+    commission_amount: number;
+  }>();
+
+  bankRows.forEach(b => {
+    const tid = b.terminal_id ? b.terminal_id.trim() : '';
+    const termKey = tid || '(Без TID)';
+    const termInfo = tid ? eposInfoMap.get(tid.toUpperCase()) : undefined;
+    const commPct = termInfo?.commission_pct ?? b.commission_pct ?? 0;
+    const commAmt = b.raw_amount * (commPct / 100);
+
+    const existing = termMap.get(termKey) || {
+      terminal_id: termKey,
+      merchant_id: termInfo?.merchant_id || '—',
+      bank_acquirer: termInfo?.bank_acquirer || (tid ? 'EPOS' : '—'),
+      legal_entity: termInfo?.legal_entity || '—',
+      tx_count: 0,
+      total_volume: 0,
+      commission_pct: commPct,
+      commission_amount: 0,
+    };
+
+    existing.tx_count += 1;
+    existing.total_volume += b.raw_amount;
+    existing.commission_amount += commAmt;
+    termMap.set(termKey, existing);
+  });
+
+  const terminalSummary: TerminalSummaryItem[] = Array.from(termMap.values())
+    .map(t => ({
+      ...t,
+      net_volume: t.total_volume - t.commission_amount,
+    }))
+    .sort((a, b) => b.total_volume - a.total_volume);
+
+  const totalCommission = terminalSummary.reduce((acc, t) => acc + t.commission_amount, 0);
+  const totalBankVolume = terminalSummary.reduce((acc, t) => acc + t.total_volume, 0);
+  const effectiveCommissionRate = totalBankVolume > 0 ? (totalCommission / totalBankVolume) * 100 : 0;
+
+  // Извлечение уникальных месяцев (формат YYYY-MM)
+  const monthSet = new Set<string>();
+  const addMonthFromIsoOrStr = (iso?: string, str?: string) => {
+    if (iso && /^\d{4}-\d{2}/.test(iso)) {
+      monthSet.add(iso.slice(0, 7));
+    } else if (str) {
+      // Поддержка формата DD.MM.YYYY
+      const parts = str.split('.');
+      if (parts.length === 3 && parts[2].length === 4) {
+        monthSet.add(`${parts[2]}-${parts[1]}`);
+      }
+    }
+  };
+
+  ourRows.forEach(r => addMonthFromIsoOrStr(r.date_iso, r.date_str));
+  bankRows.forEach(r => addMonthFromIsoOrStr(r.date_iso, r.date_str));
+  if (monthSet.size === 0) {
+    monthSet.add(new Date().toISOString().slice(0, 7));
+  }
+  const detectedMonths = Array.from(monthSet).sort().reverse();
+
   return {
     summary: summaryList,
     only_our: onlyOur,
@@ -482,6 +547,10 @@ export function runReconciliation(
     dup_bank_c: dupsBank.length,
     matched_count: matchedCount,
     mismatch_count: amtMismatches.length,
+    terminal_summary: terminalSummary,
+    total_commission: totalCommission,
+    effective_commission_rate: effectiveCommissionRate,
+    detected_months: detectedMonths,
     merged_rows: mergedRows,
     dup_action: cfg.dup_action,
   };

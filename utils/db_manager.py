@@ -2,6 +2,7 @@ import sqlite3
 import os
 import hashlib
 import secrets
+import json
 from datetime import datetime
 
 import pandas as pd
@@ -94,9 +95,23 @@ def init_db():
                 matched_count INTEGER,
                 mismatch_count INTEGER,
                 only_our_count INTEGER,
-                only_bank_count INTEGER
+                only_bank_count INTEGER,
+                period_month TEXT,
+                total_commission REAL DEFAULT 0.0,
+                terminals_json TEXT
             )
         ''')
+
+        # Миграция колонок для существующих баз данных
+        for col_name, col_type in [
+            ("period_month", "TEXT"),
+            ("total_commission", "REAL DEFAULT 0.0"),
+            ("terminals_json", "TEXT")
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE reconciliation_archive ADD COLUMN {col_name} {col_type}")
+            except sqlite3.OperationalError:
+                pass  # Колонка уже существует
 
         # Общесистемные настройки (единые для ВСЕХ пользователей,
         # а не только для сессии одного браузера, как было раньше).
@@ -293,18 +308,31 @@ def get_audit_logs(limit=100) -> pd.DataFrame:
         )
 
 
-def save_reconciliation(user, bank_name, tot_our, tot_bank, diff, matched_c, mismatch_c, only_our_c, only_bank_c):
-    """Сохраняет метаданные сверки в системный архив (БД)."""
+def save_reconciliation(user, bank_name, tot_our, tot_bank, diff, matched_c, mismatch_c, only_our_c, only_bank_c, period_month=None, total_commission=0.0, terminals_data=None):
+    """Сохраняет метаданные сверки в системный архив (БД) с разбивкой по терминалам и отчётному месяцу."""
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         try:
+            if not period_month:
+                period_month = datetime.now().strftime("%Y-%m")
+
+            terminals_json = ""
+            if terminals_data is not None:
+                if isinstance(terminals_data, pd.DataFrame):
+                    terminals_json = terminals_data.to_json(orient="records", date_format="iso")
+                elif isinstance(terminals_data, (list, dict)):
+                    terminals_json = json.dumps(terminals_data, ensure_ascii=False)
+                elif isinstance(terminals_data, str):
+                    terminals_json = terminals_data
+
             cursor.execute('''
                 INSERT INTO reconciliation_archive
-                (timestamp, username, bank_name, total_our, total_bank, difference, matched_count, mismatch_count, only_our_count, only_bank_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (timestamp, username, bank_name, total_our, total_bank, difference, matched_count, mismatch_count, only_our_count, only_bank_count, period_month, total_commission, terminals_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 datetime.now().isoformat(), user, bank_name,
-                tot_our, tot_bank, diff, matched_c, mismatch_c, only_our_c, only_bank_c
+                float(tot_our), float(tot_bank), float(diff), int(matched_c), int(mismatch_c), int(only_our_c), int(only_bank_c),
+                str(period_month), float(total_commission or 0.0), str(terminals_json)
             ))
             conn.commit()
             return True, "Сверка успешно сохранена в системный архив!"

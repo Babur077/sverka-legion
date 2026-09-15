@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { RawRow, DateSummaryRow, UnmatchedRow, AmountMismatchRow } from '../types';
+import { RawRow, DateSummaryRow, UnmatchedRow, AmountMismatchRow, TerminalSummaryItem } from '../types';
 
 export function guessCol(cols: string[], keywords: string[]): string | null {
   if (!cols || cols.length === 0) return null;
@@ -47,7 +47,8 @@ export function exportReconciliationToExcel(
   onlyBankRows: UnmatchedRow[],
   mismatchRows: AmountMismatchRow[],
   dupsOur: RawRow[],
-  dupsBank: RawRow[]
+  dupsBank: RawRow[],
+  terminalSummary?: TerminalSummaryItem[]
 ): void {
   const wb = XLSX.utils.book_new();
 
@@ -55,7 +56,24 @@ export function exportReconciliationToExcel(
   const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Сводка_по_датам');
 
-  // Sheet 2: Нет_в_банке
+  // Sheet 2: Терминалы_и_Комиссия (если есть данные)
+  if (terminalSummary && terminalSummary.length > 0) {
+    const cleanTerminals = terminalSummary.map(t => ({
+      'TID Терминала': t.terminal_id,
+      'Банк-эквайер': t.bank_acquirer || '',
+      'Мерчант': t.merchant_id || '',
+      'Юр. лицо': t.legal_entity || '',
+      'Кол-во транзакций': t.tx_count,
+      'Оборот (UZS)': t.total_volume,
+      'Ставка комиссии (%)': t.commission_pct,
+      'Комиссия эквайринга (UZS)': t.commission_amount,
+      'К зачислению нетто (UZS)': t.net_volume,
+    }));
+    const wsTerm = XLSX.utils.json_to_sheet(cleanTerminals);
+    XLSX.utils.book_append_sheet(wb, wsTerm, 'Терминалы_и_Комиссия');
+  }
+
+  // Sheet 3: Нет_в_банке
   const cleanOnlyOur = onlyOurRows.map(r => ({
     'Вкл.': r.checked ? 'Да' : 'Нет',
     'Дата': r.date_str,
@@ -67,7 +85,7 @@ export function exportReconciliationToExcel(
   const wsOur = XLSX.utils.json_to_sheet(cleanOnlyOur.length ? cleanOnlyOur : [{ 'Статус': 'Нет данных' }]);
   XLSX.utils.book_append_sheet(wb, wsOur, 'Нет_в_банке');
 
-  // Sheet 3: Лишнее_от_банка
+  // Sheet 4: Лишнее_от_банка
   const cleanOnlyBank = onlyBankRows.map(r => ({
     'Вкл.': r.checked ? 'Да' : 'Нет',
     'Дата': r.date_str,
@@ -81,7 +99,7 @@ export function exportReconciliationToExcel(
   const wsBank = XLSX.utils.json_to_sheet(cleanOnlyBank.length ? cleanOnlyBank : [{ 'Статус': 'Нет данных' }]);
   XLSX.utils.book_append_sheet(wb, wsBank, 'Лишнее_от_банка');
 
-  // Sheet 4: Расхождения_сумм
+  // Sheet 5: Расхождения_сумм
   if (mismatchRows.length > 0) {
     const cleanMismatch = mismatchRows.map(r => ({
       'RRN': r.RRN,
@@ -95,7 +113,7 @@ export function exportReconciliationToExcel(
     XLSX.utils.book_append_sheet(wb, wsMismatch, 'Расхождения_сумм');
   }
 
-  // Sheet 5 & 6: Дубликаты
+  // Sheet 6 & 7: Дубликаты
   if (dupsOur.length > 0) {
     const wsDupOur = XLSX.utils.json_to_sheet(dupsOur);
     XLSX.utils.book_append_sheet(wb, wsDupOur, 'Дубликаты_наши');

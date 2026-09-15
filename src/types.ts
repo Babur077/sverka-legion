@@ -23,6 +23,18 @@ export interface AuditLog {
   details: string;
 }
 
+export interface TerminalSummaryItem {
+  terminal_id: string;
+  merchant_id?: string;
+  bank_acquirer?: string;
+  legal_entity?: string;
+  tx_count: number;
+  total_volume: number;
+  commission_pct: number;
+  commission_amount: number;
+  net_volume: number;
+}
+
 export interface ReconciliationArchive {
   id: number;
   timestamp: string;
@@ -35,6 +47,9 @@ export interface ReconciliationArchive {
   mismatch_count: number;
   only_our_count: number;
   only_bank_count: number;
+  period_month?: string;
+  total_commission?: number;
+  terminals_summary?: TerminalSummaryItem[];
 }
 
 export interface SystemSettings {
@@ -110,6 +125,10 @@ export interface ReconciliationResult {
   dup_bank_c: number;
   matched_count: number;
   mismatch_count: number;
+  terminal_summary?: TerminalSummaryItem[];
+  total_commission?: number;
+  effective_commission_rate?: number;
+  detected_months?: string[];
   merged_rows: Array<{
     date_str: string;
     RRN: string;

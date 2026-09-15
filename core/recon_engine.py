@@ -224,6 +224,36 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     }])
     summary = pd.concat([summary, total_row], ignore_index=True)
 
+    # Аналитика по терминалам и месяцам
+    terminal_summary = []
+    total_commission = 0.0
+    detected_months = []
+
+    if "date" in pl_bank.columns:
+        dates_series = pl_bank.select(pl.col("date").dt.strftime("%Y-%m").drop_nulls()).to_series().to_list()
+        detected_months = sorted(list(set(dates_series)), reverse=True)
+
+    if "terminal_id" in pl_bank.columns:
+        has_legal = "legal_entity" in pl_bank.columns
+        agg_exprs = [
+            pl.len().alias("tx_count"),
+            pl.col("raw_amount").sum().alias("total_volume"),
+            pl.col("commission_pct").first().alias("commission_pct"),
+            pl.col("commission_amount").sum().alias("commission_amount"),
+        ]
+        if has_legal:
+            agg_exprs.append(pl.col("legal_entity").first().alias("legal_entity"))
+
+        t_agg = pl_bank.group_by("terminal_id").agg(agg_exprs)
+        t_df = t_agg.to_pandas()
+        t_df["commission_pct"] = t_df["commission_pct"].fillna(0.0)
+        t_df["commission_amount"] = t_df["total_volume"] * (t_df["commission_pct"] / 100.0)
+        t_df["net_volume"] = t_df["total_volume"] - t_df["commission_amount"]
+        if not has_legal:
+            t_df["legal_entity"] = ""
+        total_commission = float(t_df["commission_amount"].sum())
+        terminal_summary = t_df.to_dict(orient="records")
+
     return {
         "summary": summary,
         "only_our": only_our, 
@@ -237,6 +267,9 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         "mismatch_count": 0 if cfg["unbind_mismatches"] else amt_mismatches_pl.height,
         "comm_only_diff_count": comm_only_diff_count,
         "deduct_commission": deduct_comm,
+        "terminal_summary": terminal_summary,
+        "total_commission": total_commission,
+        "detected_months": detected_months,
         "merged": merged,
         "dup_action": cfg["dup_action"],
     }
