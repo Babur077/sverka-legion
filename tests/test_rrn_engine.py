@@ -1,3 +1,4 @@
+import pandas as pd
 import polars as pl
 
 from core.recon_engine import run_rrn_reconciliation
@@ -84,13 +85,10 @@ def test_reversal_status_can_zero_out_transaction():
     assert result["mismatch_count"] == 0
 
 
-def test_epos_commission_is_joined_and_can_be_deducted(monkeypatch):
-    monkeypatch.setattr(
-        "core.recon_engine.get_epos_registry",
-        lambda: __import__("pandas").DataFrame([
-            {"terminal_id": "T1", "legal_entity": "LLC Test", "commission_pct": 2.0},
-        ]),
-    )
+def test_epos_commission_is_joined_and_can_be_deducted():
+    epos_registry = pd.DataFrame([
+        {"terminal_id": "T1", "legal_entity": "LLC Test", "commission_pct": 2.0},
+    ])
 
     our = frame([
         {"date": "2026-09-01", "rrn": "C100", "amount": "980", "status": "OK"},
@@ -103,6 +101,7 @@ def test_epos_commission_is_joined_and_can_be_deducted(monkeypatch):
         our,
         bank,
         base_cfg(bank_tid="terminal", deduct_commission=True),
+        epos_registry=epos_registry,
     )
 
     assert result["matched_count"] == 1
