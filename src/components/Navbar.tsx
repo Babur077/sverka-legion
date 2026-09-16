@@ -39,16 +39,16 @@ export const Navbar: React.FC<NavbarProps> = ({
       id: 'modules',
       label: 'Модули сверок',
       icon: Layers,
-      adminOnly: false
+      adminOnly: false,
     },
-    { 
-      id: 'rrn', 
-      label: user.role === 'auditor' ? 'Сверка RRN (Аудит)' : 'Сверка по RRN', 
-      icon: RefreshCw, 
-      adminOnly: false 
+    {
+      id: 'bank_rrn',
+      label: user.role === 'auditor' ? 'Сверка банков (Аудит)' : 'Сверка банков',
+      icon: RefreshCw,
+      adminOnly: false,
     },
-    { id: 'epos', label: 'Реестр банков', icon: Building2, adminOnly: true },
-    { id: 'analytics', label: 'Аналитика', icon: BarChart3, adminOnly: false },
+    { id: 'analytics', label: 'Глобальная аналитика', icon: BarChart3, adminOnly: false },
+    { id: 'epos', label: 'Глобальный реестр', icon: Building2, adminOnly: true },
     { id: 'admin', label: 'Настройки', icon: Settings, adminOnly: true },
   ].filter(item => !item.adminOnly || user.role === 'admin');
 
@@ -59,7 +59,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      {/* Mobile top bar with hamburger toggle */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-slate-200 z-40 px-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-xs">
@@ -76,23 +75,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         </button>
       </div>
 
-      {/* Mobile Backdrop */}
       {mobileOpen && (
-        <div 
-          onClick={() => setMobileOpen(false)} 
-          className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 transition-opacity" 
+        <div
+          onClick={() => setMobileOpen(false)}
+          className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 transition-opacity"
         />
       )}
 
-      {/* Sidebar container (responsive) */}
       <aside
         className={`fixed md:static inset-y-0 left-0 z-50 bg-white border-r border-slate-200 flex flex-col shrink-0 h-full transition-all duration-200 ease-in-out ${
           collapsed ? 'w-20' : 'w-64'
-        } ${
-          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-        }`}
+        } ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
       >
-        {/* Brand Header */}
         <div className="p-4 border-b border-slate-100 flex items-center justify-between relative">
           <div className="flex items-center gap-2.5 overflow-hidden">
             <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-xs font-black text-lg shrink-0">
@@ -106,7 +100,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          {/* Collapse toggle (desktop only) */}
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="hidden md:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
@@ -116,7 +109,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </div>
 
-        {/* Navigation items */}
         <div className="p-3 flex-1 overflow-y-auto">
           {!collapsed && (
             <div className="px-3 py-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
@@ -147,7 +139,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
         </div>
 
-        {/* User profile & Logout */}
         <div className="p-3 border-t border-slate-100 bg-slate-50/50">
           <div className={`flex items-center gap-2 overflow-hidden mb-3 ${collapsed ? 'justify-center' : ''}`}>
             <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0 border border-indigo-200">
