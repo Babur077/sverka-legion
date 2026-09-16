@@ -5,39 +5,58 @@ export function guessCol(cols: string[], keywords: string[]): string | null {
   if (!cols || cols.length === 0) return null;
   for (const col of cols) {
     const colLower = String(col).toLowerCase().trim();
-    if (keywords.some(kw => colLower.includes(kw))) {
-      return col;
-    }
+    if (keywords.some(kw => colLower.includes(kw))) return col;
   }
   return null;
 }
 
+function parseFileSync(fileName: string, data: ArrayBuffer): { fileName: string; rows: RawRow[]; columns: string[] } {
+  const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+  const firstSheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[firstSheetName];
+  const jsonRows: RawRow[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+  if (jsonRows.length === 0) return { fileName, rows: [], columns: [] };
+  return { fileName, rows: jsonRows, columns: Object.keys(jsonRows[0]) };
+}
+
+/**
+ * Parse Excel/CSV in a dedicated worker so large files do not block the React UI.
+ * ArrayBuffer is transferred to the worker instead of copied.
+ */
 export async function parseFile(file: File): Promise<{ fileName: string; rows: RawRow[]; columns: string[] }> {
+  const buffer = await file.arrayBuffer();
+
+  if (typeof Worker === 'undefined') {
+    return parseFileSync(file.name, buffer);
+  }
+
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
+    let worker: Worker | null = null;
+    try {
+      worker = new Worker(new URL('./fileParseWorker.ts', import.meta.url), { type: 'module' });
+      worker.onmessage = (event: MessageEvent<{ success: boolean; result?: { fileName: string; rows: RawRow[]; columns: string[] }; error?: string }>) => {
+        const result = event.data;
+        worker?.terminate();
+        worker = null;
+        if (result.success && result.result) resolve(result.result);
+        else reject(new Error(result.error || 'Не удалось прочитать файл'));
+      };
+      worker.onerror = (error) => {
+        worker?.terminate();
+        worker = null;
+        reject(error);
+      };
+      worker.postMessage({ buffer, fileName: file.name }, [buffer]);
+    } catch (error) {
+      worker?.terminate();
+      worker = null;
       try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const jsonRows: RawRow[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-
-        if (jsonRows.length === 0) {
-          resolve({ fileName: file.name, rows: [], columns: [] });
-          return;
-        }
-
-        const columns = Object.keys(jsonRows[0]);
-        resolve({ fileName: file.name, rows: jsonRows, columns });
-      } catch (err) {
-        reject(err);
+        resolve(parseFileSync(file.name, buffer));
+      } catch (fallbackError) {
+        reject(fallbackError || error);
       }
-    };
-
-    reader.onerror = (err) => reject(err);
-    reader.readAsBinaryString(file);
+    }
   });
 }
 
@@ -52,11 +71,9 @@ export function exportReconciliationToExcel(
 ): void {
   const wb = XLSX.utils.book_new();
 
-  // Sheet 1: Сводка_по_датам
   const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Сводка_по_датам');
 
-  // Sheet 2: Терминалы_и_Комиссия (если есть данные)
   if (terminalSummary && terminalSummary.length > 0) {
     const cleanTerminals = terminalSummary.map(t => ({
       'TID Терминала': t.terminal_id,
@@ -73,7 +90,6 @@ export function exportReconciliationToExcel(
     XLSX.utils.book_append_sheet(wb, wsTerm, 'Терминалы_и_Комиссия');
   }
 
-  // Sheet 3: Нет_в_банке
   const cleanOnlyOur = onlyOurRows.map(r => ({
     'Вкл.': r.checked ? 'Да' : 'Нет',
     'Дата': r.date_str,
@@ -85,7 +101,6 @@ export function exportReconciliationToExcel(
   const wsOur = XLSX.utils.json_to_sheet(cleanOnlyOur.length ? cleanOnlyOur : [{ 'Статус': 'Нет данных' }]);
   XLSX.utils.book_append_sheet(wb, wsOur, 'Нет_в_банке');
 
-  // Sheet 4: Лишнее_от_банка
   const cleanOnlyBank = onlyBankRows.map(r => ({
     'Вкл.': r.checked ? 'Да' : 'Нет',
     'Дата': r.date_str,
@@ -99,7 +114,6 @@ export function exportReconciliationToExcel(
   const wsBank = XLSX.utils.json_to_sheet(cleanOnlyBank.length ? cleanOnlyBank : [{ 'Статус': 'Нет данных' }]);
   XLSX.utils.book_append_sheet(wb, wsBank, 'Лишнее_от_банка');
 
-  // Sheet 5: Расхождения_сумм
   if (mismatchRows.length > 0) {
     const cleanMismatch = mismatchRows.map(r => ({
       'RRN': r.RRN,
@@ -113,7 +127,6 @@ export function exportReconciliationToExcel(
     XLSX.utils.book_append_sheet(wb, wsMismatch, 'Расхождения_сумм');
   }
 
-  // Sheet 6 & 7: Дубликаты
   if (dupsOur.length > 0) {
     const wsDupOur = XLSX.utils.json_to_sheet(dupsOur);
     XLSX.utils.book_append_sheet(wb, wsDupOur, 'Дубликаты_наши');
@@ -138,7 +151,6 @@ export function generateSampleData(): {
   const ourRows: RawRow[] = [];
   const bankRows: RawRow[] = [];
 
-  // Generate 25 matching transactions across 3 dates
   for (let i = 1; i <= 25; i++) {
     const date = dates[i % dates.length];
     const rrn = `9482019${1000 + i}`;
@@ -161,7 +173,6 @@ export function generateSampleData(): {
     });
   }
 
-  // Add 1 transaction with reversal in our system
   ourRows.push({
     'Дата': '12.09.2026',
     'Ключ RRN': '94820191099',
@@ -176,7 +187,6 @@ export function generateSampleData(): {
     'Терминал TID': '98234011',
   });
 
-  // Add 2 transactions missing in bank (only our)
   ourRows.push({
     'Дата': '11.09.2026',
     'Ключ RRN': '94820199001',
@@ -190,7 +200,6 @@ export function generateSampleData(): {
     'Статус': 'Оплачено',
   });
 
-  // Add 2 extra bank transactions (only bank)
   bankRows.push({
     'Дата проводки': '10.09.2026',
     'Код RRN': '94820198001',
@@ -206,7 +215,6 @@ export function generateSampleData(): {
     'Терминал TID': '98234013',
   });
 
-  // Add 1 amount mismatch
   ourRows.push({
     'Дата': '11.09.2026',
     'Ключ RRN': '94820197777',
@@ -216,7 +224,7 @@ export function generateSampleData(): {
   bankRows.push({
     'Дата проводки': '11.09.2026',
     'Код RRN': '94820197777',
-    'Сумма банка': 490000, // 10,000 difference
+    'Сумма банка': 490000,
     'Статус операции': 'SUCCESS',
     'Терминал TID': '98234014',
   });
