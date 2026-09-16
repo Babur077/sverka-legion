@@ -93,7 +93,7 @@ export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onSelect
   const userCanRun = user.role !== 'auditor';
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="w-full max-w-[1800px] mx-auto p-6 xl:px-8 space-y-6">
       {/* Верхний баннер архитектуры модульного монолита */}
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
