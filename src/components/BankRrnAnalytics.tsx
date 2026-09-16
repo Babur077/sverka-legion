@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { BarChart3, TrendingUp, Coins, CheckCircle2, AlertTriangle, Building2, Download } from 'lucide-react';
+import { BarChart3, TrendingUp, Coins, CheckCircle2, AlertTriangle, Building2 } from 'lucide-react';
 import { ReconciliationArchive, User } from '../types';
 import { getArchiveData } from '../utils/storage';
 
