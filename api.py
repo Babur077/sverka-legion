@@ -138,7 +138,6 @@ async def run_module_reconciliation(
     if not module:
         raise HTTPException(status_code=404, detail=f"Модуль сверки '{module_id}' не найден")
 
-    # Чтение multipart form-data файлов
     form = await request.form()
     files_dict: Dict[str, bytes] = {}
     params_dict: Dict[str, Any] = {}
@@ -152,12 +151,10 @@ async def run_module_reconciliation(
 
     t_start = time.time()
     try:
-        # Валидация
         val_res = module.validate_inputs(files_dict, params_dict)
         if not val_res.is_valid:
             raise HTTPException(status_code=400, detail={"errors": val_res.errors})
 
-        # Запуск расчетного движка
         result = module.run(files_dict, params_dict)
 
         duration = (time.time() - t_start) * 1000
@@ -187,9 +184,7 @@ async def run_module_reconciliation(
 
 @app.get("/api/modules/{module_id}/analytics")
 async def get_module_analytics(module_id: str, x_user: Optional[str] = Header("admin")):
-    """
-    Возвращает уникальную аналитику конкретного модуля (для аудитора или фин. директора).
-    """
+    """Возвращает уникальную аналитику конкретного модуля."""
     perms = get_user_permissions(x_user)
     if not has_permission(perms, f"{module_id}.view") and not has_permission(perms, "analytics.view_all") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Доступ к аналитике этого модуля ограничен")
@@ -249,17 +244,5 @@ if os.path.exists(DIST_DIR):
         return JSONResponse({"message": "React index.html not found"}, status_code=404)
 
 if __name__ == "__main__":
-    import threading
-    import webbrowser
-
-    def _auto_open_browser():
-        time.sleep(1.2)
-        try:
-            webbrowser.open("http://localhost:8000")
-        except Exception:
-            pass
-
-    threading.Thread(target=_auto_open_browser, daemon=True).start()
-
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
