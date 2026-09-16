@@ -27,27 +27,25 @@ if not defined PYTHON_CMD (
 
 echo ВЫБЕРИТЕ РЕЖИМ РАБОТЫ:
 echo.
-echo  [1] Локальная сеть (Wi-Fi / Офис LAN по локальному IP) [ПО УМОЛЧАНИЮ]
-echo      --^> Быстро, безопасно для банковских данных, работает внутри офиса.
+echo  [1] Локальная сеть (Streamlit legacy)
+echo      --^> Старый интерфейс Streamlit на порту 8501.
 echo.
 echo  [2] Онлайн-ссылка для удаленных коллег (Cloudflare / Pinggy Туннель)
-echo      --^> Для работы из дома или других филиалов через интернет.
-echo.
 echo  [3] Настройка Брандмауэра Windows (открыть порты 8501, 3000, 8000)
 echo  [4] Диагностика сети (проверить подключение коллег)
 echo  [5] React Web App (автономный браузерный интерфейс)
-echo  [6] FastAPI + React (Высокопроизводительный сервер с Polars и Swagger UI)
+echo  [6] FastAPI + React (текущий основной интерфейс) [ПО УМОЛЧАНИЮ]
 echo.
-set /p CHOICE="Введите номер действия (1-6, по умолчанию 1 - Локальная сеть): "
+set /p CHOICE="Введите номер действия (1-6, по умолчанию 6 - FastAPI + React): "
 
-if "%CHOICE%"=="" set CHOICE=1
+if "%CHOICE%"=="" set CHOICE=6
 if "%CHOICE%"=="1" goto run_streamlit
 if "%CHOICE%"=="2" goto run_tunnel
 if "%CHOICE%"=="3" goto run_firewall
 if "%CHOICE%"=="4" goto run_diag
 if "%CHOICE%"=="5" goto run_react
 if "%CHOICE%"=="6" goto run_fastapi
-goto run_streamlit
+goto run_fastapi
 
 :run_streamlit
 call start_streamlit.bat
