@@ -3,15 +3,10 @@ ReconcileHub - FastAPI Backend (Modular Monolith)
 Интегрирует централизованный реестр модулей (BaseReconciliationModule), RBAC и аудит.
 """
 import os
-import sys
-import json
 import time
-import socket
-import subprocess
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Request
+from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -20,12 +15,7 @@ from pydantic import BaseModel
 from utils.db_manager import (
     init_db,
     authenticate_user,
-    get_all_users,
-    get_audit_logs,
     get_epos_registry,
-    add_epos_terminal,
-    update_epos_terminal,
-    delete_epos_terminal,
 )
 from utils.permissions import (
     init_permissions_db,
@@ -53,11 +43,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Pydantic Модели ──────────────────────────────────────────
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+
 
 class EposItem(BaseModel):
     terminal_id: str
@@ -67,7 +57,6 @@ class EposItem(BaseModel):
     account_number: Optional[str] = ""
     is_active: bool = True
 
-# ─── Базовые эндпоинты платформы ─────────────────────────────
 
 @app.get("/api/health")
 async def health():
@@ -75,8 +64,9 @@ async def health():
         "status": "healthy",
         "platform": "ReconcileHub Modular Monolith",
         "active_modules_count": len(module_registry.list_manifests()),
-        "version": "2.1.0"
+        "version": "2.1.0",
     }
+
 
 @app.post("/api/auth/login")
 async def login(req: LoginRequest, request: Request):
@@ -100,23 +90,15 @@ async def login(req: LoginRequest, request: Request):
         details=f"Роль: {role}, прав: {len(perms)}",
     )
 
-    return {
-        "username": req.username,
-        "role": role,
-        "permissions": perms,
-    }
+    return {"username": req.username, "role": role, "permissions": perms}
 
-# ─── Модульный API (Модули сверок) ────────────────────────────
 
 @app.get("/api/modules")
 async def get_modules(x_user: Optional[str] = Header("admin")):
-    """
-    Возвращает список доступных модулей сверок для конкретного пользователя.
-    Бухгалтер увидит только свой модуль, а аудитор — все доступные для анализа.
-    """
     perms = get_user_permissions(x_user)
     manifests = module_registry.list_manifests(user_permissions=perms)
     return [m.model_dump() for m in manifests]
+
 
 @app.post("/api/modules/{module_id}/run")
 async def run_module_reconciliation(
@@ -124,10 +106,6 @@ async def run_module_reconciliation(
     request: Request,
     x_user: Optional[str] = Header("admin"),
 ):
-    """
-    Универсальный эндпоинт запуска ЛЮБОГО модуля сверки (RRN, Paynet, EPOS и т.д.).
-    Платформа проверяет права доступа, вызывает контракт модуля и фиксирует аудит-трейл.
-    """
     perms = get_user_permissions(x_user)
     required_perm = f"{module_id}.run"
 
@@ -138,7 +116,6 @@ async def run_module_reconciliation(
     if not module:
         raise HTTPException(status_code=404, detail=f"Модуль сверки '{module_id}' не найден")
 
-    # Чтение multipart form-data файлов
     form = await request.form()
     files_dict: Dict[str, bytes] = {}
     params_dict: Dict[str, Any] = {}
@@ -152,14 +129,11 @@ async def run_module_reconciliation(
 
     t_start = time.time()
     try:
-        # Валидация
         val_res = module.validate_inputs(files_dict, params_dict)
         if not val_res.is_valid:
             raise HTTPException(status_code=400, detail={"errors": val_res.errors})
 
-        # Запуск расчетного движка
         result = module.run(files_dict, params_dict)
-
         duration = (time.time() - t_start) * 1000
         record_audit_event(
             user_id=x_user,
@@ -169,10 +143,15 @@ async def run_module_reconciliation(
             object_id=result.run_id,
             status="SUCCESS",
             duration_ms=duration,
-            details=f"Записей А: {result.summary.total_records_a}, Записей B: {result.summary.total_records_b}, Сходимость: {result.summary.match_percentage}%",
+            details=(
+                f"Записей А: {result.summary.total_records_a}, "
+                f"Записей B: {result.summary.total_records_b}, "
+                f"Сходимость: {result.summary.match_percentage}%"
+            ),
         )
         return result.model_dump()
-
+    except HTTPException:
+        raise
     except Exception as e:
         duration = (time.time() - t_start) * 1000
         record_audit_event(
@@ -185,11 +164,9 @@ async def run_module_reconciliation(
         )
         raise HTTPException(status_code=500, detail=f"Ошибка выполнения модуля: {str(e)}")
 
+
 @app.get("/api/modules/{module_id}/analytics")
 async def get_module_analytics(module_id: str, x_user: Optional[str] = Header("admin")):
-    """
-    Возвращает уникальную аналитику конкретного модуля (для аудитора или фин. директора).
-    """
     perms = get_user_permissions(x_user)
     if not has_permission(perms, f"{module_id}.view") and not has_permission(perms, "analytics.view_all") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Доступ к аналитике этого модуля ограничен")
@@ -200,12 +177,12 @@ async def get_module_analytics(module_id: str, x_user: Optional[str] = Header("a
 
     return module.get_analytics()
 
-# ─── EPOS Справочник ──────────────────────────────────────────
 
 @app.get("/api/epos")
 async def fetch_epos():
     df = get_epos_registry()
     return df.to_dict(orient="records") if hasattr(df, "to_dict") else []
+
 
 @app.get("/api/banks")
 async def get_banks():
@@ -216,20 +193,18 @@ async def get_banks():
             return banks
     return ["Aloqa Bank", "Kapitalbank", "Ipak Yuli", "NBU", "TBC Bank", "Agrobank", "Humo", "Uzcard"]
 
-# ─── Аудит и Пользователи ─────────────────────────────────────
 
 @app.get("/api/audit")
 async def fetch_audit_trail(limit: int = 100, x_user: Optional[str] = Header("admin")):
     import sqlite3
     from utils.db_manager import DB_PATH
+
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute("SELECT * FROM audit_events ORDER BY id DESC LIMIT ?", (limit,))
-        rows = cur.fetchall()
-        return [dict(r) for r in rows]
+        return [dict(r) for r in cur.fetchall()]
 
-# ─── Раздача скомпилированного React Frontend ──────────────────
 
 DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist")
 
@@ -248,18 +223,7 @@ if os.path.exists(DIST_DIR):
             return FileResponse(index_file)
         return JSONResponse({"message": "React index.html not found"}, status_code=404)
 
+
 if __name__ == "__main__":
-    import threading
-    import webbrowser
-
-    def _auto_open_browser():
-        time.sleep(1.2)
-        try:
-            webbrowser.open("http://localhost:8000")
-        except Exception:
-            pass
-
-    threading.Thread(target=_auto_open_browser, daemon=True).start()
-
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
