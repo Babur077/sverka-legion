@@ -50,7 +50,7 @@ export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
   return (
     <div className="min-h-full bg-slate-50">
       <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4">
+        <div className="w-full max-w-[1800px] mx-auto px-4 md:px-6 xl:px-8 py-4">
           <button
             onClick={onBack}
             className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors"
@@ -103,7 +103,7 @@ export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-6 py-5">
+      <div className="w-full max-w-[1800px] mx-auto px-4 md:px-6 xl:px-8 py-5">
         <div className="grid grid-cols-1 md:grid-cols-[260px_minmax(0,1fr)] gap-5 items-start">
           <aside className={`bg-white border border-slate-200 rounded-xl p-2 shadow-xs md:sticky md:top-32 transition-all ${collapsed ? 'md:w-20' : ''}`}>
             <div className="flex items-center justify-between px-2 py-2 mb-1">
