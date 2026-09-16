@@ -85,7 +85,8 @@ export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
               <button
                 onClick={() => onNavigate('workspace')}
                 className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-                title="Настройки рабочего места"
+                title="Открыть новую сверку"
+                aria-label="Открыть новую сверку"
               >
                 <Settings2 className="w-4 h-4" />
               </button>
