@@ -22,7 +22,7 @@ if %errorlevel% == 0 (
 
 if not defined PYTHON_BIN (
     echo [ОШИБКА] Python не найден на вашем компьютере!
-    echo Установите Python 3.10+ с сайта https://www.python.org/
+    echo Установите Python 3.10+ с https://www.python.org/
     pause
     exit /b 1
 )
@@ -101,7 +101,6 @@ echo  Swagger:         http://localhost:8000/docs
 echo ===============================================================
 echo.
 
-start "" http://localhost:8000
 %PYTHON_BIN% api.py
 
 pause
