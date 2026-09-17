@@ -21,19 +21,20 @@ function sha256Hex(ascii: string): string {
   const asciiBitLength = ascii.length * 8;
   
   const hash = [
-    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53f,
     0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
   ];
   
   const k = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x59f1111f, 0xe49b69c1, 0x988c2c6a, 0x3c7a47b7,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd192e819, 0xa3e79b3f, 0x4f2c5d9c,
+    0x06ca6351, 0x14292967, 0x27b70a85, 0x3d6ef8e0, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x81c2c92e,
+    0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85,
+    0x3d6ef8e0, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x81c2c92e, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+    0xc6e00bf3, 0xd192e819, 0xa3e79b3f, 0x6f067aa2, 0xd2078f57, 0x4d9a0e9b, 0x1f83d9ab, 0x5be0cd19,
+    0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x92322d85, 0xa2bfe8a1, 0x816d807f,
+    0x650a7354, 0x766a0abb, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc76c51a3, 0xd192e819, 0xf40e3585
   ];
 
   for (i = 0; i < ascii.length; i++) {
@@ -158,7 +159,6 @@ export function verifyUser(username: string, password: string): User | null {
     if (u.passwordHash === hashedInput) {
       return true;
     }
-    // Backward compatibility for existing plaintext passwords in localStorage
     if (u.passwordHash === cleanPass) {
       u.passwordHash = hashedInput;
       userUpdated = true;
@@ -200,7 +200,7 @@ export function deleteUser(id: number): boolean {
   let users = getStoredUsers();
   const toDelete = users.find(u => u.id === id);
   if (toDelete && toDelete.username === 'admin') {
-    return false; // Prevent deleting master admin
+    return false;
   }
   users = users.filter(u => u.id !== id);
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
@@ -216,7 +216,6 @@ export function getStoredBanks(): string[] {
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      // Ensure the 5 primary banks are always included
       const merged = Array.from(new Set([...DEFAULT_BANKS, ...parsed]));
       return merged;
     }
@@ -258,11 +257,10 @@ export function saveEposTerminal(terminal: EposTerminal): { success: boolean; me
     terminals[existsIndex] = terminal;
     localStorage.setItem(EPOS_KEY, JSON.stringify(terminals));
     return { success: true, message: `Терминал ${terminal.terminal_id} успешно обновлен!` };
-  } else {
-    terminals.push(terminal);
-    localStorage.setItem(EPOS_KEY, JSON.stringify(terminals));
-    return { success: true, message: `Терминал ${terminal.terminal_id} успешно добавлен!` };
   }
+  terminals.push(terminal);
+  localStorage.setItem(EPOS_KEY, JSON.stringify(terminals));
+  return { success: true, message: `Терминал ${terminal.terminal_id} успешно добавлен!` };
 }
 
 export function deleteEposTerminal(tid: string): void {
@@ -302,7 +300,6 @@ export function getAuditLogs(): AuditLog[] {
   try {
     const raw = localStorage.getItem(LOGS_KEY);
     if (!raw) {
-      // Seed a couple initial logs
       const initial: AuditLog[] = [
         { id: 1, timestamp: new Date(Date.now() - 3600000).toISOString(), username: 'system', action: 'INIT', details: 'Система инициализирована. База данных готова к работе.' }
       ];
@@ -334,6 +331,8 @@ export function saveReconciliation(
     const archive: ReconciliationArchive[] = raw ? JSON.parse(raw) : [];
     const nowIso = new Date().toISOString();
     const resolvedMonth = period_month || nowIso.slice(0, 7);
+    const normalizedTerminals = (terminals_summary || []).map(t => ({ ...t, terminal_id: String(t.terminal_id || '').trim() || '(Без TID)' }));
+    const terminalCommission = normalizedTerminals.reduce((sum, t) => sum + (Number(t.commission_amount) || 0), 0);
     const newEntry: ReconciliationArchive = {
       id: Date.now(),
       timestamp: nowIso,
@@ -347,8 +346,8 @@ export function saveReconciliation(
       only_our_count,
       only_bank_count,
       period_month: resolvedMonth,
-      total_commission: total_commission || 0,
-      terminals_summary: terminals_summary || [],
+      total_commission: normalizedTerminals.length > 0 ? terminalCommission : (total_commission || 0),
+      terminals_summary: normalizedTerminals,
     };
     archive.unshift(newEntry);
     localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archive));
@@ -362,7 +361,6 @@ export function getArchiveData(): ReconciliationArchive[] {
   try {
     const raw = localStorage.getItem(ARCHIVE_KEY);
     if (!raw) {
-      // Seed realistic archive entries with terminal metrics
       const initial: ReconciliationArchive[] = [
         {
           id: 1,
@@ -431,11 +429,37 @@ export function deleteArchiveRecord(id: number): boolean {
   }
 }
 
-const DRAFT_KEY = 'reconcile_active_draft_v1';
+const DRAFT_KEY = 'reconcile_active_draft_v2';
+const LEGACY_DRAFT_KEY = 'reconcile_active_draft_v1';
 
 export function saveActiveDraft(draft: any): void {
   try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    const fileMeta = {
+      our: draft?.ourFile
+        ? {
+            name: draft.ourFile.name,
+            columns: draft.ourFile.columns || [],
+            rowCount: Array.isArray(draft.ourFile.rows) ? draft.ourFile.rows.length : (draft.ourFile.rowCount || 0),
+          }
+        : null,
+      bank: draft?.bankFile
+        ? {
+            name: draft.bankFile.name,
+            columns: draft.bankFile.columns || [],
+            rowCount: Array.isArray(draft.bankFile.rows) ? draft.bankFile.rows.length : (draft.bankFile.rowCount || 0),
+          }
+        : null,
+    };
+
+    const payload = {
+      ...draft,
+      version: 2,
+      ourFile: null,
+      bankFile: null,
+      fileMeta,
+    };
+
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
   } catch (e) {
     console.warn('Failed to save draft to localStorage:', e);
   }
@@ -444,8 +468,12 @@ export function saveActiveDraft(draft: any): void {
 export function getStoredDraft(): any | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
+    if (raw) return JSON.parse(raw);
+
+    // Legacy v1 could contain the entire imported tables. Remove it without JSON.parse
+    // so a previously saved 200 MB file does not block app startup.
+    localStorage.removeItem(LEGACY_DRAFT_KEY);
+    return null;
   } catch {
     return null;
   }
@@ -454,6 +482,7 @@ export function getStoredDraft(): any | null {
 export function clearActiveDraft(): void {
   try {
     localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(LEGACY_DRAFT_KEY);
   } catch {}
 }
 
