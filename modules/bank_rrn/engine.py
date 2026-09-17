@@ -67,6 +67,12 @@ class BankRrnModule(BaseReconciliationModule):
         )
 
     @staticmethod
+    def _as_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on", "да"}
+
+    @staticmethod
     def _records(value: Any) -> list[dict]:
         if value is None:
             return []
@@ -100,9 +106,9 @@ class BankRrnModule(BaseReconciliationModule):
             "our_rev": str(params.get("our_rev_action", "Минусовать сумму")),
             "bank_rev": str(params.get("bank_rev_action", "Удалить строку")),
             "dup_action": str(params.get("dup_action", "Ничего не делать (оставить все)")),
-            "unbind_mismatches": bool(params.get("unbind_mismatches", False)),
+            "unbind_mismatches": self._as_bool(params.get("unbind_mismatches", False)),
             "tolerance": float(params.get("tolerance", 0.01)),
-            "deduct_commission": bool(params.get("deduct_commission", False)),
+            "deduct_commission": self._as_bool(params.get("deduct_commission", False)),
         }
 
         pl_our = load_file_polars(
