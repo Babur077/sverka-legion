@@ -8,7 +8,6 @@ import {
   History,
   LayoutDashboard,
   Play,
-  Settings2,
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -81,13 +80,6 @@ export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
               >
                 <Play className="w-3.5 h-3.5 fill-white" />
                 Новая сверка
-              </button>
-              <button
-                onClick={() => onNavigate('workspace')}
-                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-                title="Настройки рабочего места"
-              >
-                <Settings2 className="w-4 h-4" />
               </button>
               <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200 ml-1">
                 <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs border border-indigo-200">
