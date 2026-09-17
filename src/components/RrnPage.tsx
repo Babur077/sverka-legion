@@ -68,6 +68,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   // Draft banner & persistence
   const [savedDraft, setSavedDraft] = useState<any | null>(null);
   const [showDraftBanner, setShowDraftBanner] = useState<boolean>(false);
+  const [draftRestored, setDraftRestored] = useState<boolean>(false);
 
   // File upload state
   const [ourFile, setOurFile] = useState<{ name: string; rows: RawRow[]; columns: string[] } | null>(null);
@@ -167,14 +168,14 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       setDupAction(savedDraft.rules.dupAction || 'Ничего не делать (оставить все)');
       setUnbindMismatches(!!savedDraft.rules.unbindMismatches);
     }
-    if (savedDraft.ourFile) setOurFile(savedDraft.ourFile);
-    if (savedDraft.bankFile) setBankFile(savedDraft.bankFile);
-    setShowDraftBanner(false);
+    setDraftRestored(true);
+    setShowDraftBanner(true);
   };
 
   const handleDismissDraft = () => {
     clearActiveDraft();
     setSavedDraft(null);
+    setDraftRestored(false);
     setShowDraftBanner(false);
   };
 
@@ -307,12 +308,14 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       const parsed = await parseFile(file);
       if (isOur) {
         setOurFile({ name: parsed.fileName, rows: parsed.rows, columns: parsed.columns });
+        setDraftRestored(false);
         setOurDateCol(guessCol(parsed.columns, ['date', 'дата']) || parsed.columns[0] || '');
         setOurRrnCol(guessCol(parsed.columns, ['rrn', 'ref']) || parsed.columns[1] || '');
         setOurAmtCol(guessCol(parsed.columns, ['amount', 'сумма']) || '');
         setOurStatusCol(guessCol(parsed.columns, ['status', 'статус']) || '');
       } else {
         setBankFile({ name: parsed.fileName, rows: parsed.rows, columns: parsed.columns });
+        setDraftRestored(false);
         setBankDateCol(guessCol(parsed.columns, ['date', 'дата']) || parsed.columns[0] || '');
         setBankRrnCol(guessCol(parsed.columns, ['rrn', 'ref']) || parsed.columns[1] || '');
         setBankAmtCol(guessCol(parsed.columns, ['amount', 'сумма']) || '');
@@ -331,6 +334,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   const handleLoadDemoData = () => {
     const demo = generateSampleData();
+    setDraftRestored(false);
+    setShowDraftBanner(false);
     setOurFile({ name: demo.ourData.fileName, rows: demo.ourData.rows, columns: demo.ourData.columns });
     setOurDateCol('Дата');
     setOurRrnCol('Ключ RRN');
@@ -770,27 +775,46 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
       {/* ─── DRAFT RECOVERY BANNER ─── */}
       {showDraftBanner && (!ourFile || !bankFile) && (
-        <div className="p-4 rounded-2xl bg-indigo-50/80 border border-indigo-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2.5 text-indigo-950">
-            <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
-            <div>
-              <span className="font-bold">Обнаружен сохранённый черновик</span>{' '}
-              {savedDraft?.timestamp && (
-                <span className="text-indigo-700">от {new Date(savedDraft.timestamp).toLocaleString('ru-RU')}</span>
+        <div className="p-4 rounded-2xl bg-indigo-50/80 border border-indigo-200 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 text-xs">
+          <div className="flex items-start gap-2.5 text-indigo-950 min-w-0">
+            <Sparkles className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <div>
+                <span className="font-bold">{draftRestored ? 'Параметры сверки восстановлены' : 'Обнаружен сохранённый черновик'}</span>{' '}
+                {savedDraft?.timestamp && (
+                  <span className="text-indigo-700">от {new Date(savedDraft.timestamp).toLocaleString('ru-RU')}</span>
+                )}
+                {savedDraft?.selectedBank && (
+                  <span className="text-slate-600 ml-1">({savedDraft.selectedBank})</span>
+                )}
+              </div>
+              {draftRestored ? (
+                <div className="mt-1 text-slate-700">Файлы не хранятся в черновике — выберите их заново ниже. Параметры колонок и правил уже восстановлены.</div>
+              ) : (
+                <div className="mt-1 text-slate-600">Будут восстановлены параметры сверки. Исходные файлы потребуют повторного выбора.</div>
               )}
-              {savedDraft?.selectedBank && (
-                <span className="text-slate-600 ml-1">({savedDraft.selectedBank})</span>
+              {savedDraft?.fileMeta && (
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-600">
+                  {savedDraft.fileMeta.our && (
+                    <span><strong className="text-slate-800">Ваши данные:</strong> {savedDraft.fileMeta.our.name} · {savedDraft.fileMeta.our.rowCount.toLocaleString('ru-RU')} строк</span>
+                  )}
+                  {savedDraft.fileMeta.bank && (
+                    <span><strong className="text-slate-800">Банк:</strong> {savedDraft.fileMeta.bank.name} · {savedDraft.fileMeta.bank.rowCount.toLocaleString('ru-RU')} строк</span>
+                  )}
+                </div>
               )}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={handleRestoreDraft}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
-            >
-              Восстановить параметры
-            </button>
+            {!draftRestored && (
+              <button
+                type="button"
+                onClick={handleRestoreDraft}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
+              >
+                Восстановить параметры
+              </button>
+            )}
             <button
               type="button"
               onClick={handleDismissDraft}
