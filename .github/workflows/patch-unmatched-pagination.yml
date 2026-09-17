@@ -1,0 +1,108 @@
+name: Apply unmatched pagination patch
+
+on:
+  push:
+    branches:
+      - perf/unmatched-pagination
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch unmatched reconciliation tables
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          import sys
+
+          path = Path('src/components/RrnPage.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          if 'const UNMATCHED_PAGE_SIZE = 100;' in text:
+              print('Pagination patch already applied.')
+              sys.exit(0)
+
+          anchor = "  // File Handlers\n"
+          state_block = '''  const UNMATCHED_PAGE_SIZE = 100;\n  const [unmatchedPageOur, setUnmatchedPageOur] = useState(1);\n  const [unmatchedPageBank, setUnmatchedPageBank] = useState(1);\n\n  const unmatchedOurFiltered = useMemo(() => {\n    if (!reconData || activeTab !== 'unmatched') return [];\n    return reconData.only_our\n      .map((item, originalIndex) => ({ item, originalIndex }))\n      .filter(({ item }) =>\n        (filterDateOur === '(Все)' || item.date_str === filterDateOur) &&\n        (filterStatusOur === '(Все)' || (item.status || '') === filterStatusOur)\n      );\n  }, [reconData, activeTab, filterDateOur, filterStatusOur]);\n\n  const unmatchedBankFiltered = useMemo(() => {\n    if (!reconData || activeTab !== 'unmatched') return [];\n    return reconData.only_bank\n      .map((item, originalIndex) => ({ item, originalIndex }))\n      .filter(({ item }) =>\n        (filterDateBank === '(Все)' || item.date_str === filterDateBank) &&\n        (filterStatusBank === '(Все)' || (item.status || '') === filterStatusBank)\n      );\n  }, [reconData, activeTab, filterDateBank, filterStatusBank]);\n\n  const unmatchedOurPageCount = Math.max(1, Math.ceil(unmatchedOurFiltered.length / UNMATCHED_PAGE_SIZE));\n  const unmatchedBankPageCount = Math.max(1, Math.ceil(unmatchedBankFiltered.length / UNMATCHED_PAGE_SIZE));\n\n  const unmatchedOurPageItems = unmatchedOurFiltered.slice(\n    (unmatchedPageOur - 1) * UNMATCHED_PAGE_SIZE,\n    unmatchedPageOur * UNMATCHED_PAGE_SIZE\n  );\n  const unmatchedBankPageItems = unmatchedBankFiltered.slice(\n    (unmatchedPageBank - 1) * UNMATCHED_PAGE_SIZE,\n    unmatchedPageBank * UNMATCHED_PAGE_SIZE\n  );\n\n  const unmatchedOurDates = useMemo(() => {\n    if (!reconData || activeTab !== 'unmatched') return [];\n    return Array.from(new Set(reconData.only_our.map(x => x.date_str)));\n  }, [reconData, activeTab]);\n\n  const unmatchedOurStatuses = useMemo(() => {\n    if (!reconData || activeTab !== 'unmatched') return [];\n    return Array.from(new Set(reconData.only_our.map(x => x.status || ''))).filter(Boolean);\n  }, [reconData, activeTab]);\n\n  const unmatchedBankDates = useMemo(() => {\n    if (!reconData || activeTab !== 'unmatched') return [];\n    return Array.from(new Set(reconData.only_bank.map(x => x.date_str)));\n  }, [reconData, activeTab]);\n\n  const unmatchedBankStatuses = useMemo(() => {\n    if (!reconData || activeTab !== 'unmatched') return [];\n    return Array.from(new Set(reconData.only_bank.map(x => x.status || ''))).filter(Boolean);\n  }, [reconData, activeTab]);\n\n  useEffect(() => {\n    setUnmatchedPageOur(1);\n    setUnmatchedPageBank(1);\n  }, [filterDateOur, filterStatusOur, filterDateBank, filterStatusBank]);\n\n  useEffect(() => {\n    if (unmatchedPageOur > unmatchedOurPageCount) setUnmatchedPageOur(unmatchedOurPageCount);\n    if (unmatchedPageBank > unmatchedBankPageCount) setUnmatchedPageBank(unmatchedBankPageCount);\n  }, [unmatchedOurPageCount, unmatchedBankPageCount, unmatchedPageOur, unmatchedPageBank]);\n\n'''
+
+          if anchor not in text:
+              raise SystemExit('State insertion anchor not found')
+          text = text.replace(anchor, state_block + anchor, 1)
+
+          text = text.replace(
+              'reconData.only_our.map((item, idx) => (',
+              'unmatchedOurPageItems.map(({ item, originalIndex: idx }) => (',
+              1,
+          )
+          text = text.replace(
+              'reconData.only_bank.map((item, idx) => (',
+              'unmatchedBankPageItems.map(({ item, originalIndex: idx }) => (',
+              1,
+          )
+
+          text = text.replace(
+              "{Array.from(new Set(reconData.only_our.map(x => x.date_str))).map(d => (",
+              "{unmatchedOurDates.map(d => (",
+              1,
+          )
+          text = text.replace(
+              "{Array.from(new Set(reconData.only_our.map(x => x.status || ''))).filter(Boolean).map(s => (",
+              "{unmatchedOurStatuses.map(s => (",
+              1,
+          )
+          text = text.replace(
+              "{Array.from(new Set(reconData.only_bank.map(x => x.date_str))).map(d => (",
+              "{unmatchedBankDates.map(d => (",
+              1,
+          )
+          text = text.replace(
+              "{Array.from(new Set(reconData.only_bank.map(x => x.status || ''))).filter(Boolean).map(s => (",
+              "{unmatchedBankStatuses.map(s => (",
+              1,
+          )
+
+          pagination_our = '''\n                    <div className="flex items-center justify-between gap-2 border-t border-slate-200 bg-white px-3 py-2 text-[11px]">\n                      <span className="text-slate-500">\n                        {unmatchedOurFiltered.length === 0\n                          ? 'Нет строк по текущему фильтру'\n                          : `Показано ${(unmatchedPageOur - 1) * UNMATCHED_PAGE_SIZE + 1}–${Math.min(unmatchedPageOur * UNMATCHED_PAGE_SIZE, unmatchedOurFiltered.length)} из ${unmatchedOurFiltered.length}`}\n                      </span>\n                      <div className="flex items-center gap-1">\n                        <button\n                          type="button"\n                          disabled={unmatchedPageOur <= 1}\n                          onClick={() => setUnmatchedPageOur(prev => Math.max(1, prev - 1))}\n                          className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"\n                        >\n                          Назад\n                        </button>\n                        <span className="min-w-[58px] text-center text-slate-600">\n                          {unmatchedPageOur} / {unmatchedOurPageCount}\n                        </span>\n                        <button\n                          type="button"\n                          disabled={unmatchedPageOur >= unmatchedOurPageCount}\n                          onClick={() => setUnmatchedPageOur(prev => Math.min(unmatchedOurPageCount, prev + 1))}\n                          className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"\n                        >\n                          Далее\n                        </button>\n                      </div>\n                    </div>'''
+
+          pagination_bank = '''\n                    <div className="flex items-center justify-between gap-2 border-t border-slate-200 bg-white px-3 py-2 text-[11px]">\n                      <span className="text-slate-500">\n                        {unmatchedBankFiltered.length === 0\n                          ? 'Нет строк по текущему фильтру'\n                          : `Показано ${(unmatchedPageBank - 1) * UNMATCHED_PAGE_SIZE + 1}–${Math.min(unmatchedPageBank * UNMATCHED_PAGE_SIZE, unmatchedBankFiltered.length)} из ${unmatchedBankFiltered.length}`}\n                      </span>\n                      <div className="flex items-center gap-1">\n                        <button\n                          type="button"\n                          disabled={unmatchedPageBank <= 1}\n                          onClick={() => setUnmatchedPageBank(prev => Math.max(1, prev - 1))}\n                          className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"\n                        >\n                          Назад\n                        </button>\n                        <span className="min-w-[58px] text-center text-slate-600">\n                          {unmatchedPageBank} / {unmatchedBankPageCount}\n                        </span>\n                        <button\n                          type="button"\n                          disabled={unmatchedPageBank >= unmatchedBankPageCount}\n                          onClick={() => setUnmatchedPageBank(prev => Math.min(unmatchedBankPageCount, prev + 1))}\n                          className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"\n                        >\n                          Далее\n                        </button>\n                      </div>\n                    </div>'''
+
+          table_re = re.compile(
+              r'(?P<table><div className="max-h-96 overflow-y-auto rounded-xl border border-slate-200 text-xs">.*?unmatchedOurPageItems\.map.*?</table>)(?P<close>\s*</div>)',
+              re.S,
+          )
+          match = table_re.search(text)
+          if not match:
+              raise SystemExit('Our unmatched table not found after map replacement')
+          text = text[:match.end('table')] + pagination_our + text[match.start('close'):]
+
+          table_re = re.compile(
+              r'(?P<table><div className="max-h-96 overflow-y-auto rounded-xl border border-slate-200 text-xs">.*?unmatchedBankPageItems\.map.*?</table>)(?P<close>\s*</div>)',
+              re.S,
+          )
+          match = table_re.search(text)
+          if not match:
+              raise SystemExit('Bank unmatched table not found after map replacement')
+          text = text[:match.end('table')] + pagination_bank + text[match.start('close'):]
+
+          path.write_text(text, encoding='utf-8')
+          print('Patched RrnPage.tsx with filtered pagination (100 rows/page).')
+      - name: Verify TypeScript syntax
+        run: |
+          npm ci
+          npm run lint
+      - name: Commit patch and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-unmatched-pagination.yml
+          git add src/components/RrnPage.tsx
+          git commit -m "perf: paginate unmatched reconciliation rows"
+          git push
