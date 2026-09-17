@@ -1,13 +1,12 @@
 """
 Модуль сверки банковского эквайринга по кодам RRN.
-Оборачивает существующий Polars-движок в стандартный контракт BaseReconciliationModule.
+Оборачивает канонический RRN-движок в стандартный контракт BaseReconciliationModule.
 """
-import uuid
 import time
+import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-import polars as pl
 from modules.base import (
     BaseReconciliationModule,
     ModuleManifest,
@@ -15,28 +14,20 @@ from modules.base import (
     ReconResult,
     ReconSummary,
 )
-from core.parsers import (
-    parse_file_to_polars,
-    clean_amount_polars,
-    clean_date_polars,
-    clean_rrn_polars,
-)
-from core.recon_engine import (
-    apply_reversals,
-    date_summary,
-    terminal_summary,
-)
+from core.parsers import load_file_polars
+from core.recon_engine import run_rrn_reconciliation
+from utils.db_manager import get_epos_registry
 
 
 class BankRrnModule(BaseReconciliationModule):
-    """Модуль сверки банковского эквайринга (RRN, суммы, комиссии)"""
+    """Модуль сверки банковского эквайринга (RRN, суммы, комиссии)."""
 
     @property
     def manifest(self) -> ModuleManifest:
         return ModuleManifest(
             id="bank_rrn",
             name="Сверка эквайринга (RRN)",
-            version="1.4.2",
+            version="1.5.0",
             description="Потранзакционная сверка 1С / АБС с выписками банков по номерам RRN, суммам и комиссиям.",
             category="Эквайринг",
             icon="CreditCard",
@@ -52,134 +43,153 @@ class BankRrnModule(BaseReconciliationModule):
     def validate_inputs(self, files: Dict[str, bytes], params: Dict[str, Any]) -> ValidationResult:
         errors = []
         warnings = []
-        columns = {}
 
         if "our_file" not in files or not files["our_file"]:
             errors.append("Не загружен файл нашей базы (our_file)")
         if "bank_file" not in files or not files["bank_file"]:
             errors.append("Не загружен файл банковской выписки (bank_file)")
 
+        required_params = [
+            ("our_date_col", "Дата (наша сторона)"),
+            ("our_rrn_col", "RRN (наша сторона)"),
+            ("bank_date_col", "Дата (банк)"),
+            ("bank_rrn_col", "RRN (банк)"),
+        ]
+        for key, label in required_params:
+            if not str(params.get(key, "")).strip():
+                errors.append(f"Не указана обязательная колонка: {label}")
+
         return ValidationResult(
             is_valid=len(errors) == 0,
             errors=errors,
             warnings=warnings,
-            columns_found=columns,
+            columns_found={},
         )
+
+    @staticmethod
+    def _records(value: Any) -> list[dict]:
+        if value is None:
+            return []
+        if hasattr(value, "to_dict"):
+            return value.to_dict(orient="records")
+        if isinstance(value, list):
+            return value
+        return []
 
     def run(self, files: Dict[str, bytes], params: Dict[str, Any]) -> ReconResult:
         t_start = time.time()
         run_id = str(uuid.uuid4())[:8]
 
-        bytes_our = files["our_file"]
-        bytes_bank = files["bank_file"]
+        rev_words_raw = params.get(
+            "rev_words",
+            "reversed, возврат, refund, отказ, ошибка",
+        )
+        rev_words = [word.strip() for word in str(rev_words_raw).split(",") if word.strip()]
 
-        our_date_col = params.get("our_date_col", "Дата")
-        our_rrn_col = params.get("our_rrn_col", "RRN")
-        our_amt_col = params.get("our_amt_col", "Сумма")
-        our_status_col = params.get("our_status_col", "")
+        cfg = {
+            "our_date": str(params.get("our_date_col", "Дата")),
+            "our_rrn": str(params.get("our_rrn_col", "RRN")),
+            "our_amt": str(params.get("our_amt_col", "")) or None,
+            "our_status": str(params.get("our_status_col", "")) or None,
+            "bank_date": str(params.get("bank_date_col", "Дата")),
+            "bank_rrn": str(params.get("bank_rrn_col", "RRN")),
+            "bank_amt": str(params.get("bank_amt_col", "")) or None,
+            "bank_status": str(params.get("bank_status_col", "")) or None,
+            "bank_tid": str(params.get("bank_tid_col", "")) or None,
+            "rev_words": rev_words,
+            "our_rev": str(params.get("our_rev_action", "Минусовать сумму")),
+            "bank_rev": str(params.get("bank_rev_action", "Удалить строку")),
+            "dup_action": str(params.get("dup_action", "Ничего не делать (оставить все)")),
+            "unbind_mismatches": bool(params.get("unbind_mismatches", False)),
+            "tolerance": float(params.get("tolerance", 0.01)),
+            "deduct_commission": bool(params.get("deduct_commission", False)),
+        }
 
-        bank_date_col = params.get("bank_date_col", "Дата")
-        bank_rrn_col = params.get("bank_rrn_col", "RRN")
-        bank_amt_col = params.get("bank_amt_col", "Сумма")
-        bank_status_col = params.get("bank_status_col", "")
-        bank_tid_col = params.get("bank_tid_col", "")
-
-        rev_words = [w.strip().lower() for w in params.get("rev_words", "reversed,возврат,refund").split(",") if w.strip()]
-        our_rev_action = params.get("our_rev_action", "Минусовать сумму")
-        bank_rev_action = params.get("bank_rev_action", "Удалить строку")
-
-        # 1. Чтение через Polars
-        pl_our = parse_file_to_polars(bytes_our, params.get("our_filename", "our.xlsx"))
-        pl_bank = parse_file_to_polars(bytes_bank, params.get("bank_filename", "bank.xlsx"))
+        pl_our = load_file_polars(
+            files["our_file"],
+            params.get("our_filename", "our.xlsx"),
+        )
+        pl_bank = load_file_polars(
+            files["bank_file"],
+            params.get("bank_filename", "bank.xlsx"),
+        )
 
         if pl_our is None or pl_bank is None:
             raise ValueError("Не удалось распознать формат переданных файлов.")
 
-        # 2. Очистка и нормализация
-        pl_our = clean_rrn_polars(pl_our, our_rrn_col)
-        pl_bank = clean_rrn_polars(pl_bank, bank_rrn_col)
-        pl_our = clean_amount_polars(pl_our, our_amt_col)
-        pl_bank = clean_amount_polars(pl_bank, bank_amt_col)
-        pl_our = clean_date_polars(pl_our, our_date_col)
-        pl_bank = clean_date_polars(pl_bank, bank_date_col)
+        result = run_rrn_reconciliation(
+            pl_our_raw=pl_our,
+            pl_bank_raw=pl_bank,
+            cfg=cfg,
+            epos_registry=get_epos_registry(),
+        )
 
-        # 3. Обработка возвратов
-        if our_status_col and rev_words:
-            pl_our = apply_reversals(pl_our, our_status_col, our_rev_action, our_amt_col, rev_words)
-        if bank_status_col and rev_words:
-            pl_bank = apply_reversals(pl_bank, bank_status_col, bank_rev_action, bank_amt_col, rev_words)
+        summary_df = result["summary"]
+        # core.recon_engine appends a display-only total row; totals for the
+        # canonical API summary must be calculated from the actual date rows.
+        base_summary_df = summary_df.iloc[:-1] if len(summary_df) else summary_df
+        total_our = float(base_summary_df["Сумма_у_нас"].sum()) if not base_summary_df.empty else 0.0
+        total_bank = float(base_summary_df["Сумма_в_банке"].sum()) if not base_summary_df.empty else 0.0
+        total_records_our = int(base_summary_df["Кол_во_у_нас"].sum()) if not base_summary_df.empty else 0
+        total_records_bank = int(base_summary_df["Кол_во_в_банке"].sum()) if not base_summary_df.empty else 0
 
-        our_renames = {k: v for k, v in {our_date_col: "date", our_rrn_col: "RRN", our_amt_col: "net_amount_our"}.items() if k and k != v and k in pl_our.columns}
-        if our_renames:
-            pl_our = pl_our.rename(our_renames)
-
-        bank_renames = {k: v for k, v in {bank_date_col: "date", bank_rrn_col: "RRN", bank_amt_col: "net_amount_bank"}.items() if k and k != v and k in pl_bank.columns}
-        if bank_renames:
-            pl_bank = pl_bank.rename(bank_renames)
-
-        if "net_amount_our" not in pl_our.columns:
-            pl_our = pl_our.with_columns(pl.lit(0.0).alias("net_amount_our"))
-        if "net_amount_bank" not in pl_bank.columns:
-            pl_bank = pl_bank.with_columns(pl.lit(0.0).alias("net_amount_bank"))
-        if "RRN" not in pl_our.columns:
-            pl_our = pl_our.with_columns(pl.lit("").alias("RRN"))
-        if "RRN" not in pl_bank.columns:
-            pl_bank = pl_bank.with_columns(pl.lit("").alias("RRN"))
-
-        # 4. Расчеты
-        total_our_cnt = pl_our.height
-        total_our_sum = float(pl_our["net_amount_our"].sum() or 0.0) if total_our_cnt > 0 else 0.0
-
-        total_bank_cnt = pl_bank.height
-        total_bank_sum = float(pl_bank["net_amount_bank"].sum() or 0.0) if total_bank_cnt > 0 else 0.0
-
-        matched = pl_our.join(pl_bank, on="RRN", how="inner")
-        matched_cnt = matched.height
-
-        unmatched_our = pl_our.join(pl_bank, on="RRN", how="anti")
-        unmatched_bank = pl_bank.join(pl_our, on="RRN", how="anti")
-        discrepancy_cnt = unmatched_our.height + unmatched_bank.height
-
-        diff_sum = round(total_our_sum - total_bank_sum, 2)
-        match_pct = round((matched_cnt / max(total_our_cnt, 1)) * 100, 2)
-
-        summary_dates = date_summary(pl_our, pl_bank)
-        summary_terminals = terminal_summary(pl_bank, bank_tid_col or "")
-
+        mismatch_count = int(result.get("mismatch_count", 0))
+        only_our_count = len(result.get("only_our", []))
+        only_bank_count = len(result.get("only_bank", []))
+        matched_count = int(result.get("matched_count", 0))
+        diff_sum = round(total_bank - total_our, 2)
+        match_percentage = round((matched_count / max(total_records_our, 1)) * 100, 2)
         duration_ms = round((time.time() - t_start) * 1000, 2)
 
-        summary = ReconSummary(
-            total_records_a=total_our_cnt,
-            total_records_b=total_bank_cnt,
-            total_sum_a=round(total_our_sum, 2),
-            total_sum_b=round(total_bank_sum, 2),
-            matched_count=matched_cnt,
-            discrepancy_count=discrepancy_cnt,
-            diff_sum=diff_sum,
-            match_percentage=match_pct,
-            execution_time_ms=duration_ms,
-        )
+        rich_result = {
+            "only_our": self._records(result.get("only_our")),
+            "only_bank": self._records(result.get("only_bank")),
+            "amt_mismatches": self._records(result.get("amt_mismatches")),
+            "dups_our": self._records(result.get("dups_our")),
+            "dups_bank": self._records(result.get("dups_bank")),
+            "dup_our_c": int(result.get("dup_our_c", 0)),
+            "dup_bank_c": int(result.get("dup_bank_c", 0)),
+            "matched_count": matched_count,
+            "mismatch_count": mismatch_count,
+            "comm_only_diff_count": int(result.get("comm_only_diff_count", 0)),
+            "deduct_commission": bool(result.get("deduct_commission", False)),
+            "terminal_summary": self._records(result.get("terminal_summary")),
+            "total_commission": float(result.get("total_commission", 0.0)),
+            "detected_months": result.get("detected_months", []),
+            "dup_action": result.get("dup_action", cfg["dup_action"]),
+        }
 
         return ReconResult(
             run_id=run_id,
             module_id="bank_rrn",
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            status="COMPLETED" if discrepancy_cnt == 0 else "WARNING",
-            summary=summary,
-            by_date=summary_dates.to_dict(orient="records") if hasattr(summary_dates, "to_dict") else [],
-            by_category=summary_terminals.to_dict(orient="records") if hasattr(summary_terminals, "to_dict") else [],
-            discrepancies=[],
-            custom_metrics={
-                "unmatched_our_count": unmatched_our.height,
-                "unmatched_bank_count": unmatched_bank.height,
-                "reversals_applied": bool(rev_words),
-            },
+            status=(
+                "COMPLETED"
+                if mismatch_count == 0 and only_our_count == 0 and only_bank_count == 0
+                else "WARNING"
+            ),
+            summary=ReconSummary(
+                total_records_a=total_records_our,
+                total_records_b=total_records_bank,
+                total_sum_a=round(total_our, 2),
+                total_sum_b=round(total_bank, 2),
+                matched_count=matched_count,
+                discrepancy_count=only_our_count + only_bank_count + mismatch_count,
+                diff_sum=diff_sum,
+                match_percentage=match_percentage,
+                execution_time_ms=duration_ms,
+            ),
+            by_date=self._records(result.get("summary")),
+            by_category=rich_result["terminal_summary"],
+            discrepancies=rich_result["amt_mismatches"],
+            custom_metrics={"rrn": rich_result},
         )
 
     def get_analytics(self, run_id: Optional[str] = None) -> Dict[str, Any]:
-        """Возвращает аналитику по эквайрингу (структура терминалов, комиссии, динамика)"""
+        """Возвращает аналитику по эквайрингу."""
         return {
             "module": "bank_rrn",
+            "run_id": run_id,
             "metrics": {
                 "avg_ticket": 128500.0,
                 "top_acquirers": [
@@ -199,5 +209,5 @@ class BankRrnModule(BaseReconciliationModule):
         }
 
     def export(self, run_id: str, format: str = "xlsx") -> bytes:
-        # Заглушка экспорта для RRN
+        # Заглушка экспорта для RRN.
         return b"Dummy Excel Report"
