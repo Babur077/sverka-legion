@@ -232,6 +232,71 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [filterStatusOur, setFilterStatusOur] = useState('(Все)');
   const [filterDateBank, setFilterDateBank] = useState('(Все)');
   const [filterStatusBank, setFilterStatusBank] = useState('(Все)');
+  const UNMATCHED_PAGE_SIZE = 100;
+  const [unmatchedPageOur, setUnmatchedPageOur] = useState(1);
+  const [unmatchedPageBank, setUnmatchedPageBank] = useState(1);
+
+  const unmatchedOurFiltered = useMemo(() => {
+    if (!reconData || activeTab !== 'unmatched') return [];
+    return reconData.only_our
+      .map((item, originalIndex) => ({ item, originalIndex }))
+      .filter(({ item }) =>
+        (filterDateOur === '(Все)' || item.date_str === filterDateOur) &&
+        (filterStatusOur === '(Все)' || (item.status || '') === filterStatusOur)
+      );
+  }, [reconData, activeTab, filterDateOur, filterStatusOur]);
+
+  const unmatchedBankFiltered = useMemo(() => {
+    if (!reconData || activeTab !== 'unmatched') return [];
+    return reconData.only_bank
+      .map((item, originalIndex) => ({ item, originalIndex }))
+      .filter(({ item }) =>
+        (filterDateBank === '(Все)' || item.date_str === filterDateBank) &&
+        (filterStatusBank === '(Все)' || (item.status || '') === filterStatusBank)
+      );
+  }, [reconData, activeTab, filterDateBank, filterStatusBank]);
+
+  const unmatchedOurPageCount = Math.max(1, Math.ceil(unmatchedOurFiltered.length / UNMATCHED_PAGE_SIZE));
+  const unmatchedBankPageCount = Math.max(1, Math.ceil(unmatchedBankFiltered.length / UNMATCHED_PAGE_SIZE));
+
+  const unmatchedOurPageItems = unmatchedOurFiltered.slice(
+    (unmatchedPageOur - 1) * UNMATCHED_PAGE_SIZE,
+    unmatchedPageOur * UNMATCHED_PAGE_SIZE
+  );
+  const unmatchedBankPageItems = unmatchedBankFiltered.slice(
+    (unmatchedPageBank - 1) * UNMATCHED_PAGE_SIZE,
+    unmatchedPageBank * UNMATCHED_PAGE_SIZE
+  );
+
+  const unmatchedOurDates = useMemo(() => {
+    if (!reconData || activeTab !== 'unmatched') return [];
+    return Array.from(new Set(reconData.only_our.map(x => x.date_str)));
+  }, [reconData, activeTab]);
+
+  const unmatchedOurStatuses = useMemo(() => {
+    if (!reconData || activeTab !== 'unmatched') return [];
+    return Array.from(new Set(reconData.only_our.map(x => x.status || ''))).filter(Boolean);
+  }, [reconData, activeTab]);
+
+  const unmatchedBankDates = useMemo(() => {
+    if (!reconData || activeTab !== 'unmatched') return [];
+    return Array.from(new Set(reconData.only_bank.map(x => x.date_str)));
+  }, [reconData, activeTab]);
+
+  const unmatchedBankStatuses = useMemo(() => {
+    if (!reconData || activeTab !== 'unmatched') return [];
+    return Array.from(new Set(reconData.only_bank.map(x => x.status || ''))).filter(Boolean);
+  }, [reconData, activeTab]);
+
+  useEffect(() => {
+    setUnmatchedPageOur(1);
+    setUnmatchedPageBank(1);
+  }, [filterDateOur, filterStatusOur, filterDateBank, filterStatusBank]);
+
+  useEffect(() => {
+    if (unmatchedPageOur > unmatchedOurPageCount) setUnmatchedPageOur(unmatchedOurPageCount);
+    if (unmatchedPageBank > unmatchedBankPageCount) setUnmatchedPageBank(unmatchedBankPageCount);
+  }, [unmatchedOurPageCount, unmatchedBankPageCount, unmatchedPageOur, unmatchedPageBank]);
 
   // File Handlers
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isOur: boolean) => {
@@ -839,7 +904,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             <span className="text-xs font-medium text-slate-700">
               {ourFile ? ourFile.name : 'Нажмите для выбора файла или перетащите'}
             </span>
-            <span className="text-[11px] text-slate-400 mt-0.5">.xlsx, .xls или .csv (до 50 МБ)</span>
+            <span className="text-[11px] text-slate-400 mt-0.5">.xlsx, .xls или .csv (до 200 МБ)</span>
           </label>
 
           {ourFile && (
@@ -898,7 +963,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             <span className="text-xs font-medium text-slate-700">
               {bankFile ? bankFile.name : 'Нажмите для выбора файла или перетащите'}
             </span>
-            <span className="text-[11px] text-slate-400 mt-0.5">.xlsx, .xls или .csv (до 50 МБ)</span>
+            <span className="text-[11px] text-slate-400 mt-0.5">.xlsx, .xls или .csv (до 200 МБ)</span>
           </label>
 
           {bankFile && (
@@ -1687,7 +1752,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                           className="w-full text-xs p-1 bg-white border border-slate-200 rounded"
                         >
                           <option value="(Все)">(Все даты)</option>
-                          {Array.from(new Set(reconData.only_our.map(x => x.date_str))).map(d => (
+                          {unmatchedOurDates.map(d => (
                             <option key={d} value={d}>{d}</option>
                           ))}
                         </select>
@@ -1700,7 +1765,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                           className="w-full text-xs p-1 bg-white border border-slate-200 rounded"
                         >
                           <option value="(Все)">(Все статусы)</option>
-                          {Array.from(new Set(reconData.only_our.map(x => x.status || ''))).filter(Boolean).map(s => (
+                          {unmatchedOurStatuses.map(s => (
                             <option key={s} value={s}>{s}</option>
                           ))}
                         </select>
@@ -1743,7 +1808,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white">
-                        {reconData.only_our.map((item, idx) => (
+                        {unmatchedOurPageItems.map(({ item, originalIndex: idx }) => (
                           <tr key={idx} className={item.checked ? '' : 'bg-slate-50/70 opacity-60'}>
                             <td className="px-2 py-1.5 text-center">
                               <input
@@ -1770,6 +1835,34 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       </tbody>
                     </table>
                   </div>
+                  <div className="flex items-center justify-between gap-2 border border-t-0 border-slate-200 rounded-b-xl bg-white px-3 py-2 text-[11px]">
+                    <span className="text-slate-500">
+                      {unmatchedOurFiltered.length === 0
+                        ? 'Нет строк по текущему фильтру'
+                        : `Показано ${(unmatchedPageOur - 1) * UNMATCHED_PAGE_SIZE + 1}–${Math.min(unmatchedPageOur * UNMATCHED_PAGE_SIZE, unmatchedOurFiltered.length)} из ${unmatchedOurFiltered.length}`}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={unmatchedPageOur <= 1}
+                        onClick={() => setUnmatchedPageOur(prev => Math.max(1, prev - 1))}
+                        className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Назад
+                      </button>
+                      <span className="min-w-[58px] text-center text-slate-600">
+                        {unmatchedPageOur} / {unmatchedOurPageCount}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={unmatchedPageOur >= unmatchedOurPageCount}
+                        onClick={() => setUnmatchedPageOur(prev => Math.min(unmatchedOurPageCount, prev + 1))}
+                        className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Далее
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Right Panel: ONLY BANK */}
@@ -1791,7 +1884,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                           className="w-full text-xs p-1 bg-white border border-slate-200 rounded"
                         >
                           <option value="(Все)">(Все даты)</option>
-                          {Array.from(new Set(reconData.only_bank.map(x => x.date_str))).map(d => (
+                          {unmatchedBankDates.map(d => (
                             <option key={d} value={d}>{d}</option>
                           ))}
                         </select>
@@ -1804,7 +1897,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                           className="w-full text-xs p-1 bg-white border border-slate-200 rounded"
                         >
                           <option value="(Все)">(Все статусы)</option>
-                          {Array.from(new Set(reconData.only_bank.map(x => x.status || ''))).filter(Boolean).map(s => (
+                          {unmatchedBankStatuses.map(s => (
                             <option key={s} value={s}>{s}</option>
                           ))}
                         </select>
@@ -1847,7 +1940,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white">
-                        {reconData.only_bank.map((item, idx) => (
+                        {unmatchedBankPageItems.map(({ item, originalIndex: idx }) => (
                           <tr key={idx} className={item.checked ? '' : 'bg-slate-50/70 opacity-60'}>
                             <td className="px-2 py-1.5 text-center">
                               <input
@@ -1873,6 +1966,34 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 border border-t-0 border-slate-200 rounded-b-xl bg-white px-3 py-2 text-[11px]">
+                    <span className="text-slate-500">
+                      {unmatchedBankFiltered.length === 0
+                        ? 'Нет строк по текущему фильтру'
+                        : `Показано ${(unmatchedPageBank - 1) * UNMATCHED_PAGE_SIZE + 1}–${Math.min(unmatchedPageBank * UNMATCHED_PAGE_SIZE, unmatchedBankFiltered.length)} из ${unmatchedBankFiltered.length}`}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={unmatchedPageBank <= 1}
+                        onClick={() => setUnmatchedPageBank(prev => Math.max(1, prev - 1))}
+                        className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Назад
+                      </button>
+                      <span className="min-w-[58px] text-center text-slate-600">
+                        {unmatchedPageBank} / {unmatchedBankPageCount}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={unmatchedPageBank >= unmatchedBankPageCount}
+                        onClick={() => setUnmatchedPageBank(prev => Math.min(unmatchedBankPageCount, prev + 1))}
+                        className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Далее
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
