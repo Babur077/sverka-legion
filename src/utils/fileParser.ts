@@ -12,32 +12,167 @@ export function guessCol(cols: string[], keywords: string[]): string | null {
   return null;
 }
 
+type FileParseProgressStatus = 'loading' | 'success' | 'error';
+type FileParseProgressStage = 'reading' | 'parsing' | 'ready' | 'error';
+
+interface FileParseProgressDetail {
+  status: FileParseProgressStatus;
+  stage: FileParseProgressStage;
+  fileName: string;
+  progress?: number;
+  rows?: number;
+  columns?: number;
+  error?: string;
+}
+
+const FILE_PARSE_PROGRESS_EVENT = 'reconcile:file-parse-progress';
+
+function emitFileParseProgress(detail: FileParseProgressDetail): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent<FileParseProgressDetail>(FILE_PARSE_PROGRESS_EVENT, { detail }));
+  }
+}
+
+function parseWorkbook(data: ArrayBuffer | string, fileName: string): { fileName: string; rows: RawRow[]; columns: string[] } {
+  const workbook = XLSX.read(data, { type: typeof data === 'string' ? 'binary' : 'array', cellDates: true });
+  const firstSheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[firstSheetName];
+  const jsonRows: RawRow[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+  if (jsonRows.length === 0) {
+    return { fileName, rows: [], columns: [] };
+  }
+
+  return {
+    fileName,
+    rows: jsonRows,
+    columns: Object.keys(jsonRows[0]),
+  };
+}
+
 export async function parseFile(file: File): Promise<{ fileName: string; rows: RawRow[]; columns: string[] }> {
+  emitFileParseProgress({
+    status: 'loading',
+    stage: 'reading',
+    fileName: file.name,
+    progress: 0,
+  });
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
+    reader.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      const progress = Math.min(80, Math.round((e.loaded / e.total) * 80));
+      emitFileParseProgress({
+        status: 'loading',
+        stage: 'reading',
+        fileName: file.name,
+        progress,
+      });
+    };
+
     reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const jsonRows: RawRow[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+      const data = e.target?.result;
+      if (!(data instanceof ArrayBuffer)) {
+        const error = 'Не удалось получить содержимое файла.';
+        emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error });
+        reject(new Error(error));
+        return;
+      }
 
-        if (jsonRows.length === 0) {
-          resolve({ fileName: file.name, rows: [], columns: [] });
-          return;
+      emitFileParseProgress({
+        status: 'loading',
+        stage: 'parsing',
+        fileName: file.name,
+        progress: 80,
+      });
+
+      if (typeof Worker === 'undefined') {
+        try {
+          const result = parseWorkbook(data, file.name);
+          emitFileParseProgress({
+            status: 'success',
+            stage: 'ready',
+            fileName: file.name,
+            progress: 100,
+            rows: result.rows.length,
+            columns: result.columns.length,
+          });
+          resolve(result);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error: message });
+          reject(err);
         }
+        return;
+      }
 
-        const columns = Object.keys(jsonRows[0]);
-        resolve({ fileName: file.name, rows: jsonRows, columns });
+      let worker: Worker | null = null;
+      try {
+        worker = new Worker(new URL('./fileParseWorker.ts', import.meta.url), { type: 'module' });
+
+        worker.onmessage = (event: MessageEvent<{ success: boolean; result?: { fileName: string; rows: RawRow[]; columns: string[] }; error?: string }>) => {
+          worker?.terminate();
+          worker = null;
+
+          if (event.data.success && event.data.result) {
+            const result = event.data.result;
+            emitFileParseProgress({
+              status: 'success',
+              stage: 'ready',
+              fileName: file.name,
+              progress: 100,
+              rows: result.rows.length,
+              columns: result.columns.length,
+            });
+            resolve(result);
+            return;
+          }
+
+          const message = event.data.error || 'Не удалось обработать файл.';
+          emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error: message });
+          reject(new Error(message));
+        };
+
+        worker.onerror = (event) => {
+          worker?.terminate();
+          worker = null;
+          const message = event.message || 'Ошибка Web Worker при обработке файла.';
+          emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error: message });
+          reject(new Error(message));
+        };
+
+        worker.postMessage({ buffer: data, fileName: file.name }, [data]);
       } catch (err) {
-        reject(err);
+        worker?.terminate();
+        worker = null;
+        try {
+          const result = parseWorkbook(data, file.name);
+          emitFileParseProgress({
+            status: 'success',
+            stage: 'ready',
+            fileName: file.name,
+            progress: 100,
+            rows: result.rows.length,
+            columns: result.columns.length,
+          });
+          resolve(result);
+        } catch (fallbackErr) {
+          const message = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+          emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error: message });
+          reject(fallbackErr);
+        }
       }
     };
 
-    reader.onerror = (err) => reject(err);
-    reader.readAsBinaryString(file);
+    reader.onerror = () => {
+      const message = 'Не удалось прочитать файл.';
+      emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error: message });
+      reject(new Error(message));
+    };
+
+    reader.readAsArrayBuffer(file);
   });
 }
 
