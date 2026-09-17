@@ -22,26 +22,59 @@ interface FileParseProgressDetail {
   rows?: number;
   columns?: number;
   error?: string;
+  sizeBytes?: number;
+  elapsedMs?: number;
 }
 
 const FILE_PARSE_PROGRESS_EVENT = 'reconcile:file-parse-progress';
 
+function formatBytes(bytes?: number): string {
+  if (!bytes) return '';
+  return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} МБ`;
+}
+
+function formatDuration(ms?: number): string {
+  if (typeof ms !== 'number') return '';
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  if (totalSeconds < 60) return `${totalSeconds} с`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes} мин ${seconds.toString().padStart(2, '0')} с`;
+}
+
 const UploadProgressIndicator: React.FC = () => {
   const [progress, setProgress] = useState<FileParseProgressDetail | null>(null);
+  const [liveElapsedMs, setLiveElapsedMs] = useState(0);
 
   useEffect(() => {
     let hideTimer: number | undefined;
+    let elapsedTimer: number | undefined;
+    let startedAt = 0;
 
     const handleProgress = (event: Event) => {
       const detail = (event as CustomEvent<FileParseProgressDetail>).detail;
       if (!detail) return;
 
       if (hideTimer) window.clearTimeout(hideTimer);
+      if (elapsedTimer) window.clearInterval(elapsedTimer);
+
+      if (detail.status === 'loading' && startedAt === 0) {
+        startedAt = performance.now();
+        setLiveElapsedMs(0);
+        elapsedTimer = window.setInterval(() => {
+          setLiveElapsedMs(performance.now() - startedAt);
+        }, 250);
+      }
+
       setProgress(detail);
 
       if (detail.status === 'success') {
-        hideTimer = window.setTimeout(() => setProgress(null), 1800);
+        setLiveElapsedMs(detail.elapsedMs ?? performance.now() - startedAt);
+        startedAt = 0;
+        hideTimer = window.setTimeout(() => setProgress(null), 2500);
       } else if (detail.status === 'error') {
+        setLiveElapsedMs(detail.elapsedMs ?? performance.now() - startedAt);
+        startedAt = 0;
         hideTimer = window.setTimeout(() => setProgress(null), 5000);
       }
     };
@@ -50,13 +83,35 @@ const UploadProgressIndicator: React.FC = () => {
     return () => {
       window.removeEventListener(FILE_PARSE_PROGRESS_EVENT, handleProgress);
       if (hideTimer) window.clearTimeout(hideTimer);
+      if (elapsedTimer) window.clearInterval(elapsedTimer);
     };
+  }, []);
+
+  // Keep the existing workspace copy in sync with the real upload limit while older cached bundles are in use.
+  useEffect(() => {
+    const replaceLegacyLimit = () => {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let node: Node | null;
+      while ((node = walker.nextNode())) {
+        if (node.nodeValue?.includes('до 50 МБ')) {
+          node.nodeValue = node.nodeValue.replaceAll('до 50 МБ', 'до 200 МБ');
+        }
+      }
+    };
+
+    replaceLegacyLimit();
+    const observer = new MutationObserver(replaceLegacyLimit);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
   }, []);
 
   if (!progress) return null;
 
   const isError = progress.status === 'error';
   const isSuccess = progress.status === 'success';
+  const elapsedMs = progress.elapsedMs ?? liveElapsedMs;
+  const fileMeta = [formatBytes(progress.sizeBytes), formatDuration(elapsedMs)].filter(Boolean).join(' · ');
+
   const title = isError
     ? 'Не удалось обработать файл'
     : isSuccess
@@ -68,11 +123,11 @@ const UploadProgressIndicator: React.FC = () => {
   const subtitle = isError
     ? (progress.error || 'Проверьте формат файла и попробуйте ещё раз.')
     : isSuccess
-      ? `${progress.rows ?? 0} строк · ${progress.columns ?? 0} колонок`
-      : progress.fileName;
+      ? `${progress.rows ?? 0} строк · ${progress.columns ?? 0} колонок${fileMeta ? ` · ${fileMeta}` : ''}`
+      : `${progress.fileName}${fileMeta ? ` · ${fileMeta}` : ''}`;
 
   return (
-    <div className="fixed top-4 right-4 z-[100] w-[min(380px,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur-md">
+    <div className="fixed top-4 right-4 z-[100] w-[min(420px,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur-md">
       <div className="flex items-start gap-3">
         <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
           isError ? 'bg-rose-50 text-rose-600' : isSuccess ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'
