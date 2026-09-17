@@ -23,9 +23,12 @@ interface FileParseProgressDetail {
   rows?: number;
   columns?: number;
   error?: string;
+  sizeBytes?: number;
+  elapsedMs?: number;
 }
 
 const FILE_PARSE_PROGRESS_EVENT = 'reconcile:file-parse-progress';
+export const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024;
 
 function emitFileParseProgress(detail: FileParseProgressDetail): void {
   if (typeof window !== 'undefined') {
@@ -34,7 +37,11 @@ function emitFileParseProgress(detail: FileParseProgressDetail): void {
 }
 
 function parseWorkbook(data: ArrayBuffer | string, fileName: string): { fileName: string; rows: RawRow[]; columns: string[] } {
-  const workbook = XLSX.read(data, { type: typeof data === 'string' ? 'binary' : 'array', cellDates: true });
+  const workbook = XLSX.read(data, {
+    type: typeof data === 'string' ? 'binary' : 'array',
+    cellDates: true,
+    dense: true,
+  });
   const firstSheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[firstSheetName];
   const jsonRows: RawRow[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
@@ -51,11 +58,30 @@ function parseWorkbook(data: ArrayBuffer | string, fileName: string): { fileName
 }
 
 export async function parseFile(file: File): Promise<{ fileName: string; rows: RawRow[]; columns: string[] }> {
+  const startedAt = performance.now();
+  const fileSize = file.size;
+
+  if (fileSize > MAX_FILE_SIZE_BYTES) {
+    const sizeMb = (fileSize / 1024 / 1024).toFixed(1);
+    const error = `Файл слишком большой: ${sizeMb} МБ. Максимальный размер — 200 МБ.`;
+    emitFileParseProgress({
+      status: 'error',
+      stage: 'error',
+      fileName: file.name,
+      sizeBytes: fileSize,
+      elapsedMs: 0,
+      error,
+    });
+    throw new Error(error);
+  }
+
   emitFileParseProgress({
     status: 'loading',
     stage: 'reading',
     fileName: file.name,
     progress: 0,
+    sizeBytes: fileSize,
+    elapsedMs: 0,
   });
 
   return new Promise((resolve, reject) => {
@@ -69,6 +95,8 @@ export async function parseFile(file: File): Promise<{ fileName: string; rows: R
         stage: 'reading',
         fileName: file.name,
         progress,
+        sizeBytes: fileSize,
+        elapsedMs: performance.now() - startedAt,
       });
     };
 
@@ -76,7 +104,14 @@ export async function parseFile(file: File): Promise<{ fileName: string; rows: R
       const data = e.target?.result;
       if (!(data instanceof ArrayBuffer)) {
         const error = 'Не удалось получить содержимое файла.';
-        emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error });
+        emitFileParseProgress({
+          status: 'error',
+          stage: 'error',
+          fileName: file.name,
+          sizeBytes: fileSize,
+          elapsedMs: performance.now() - startedAt,
+          error,
+        });
         reject(new Error(error));
         return;
       }
@@ -86,6 +121,8 @@ export async function parseFile(file: File): Promise<{ fileName: string; rows: R
         stage: 'parsing',
         fileName: file.name,
         progress: 80,
+        sizeBytes: fileSize,
+        elapsedMs: performance.now() - startedAt,
       });
 
       if (typeof Worker === 'undefined') {
@@ -98,11 +135,20 @@ export async function parseFile(file: File): Promise<{ fileName: string; rows: R
             progress: 100,
             rows: result.rows.length,
             columns: result.columns.length,
+            sizeBytes: fileSize,
+            elapsedMs: performance.now() - startedAt,
           });
           resolve(result);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error: message });
+          emitFileParseProgress({
+            status: 'error',
+            stage: 'error',
+            fileName: file.name,
+            sizeBytes: fileSize,
+            elapsedMs: performance.now() - startedAt,
+            error: message,
+          });
           reject(err);
         }
         return;
@@ -125,13 +171,22 @@ export async function parseFile(file: File): Promise<{ fileName: string; rows: R
               progress: 100,
               rows: result.rows.length,
               columns: result.columns.length,
+              sizeBytes: fileSize,
+              elapsedMs: performance.now() - startedAt,
             });
             resolve(result);
             return;
           }
 
           const message = event.data.error || 'Не удалось обработать файл.';
-          emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error: message });
+          emitFileParseProgress({
+            status: 'error',
+            stage: 'error',
+            fileName: file.name,
+            sizeBytes: fileSize,
+            elapsedMs: performance.now() - startedAt,
+            error: message,
+          });
           reject(new Error(message));
         };
 
@@ -139,7 +194,14 @@ export async function parseFile(file: File): Promise<{ fileName: string; rows: R
           worker?.terminate();
           worker = null;
           const message = event.message || 'Ошибка Web Worker при обработке файла.';
-          emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error: message });
+          emitFileParseProgress({
+            status: 'error',
+            stage: 'error',
+            fileName: file.name,
+            sizeBytes: fileSize,
+            elapsedMs: performance.now() - startedAt,
+            error: message,
+          });
           reject(new Error(message));
         };
 
@@ -156,11 +218,20 @@ export async function parseFile(file: File): Promise<{ fileName: string; rows: R
             progress: 100,
             rows: result.rows.length,
             columns: result.columns.length,
+            sizeBytes: fileSize,
+            elapsedMs: performance.now() - startedAt,
           });
           resolve(result);
         } catch (fallbackErr) {
           const message = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-          emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error: message });
+          emitFileParseProgress({
+            status: 'error',
+            stage: 'error',
+            fileName: file.name,
+            sizeBytes: fileSize,
+            elapsedMs: performance.now() - startedAt,
+            error: message,
+          });
           reject(fallbackErr);
         }
       }
@@ -168,7 +239,14 @@ export async function parseFile(file: File): Promise<{ fileName: string; rows: R
 
     reader.onerror = () => {
       const message = 'Не удалось прочитать файл.';
-      emitFileParseProgress({ status: 'error', stage: 'error', fileName: file.name, error: message });
+      emitFileParseProgress({
+        status: 'error',
+        stage: 'error',
+        fileName: file.name,
+        sizeBytes: fileSize,
+        elapsedMs: performance.now() - startedAt,
+        error: message,
+      });
       reject(new Error(message));
     };
 
@@ -327,14 +405,14 @@ export function generateSampleData(): {
 
   // Add 2 extra bank transactions (only bank)
   bankRows.push({
-    'Дата проводки': '10.09.2026',
+    'Дата': '10.09.2026',
     'Код RRN': '94820198001',
     'Сумма банка': 310000,
     'Статус операции': 'SUCCESS',
     'Терминал TID': '98234012',
   });
   bankRows.push({
-    'Дата проводки': '11.09.2026',
+    'Дата': '11.09.2026',
     'Код RRN': '94820198002',
     'Сумма банка': 150000,
     'Статус операции': 'SUCCESS',
@@ -349,7 +427,7 @@ export function generateSampleData(): {
     'Статус': 'Оплачено',
   });
   bankRows.push({
-    'Дата проводки': '11.09.2026',
+    'Дата': '11.09.2026',
     'Код RRN': '94820197777',
     'Сумма банка': 490000, // 10,000 difference
     'Статус операции': 'SUCCESS',
