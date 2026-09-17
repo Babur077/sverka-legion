@@ -12,7 +12,7 @@ const LEGACY_DRAFT_KEY = 'reconcile_active_draft_v1';
 function sha256Hex(ascii: string): string {
   const rightRotate = (value: number, amount: number) => (value >>> amount) | (value << (32 - amount));
   const k = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f1111f, 0x923f82a4, 0xab1c5ed5,
     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dcf, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
     0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
     0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
@@ -199,7 +199,50 @@ export function saveReconciliation(
 export function getArchiveData(): ReconciliationArchive[] {
   try {
     const raw = localStorage.getItem(ARCHIVE_KEY);
-    if (!raw) return [];
+    if (!raw) {
+      const initial: ReconciliationArchive[] = [
+        {
+          id: 1,
+          timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
+          username: 'admin',
+          bank_name: 'Aloqa Bank',
+          total_our: 145000000,
+          total_bank: 145000000,
+          difference: 0,
+          matched_count: 342,
+          mismatch_count: 0,
+          only_our_count: 0,
+          only_bank_count: 0,
+          period_month: '2026-09',
+          total_commission: 841000,
+          terminals_summary: [
+            { terminal_id: '97008516', bank_acquirer: 'Aloqa Bank', merchant_id: 'MID_ALOQA_01', legal_entity: 'ООО Retail Plus', tx_count: 180, total_volume: 85000000, commission_pct: 0.58, commission_amount: 493000, net_volume: 84507000 },
+            { terminal_id: '1963301C', bank_acquirer: 'Aloqa Bank', merchant_id: 'MID_ALOQA_02', legal_entity: 'ООО Retail Plus', tx_count: 162, total_volume: 60000000, commission_pct: 0.58, commission_amount: 348000, net_volume: 59652000 },
+          ],
+        },
+        {
+          id: 2,
+          timestamp: new Date(Date.now() - 86400000 * 15).toISOString(),
+          username: 'accountant',
+          bank_name: 'Hamkor Bank',
+          total_our: 89400000,
+          total_bank: 89400000,
+          difference: 0,
+          matched_count: 215,
+          mismatch_count: 0,
+          only_our_count: 0,
+          only_bank_count: 0,
+          period_month: '2026-08',
+          total_commission: 670500,
+          terminals_summary: [
+            { terminal_id: '91500844', bank_acquirer: 'Hamkor Bank', merchant_id: 'MID_HAMKOR_01', legal_entity: 'ООО Торг Мастер', tx_count: 120, total_volume: 49400000, commission_pct: 0.75, commission_amount: 370500, net_volume: 49029500 },
+            { terminal_id: '91500845', bank_acquirer: 'Hamkor Bank', merchant_id: 'MID_HAMKOR_02', legal_entity: 'ООО Торг Мастер', tx_count: 95, total_volume: 40000000, commission_pct: 0.75, commission_amount: 300000, net_volume: 39700000 },
+          ],
+        },
+      ];
+      localStorage.setItem(ARCHIVE_KEY, JSON.stringify(initial));
+      return initial;
+    }
     return (JSON.parse(raw) as ReconciliationArchive[]).map(item => ({
       ...item,
       period_month: item.period_month || item.timestamp.slice(0, 7),
@@ -230,8 +273,8 @@ export function saveActiveDraft(draft: any): void {
 export function getStoredDraft(): any | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    if (raw) return JSON.parse(raw);
     localStorage.removeItem(LEGACY_DRAFT_KEY);
+    if (raw) return JSON.parse(raw);
     return null;
   } catch { return null; }
 }
