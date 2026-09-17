@@ -19,7 +19,7 @@ interface WorkerResponse {
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   try {
     const { buffer, fileName } = event.data;
-    const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+    const workbook = XLSX.read(buffer, { type: 'array', cellDates: true, dense: true });
     const firstSheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[firstSheetName];
     const rows: RawRow[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
