@@ -61,9 +61,7 @@ function sha256Hex(ascii: string): string {
 }
 
 const PASSWORD_SALT = 'reconcile_sec_salt_v2';
-export function hashPassword(plain: string): string {
-  return 'sha256:' + sha256Hex(PASSWORD_SALT + ':' + plain.trim());
-}
+export function hashPassword(plain: string): string { return 'sha256:' + sha256Hex(PASSWORD_SALT + ':' + plain.trim()); }
 
 export const DEFAULT_BANKS = ['Aloqa Bank', 'Open Bank', 'Saderat Bank', 'Davr Bank', 'Hamkor Bank'];
 const DEFAULT_USERS: Array<User & { passwordHash: string }> = [
@@ -132,14 +130,12 @@ export function getStoredBanks(): string[] {
     return Array.isArray(parsed) && parsed.length ? Array.from(new Set([...DEFAULT_BANKS, ...parsed])) : DEFAULT_BANKS;
   } catch { return DEFAULT_BANKS; }
 }
-
 export function addStoredBank(bankName: string): boolean {
   const clean = bankName.trim(); if (!clean) return false;
   const banks = getStoredBanks();
   if (banks.some(b => b.toLowerCase() === clean.toLowerCase())) return false;
   banks.push(clean); localStorage.setItem(BANKS_KEY, JSON.stringify(banks)); return true;
 }
-
 export function getStoredEpos(): EposTerminal[] {
   try {
     const raw = localStorage.getItem(EPOS_KEY);
@@ -147,13 +143,13 @@ export function getStoredEpos(): EposTerminal[] {
     return JSON.parse(raw);
   } catch { return DEFAULT_EPOS; }
 }
-
 export function saveEposTerminal(terminal: EposTerminal) {
   const terminals = getStoredEpos();
   const idx = terminals.findIndex(t => t.terminal_id === terminal.terminal_id);
-  if (idx >= 0) terminals[idx] = terminal; else terminals.push(terminal);
+  const wasExisting = idx >= 0;
+  if (wasExisting) terminals[idx] = terminal; else terminals.push(terminal);
   localStorage.setItem(EPOS_KEY, JSON.stringify(terminals));
-  return { success: true, message: `Терминал ${terminal.terminal_id} успешно сохранен!` };
+  return { success: true, message: `Терминал ${terminal.terminal_id} успешно ${wasExisting ? 'обновлен' : 'добавлен'}!` };
 }
 export function deleteEposTerminal(tid: string): void { localStorage.setItem(EPOS_KEY, JSON.stringify(getStoredEpos().filter(t => t.terminal_id !== tid))); }
 export function toggleEposActive(tid: string): void { const terminals = getStoredEpos(); const t = terminals.find(x => x.terminal_id === tid); if (t) { t.is_active = !t.is_active; localStorage.setItem(EPOS_KEY, JSON.stringify(terminals)); } }
@@ -174,23 +170,13 @@ export function getAuditLogs(): AuditLog[] {
   } catch { return []; }
 }
 
-export function saveReconciliation(
-  username: string, bank_name: string, total_our: number, total_bank: number, difference: number,
-  matched_count: number, mismatch_count: number, only_our_count: number, only_bank_count: number,
-  period_month?: string, total_commission?: number, terminals_summary?: import('../types').TerminalSummaryItem[]
-): { success: boolean; message: string } {
+export function saveReconciliation(username: string, bank_name: string, total_our: number, total_bank: number, difference: number, matched_count: number, mismatch_count: number, only_our_count: number, only_bank_count: number, period_month?: string, total_commission?: number, terminals_summary?: import('../types').TerminalSummaryItem[]): { success: boolean; message: string } {
   try {
     const archive: ReconciliationArchive[] = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || '[]');
     const nowIso = new Date().toISOString();
     const normalizedTerminals = (terminals_summary || []).map(t => ({ ...t, terminal_id: String(t.terminal_id || '').trim() || '(Без TID)' }));
     const terminalCommission = normalizedTerminals.reduce((sum, t) => sum + (Number(t.commission_amount) || 0), 0);
-    archive.unshift({
-      id: Date.now(), timestamp: nowIso, username, bank_name, total_our, total_bank, difference,
-      matched_count, mismatch_count, only_our_count, only_bank_count,
-      period_month: period_month || nowIso.slice(0, 7),
-      total_commission: normalizedTerminals.length ? terminalCommission : (total_commission || 0),
-      terminals_summary: normalizedTerminals,
-    });
+    archive.unshift({ id: Date.now(), timestamp: nowIso, username, bank_name, total_our, total_bank, difference, matched_count, mismatch_count, only_our_count, only_bank_count, period_month: period_month || nowIso.slice(0, 7), total_commission: normalizedTerminals.length ? terminalCommission : (total_commission || 0), terminals_summary: normalizedTerminals });
     localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archive));
     return { success: true, message: 'Сверка успешно сохранена в системный архив!' };
   } catch (e: any) { return { success: false, message: `Ошибка при сохранении: ${e?.message || e}` }; }
@@ -201,54 +187,19 @@ export function getArchiveData(): ReconciliationArchive[] {
     const raw = localStorage.getItem(ARCHIVE_KEY);
     if (!raw) {
       const initial: ReconciliationArchive[] = [
-        {
-          id: 1,
-          timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
-          username: 'admin',
-          bank_name: 'Aloqa Bank',
-          total_our: 145000000,
-          total_bank: 145000000,
-          difference: 0,
-          matched_count: 342,
-          mismatch_count: 0,
-          only_our_count: 0,
-          only_bank_count: 0,
-          period_month: '2026-09',
-          total_commission: 841000,
-          terminals_summary: [
-            { terminal_id: '97008516', bank_acquirer: 'Aloqa Bank', merchant_id: 'MID_ALOQA_01', legal_entity: 'ООО Retail Plus', tx_count: 180, total_volume: 85000000, commission_pct: 0.58, commission_amount: 493000, net_volume: 84507000 },
-            { terminal_id: '1963301C', bank_acquirer: 'Aloqa Bank', merchant_id: 'MID_ALOQA_02', legal_entity: 'ООО Retail Plus', tx_count: 162, total_volume: 60000000, commission_pct: 0.58, commission_amount: 348000, net_volume: 59652000 },
-          ],
-        },
-        {
-          id: 2,
-          timestamp: new Date(Date.now() - 86400000 * 15).toISOString(),
-          username: 'accountant',
-          bank_name: 'Hamkor Bank',
-          total_our: 89400000,
-          total_bank: 89400000,
-          difference: 0,
-          matched_count: 215,
-          mismatch_count: 0,
-          only_our_count: 0,
-          only_bank_count: 0,
-          period_month: '2026-08',
-          total_commission: 670500,
-          terminals_summary: [
-            { terminal_id: '91500844', bank_acquirer: 'Hamkor Bank', merchant_id: 'MID_HAMKOR_01', legal_entity: 'ООО Торг Мастер', tx_count: 120, total_volume: 49400000, commission_pct: 0.75, commission_amount: 370500, net_volume: 49029500 },
-            { terminal_id: '91500845', bank_acquirer: 'Hamkor Bank', merchant_id: 'MID_HAMKOR_02', legal_entity: 'ООО Торг Мастер', tx_count: 95, total_volume: 40000000, commission_pct: 0.75, commission_amount: 300000, net_volume: 39700000 },
-          ],
-        },
+        { id: 1, timestamp: new Date(Date.now() - 86400000 * 2).toISOString(), username: 'admin', bank_name: 'Aloqa Bank', total_our: 145000000, total_bank: 145000000, difference: 0, matched_count: 342, mismatch_count: 0, only_our_count: 0, only_bank_count: 0, period_month: '2026-09', total_commission: 841000, terminals_summary: [
+          { terminal_id: '97008516', bank_acquirer: 'Aloqa Bank', merchant_id: 'MID_ALOQA_01', legal_entity: 'ООО Retail Plus', tx_count: 180, total_volume: 85000000, commission_pct: 0.58, commission_amount: 493000, net_volume: 84507000 },
+          { terminal_id: '1963301C', bank_acquirer: 'Aloqa Bank', merchant_id: 'MID_ALOQA_02', legal_entity: 'ООО Retail Plus', tx_count: 162, total_volume: 60000000, commission_pct: 0.58, commission_amount: 348000, net_volume: 59652000 },
+        ] },
+        { id: 2, timestamp: new Date(Date.now() - 86400000 * 15).toISOString(), username: 'accountant', bank_name: 'Hamkor Bank', total_our: 89400000, total_bank: 89400000, difference: 0, matched_count: 215, mismatch_count: 0, only_our_count: 0, only_bank_count: 0, period_month: '2026-08', total_commission: 670500, terminals_summary: [
+          { terminal_id: '91500844', bank_acquirer: 'Hamkor Bank', merchant_id: 'MID_HAMKOR_01', legal_entity: 'ООО Торг Мастер', tx_count: 120, total_volume: 49400000, commission_pct: 0.75, commission_amount: 370500, net_volume: 49029500 },
+          { terminal_id: '91500845', bank_acquirer: 'Hamkor Bank', merchant_id: 'MID_HAMKOR_02', legal_entity: 'ООО Торг Мастер', tx_count: 95, total_volume: 40000000, commission_pct: 0.75, commission_amount: 300000, net_volume: 39700000 },
+        ] },
       ];
       localStorage.setItem(ARCHIVE_KEY, JSON.stringify(initial));
       return initial;
     }
-    return (JSON.parse(raw) as ReconciliationArchive[]).map(item => ({
-      ...item,
-      period_month: item.period_month || item.timestamp.slice(0, 7),
-      total_commission: item.total_commission || 0,
-      terminals_summary: item.terminals_summary || [],
-    }));
+    return (JSON.parse(raw) as ReconciliationArchive[]).map(item => ({ ...item, period_month: item.period_month || item.timestamp.slice(0, 7), total_commission: item.total_commission || 0, terminals_summary: item.terminals_summary || [] }));
   } catch { return []; }
 }
 
@@ -269,7 +220,6 @@ export function saveActiveDraft(draft: any): void {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, version: 2, ourFile: null, bankFile: null, fileMeta }));
   } catch (e) { console.warn('Failed to save draft to localStorage:', e); }
 }
-
 export function getStoredDraft(): any | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
@@ -278,9 +228,7 @@ export function getStoredDraft(): any | null {
     return null;
   } catch { return null; }
 }
-
 export function clearActiveDraft(): void { try { localStorage.removeItem(DRAFT_KEY); localStorage.removeItem(LEGACY_DRAFT_KEY); } catch {} }
-
 export function getStoredSettings(): SystemSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
