@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import { RawRow, ReconciliationConfig, ReconciliationResult, UnmatchedRow, AmountMismatchRow, DateSummaryRow, SystemSettings, User } from '../types';
 import { parseFile, guessCol, exportReconciliationToExcel, generateSampleData } from '../utils/fileParser';
-import { runReconciliation } from '../utils/reconEngine';
+import { runBankRrnViaApi } from '../utils/bankRrnApi';
 import {
   getStoredEpos, saveReconciliation, logAction, getStoredBanks, addStoredBank,
   getStoredDraft, saveActiveDraft, clearActiveDraft
@@ -73,6 +73,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   // File upload state
   const [ourFile, setOurFile] = useState<{ name: string; rows: RawRow[]; columns: string[] } | null>(null);
   const [bankFile, setBankFile] = useState<{ name: string; rows: RawRow[]; columns: string[] } | null>(null);
+  const [ourSourceFile, setOurSourceFile] = useState<File | null>(null);
+  const [bankSourceFile, setBankSourceFile] = useState<File | null>(null);
   const [showPreviewOur, setShowPreviewOur] = useState(false);
   const [showPreviewBank, setShowPreviewBank] = useState(false);
 
@@ -189,6 +191,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       onConfirm: () => {
         setOurFile(null);
         setBankFile(null);
+        setOurSourceFile(null);
+        setBankSourceFile(null);
         setReconData(null);
         setOurDateCol('');
         setOurRrnCol('');
@@ -307,6 +311,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     try {
       const parsed = await parseFile(file);
       if (isOur) {
+        setOurSourceFile(file);
         setOurFile({ name: parsed.fileName, rows: parsed.rows, columns: parsed.columns });
         setDraftRestored(false);
         setOurDateCol(guessCol(parsed.columns, ['date', 'дата']) || parsed.columns[0] || '');
@@ -314,6 +319,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         setOurAmtCol(guessCol(parsed.columns, ['amount', 'сумма']) || '');
         setOurStatusCol(guessCol(parsed.columns, ['status', 'статус']) || '');
       } else {
+        setBankSourceFile(file);
         setBankFile({ name: parsed.fileName, rows: parsed.rows, columns: parsed.columns });
         setDraftRestored(false);
         setBankDateCol(guessCol(parsed.columns, ['date', 'дата']) || parsed.columns[0] || '');
@@ -336,12 +342,14 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     const demo = generateSampleData();
     setDraftRestored(false);
     setShowDraftBanner(false);
+    setOurSourceFile(rowsToCsvFile(demo.ourData.rows, demo.ourData.fileName));
     setOurFile({ name: demo.ourData.fileName, rows: demo.ourData.rows, columns: demo.ourData.columns });
     setOurDateCol('Дата');
     setOurRrnCol('Ключ RRN');
     setOurAmtCol('Сумма платежа');
     setOurStatusCol('Статус');
 
+    setBankSourceFile(rowsToCsvFile(demo.bankData.rows, demo.bankData.fileName));
     setBankFile({ name: demo.bankData.fileName, rows: demo.bankData.rows, columns: demo.bankData.columns });
     setBankDateCol('Дата проводки');
     setBankRrnCol('Код RRN');
@@ -350,37 +358,18 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     setBankTidCol('Терминал TID');
   };
 
-  // Run reconciliation in Web Worker (with fallback)
-  const runReconciliationAsync = async (
-    ourRows: RawRow[],
-    bankRows: RawRow[],
-    cfg: ReconciliationConfig,
-    eposList: any[]
-  ): Promise<ReconciliationResult> => {
-    if (typeof Worker !== 'undefined') {
-      try {
-        return await new Promise((resolve, reject) => {
-          const worker = new Worker(new URL('../utils/reconWorker.ts', import.meta.url), { type: 'module' });
-          worker.onmessage = (e) => {
-            worker.terminate();
-            if (e.data.success) {
-              resolve(e.data.result);
-            } else {
-              reject(new Error(e.data.error || 'Ошибка в потоке Web Worker'));
-            }
-          };
-          worker.onerror = (err) => {
-            worker.terminate();
-            reject(err);
-          };
-          worker.postMessage({ ourRows, bankRows, cfg, eposList });
-        });
-      } catch (e) {
-        console.warn('Worker fallback to synchronous execution:', e);
-        return runReconciliation(ourRows, bankRows, cfg, eposList);
-      }
-    }
-    return runReconciliation(ourRows, bankRows, cfg, eposList);
+  const rowsToCsvFile = (rows: RawRow[], filename: string): File => {
+    const columns = Array.from(new Set(rows.flatMap(row => Object.keys(row))));
+    const escapeCsv = (value: unknown) => {
+      const text = value == null ? '' : String(value);
+      return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const csv = [
+      columns.map(escapeCsv).join(','),
+      ...rows.map(row => columns.map(column => escapeCsv(row[column])).join(',')),
+    ].join('\n');
+    const baseName = filename.replace(/\.(xlsx|xls)$/i, '.csv');
+    return new File([csv], baseName, { type: 'text/csv;charset=utf-8' });
   };
 
   const handleRunReconciliation = async () => {
@@ -419,7 +408,6 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     setSaveSuccessMsg(null);
 
     try {
-      const eposList = getStoredEpos();
       const revWords = revInput.split(',').map(w => w.trim()).filter(Boolean);
 
       const cfg: ReconciliationConfig = {
@@ -441,7 +429,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         deduct_commission: deductCommission,
       };
 
-      const result = await runReconciliationAsync(ourFile.rows, bankFile.rows, cfg, eposList);
+      if (!ourSourceFile || !bankSourceFile) {
+        throw new Error('После восстановления черновика необходимо заново выбрать оба исходных файла.');
+      }
+
+      const result = await runBankRrnViaApi(ourSourceFile, bankSourceFile, cfg, user.username);
       setReconData(result);
       if (result.detected_months && result.detected_months.length > 0) {
         setSelectedArchiveMonth(result.detected_months[0]);
