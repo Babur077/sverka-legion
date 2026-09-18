@@ -50,6 +50,12 @@ function toNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function toNullableNumber(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function toDateString(value: unknown): string {
   const text = value == null ? '' : String(value);
   if (!text) return '';
@@ -70,7 +76,7 @@ function normalizeUnmatched(row: RawRow, side: 'our' | 'bank'): ReconciliationRe
     reason: String(row['📝 Причина'] ?? row.reason ?? ''),
     date_str: String(row.date_str || toDateString(side === 'our' ? row.date ?? row.date_unified : row.date_bank ?? row.date_unified ?? row.date)),
     RRN: String(row.RRN ?? ''),
-    amount: toNumber(amount),
+    amount: toNullableNumber(amount),
     status: status == null ? '' : String(status),
     terminal_id: row.terminal_id == null ? undefined : String(row.terminal_id),
     commission_pct: row.commission_pct == null ? undefined : toNumber(row.commission_pct),
@@ -79,13 +85,23 @@ function normalizeUnmatched(row: RawRow, side: 'our' | 'bank'): ReconciliationRe
 }
 
 function normalizeMismatch(row: RawRow): ReconciliationResult['amt_mismatches'][number] {
+  const ourAmount = toNullableNumber(row.net_amount_our);
+  const bankAmount = toNullableNumber(row.net_amount_bank);
+  const explicitDelta = toNullableNumber(row['Δ сумма'] ?? row.delta);
+  const delta = explicitDelta ?? (
+    ourAmount != null && bankAmount != null
+      ? bankAmount - ourAmount
+      : null
+  );
+
   return {
     RRN: String(row.RRN ?? ''),
     date_our: toDateString(row.date ?? row.date_our),
     date_bank: toDateString(row.date_bank),
-    net_amount_our: toNumber(row.net_amount_our),
-    net_amount_bank: toNumber(row.net_amount_bank),
-    'Δ сумма': toNumber(row['Δ сумма'] ?? row.delta ?? (toNumber(row.net_amount_bank) - toNumber(row.net_amount_our))),
+    net_amount_our: ourAmount,
+    net_amount_bank: bankAmount,
+    'Δ сумма': delta,
+    amount_issue: row.amount_issue == null ? undefined : String(row.amount_issue),
     status_our: row.status_our == null ? undefined : String(row.status_our),
     status_bank: row.status_bank == null ? undefined : String(row.status_bank),
   };
