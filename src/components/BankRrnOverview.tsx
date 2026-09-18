@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowUpRight, CheckCircle2, Clock3, FileWarning, Play, ShieldCheck } from 'lucide-react';
 import { ReconciliationArchive, User } from '../types';
+import { hasPermission } from '../utils/permissions';
 import { getBankRrnArchive } from '../utils/archiveApi';
 import { getReconciliationQuality } from '../utils/reconciliationMetrics';
 
@@ -8,7 +9,7 @@ interface BankRrnOverviewProps { user: User; onStart: () => void; }
 const compact = (n: number) => n >= 1e9 ? `${(n/1e9).toFixed(2)} млрд` : n >= 1e6 ? `${(n/1e6).toFixed(2)} млн` : n >= 1e3 ? `${(n/1e3).toFixed(1)} тыс.` : n.toLocaleString('ru-RU');
 
 export const BankRrnOverview: React.FC<BankRrnOverviewProps> = ({ user, onStart }) => {
-  const canRun = user.permissions?.includes('*') || user.permissions?.includes('bank_rrn.run') || false;
+  const canRun = hasPermission(user, 'bank_rrn.run');
   const [archive, setArchive] = useState<ReconciliationArchive[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
