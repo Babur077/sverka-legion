@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Building2, BarChart3, Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X, Layers } from 'lucide-react';
+import { RefreshCw, Building2, BarChart3, Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X, Layers, History } from 'lucide-react';
 import { User } from '../types';
 
 interface NavbarProps {
@@ -49,6 +49,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     },
     { id: 'epos', label: 'Реестр банков', icon: Building2, adminOnly: true },
     { id: 'analytics', label: 'Аналитика', icon: BarChart3, adminOnly: false },
+    { id: 'audit', label: 'Аудит', icon: History, adminOnly: false },
     { id: 'admin', label: 'Настройки', icon: Settings, adminOnly: true },
   ].filter(item => !item.adminOnly || user.role === 'admin');
 
