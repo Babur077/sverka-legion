@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Shield, UserPlus, Users, Settings as SettingsIcon, History, Trash2, CheckCircle, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { User, AuditLog, SystemSettings } from '../types';
-import { getAuditLogs } from '../utils/storage';
+import { Shield, UserPlus, Users, Settings as SettingsIcon, Trash2, CheckCircle, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { User, SystemSettings } from '../types';
+
 import { saveSettingsViaApi } from '../utils/settingsApi';
 import { getUsersViaApi, createUserViaApi, deleteUserViaApi } from '../utils/adminUsersApi';
 import { ConfirmModal, AlertModal } from './Modal';
@@ -16,7 +16,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
   const [users, setUsers] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState<string | null>(null);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(getAuditLogs());
 
   // Add User Form
   const [newUsername, setNewUsername] = useState('');
@@ -360,39 +359,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
             </button>
           </div>
         </form>
-      </div>
-
-      {/* Audit Logs */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
-        <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <History className="w-4 h-4 text-indigo-600" />
-          <span>Журнал аудита действий (Audit Logs)</span>
-        </h2>
-
-        <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 text-xs">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50 font-bold text-slate-700 sticky top-0">
-              <tr>
-                <th className="px-3 py-2 text-left">Время</th>
-                <th className="px-3 py-2 text-left">Пользователь</th>
-                <th className="px-3 py-2 text-left">Действие</th>
-                <th className="px-3 py-2 text-left">Подробности</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {auditLogs.map((log) => (
-                <tr key={log.id} className="hover:bg-slate-50">
-                  <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
-                    {new Date(log.timestamp).toLocaleString('ru-RU')}
-                  </td>
-                  <td className="px-3 py-2 font-semibold text-slate-900">{log.username}</td>
-                  <td className="px-3 py-2 font-mono text-[11px] text-indigo-700">{log.action}</td>
-                  <td className="px-3 py-2 text-slate-600">{log.details}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
 
       {/* Confirm Modal */}

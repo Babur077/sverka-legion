@@ -468,15 +468,60 @@ async def remove_user(user_id: int, x_user: Optional[str] = Header("admin")):
 
 
 @app.get("/api/audit")
-async def fetch_audit_trail(limit: int = 100, x_user: Optional[str] = Header("admin")):
+async def fetch_audit_trail(
+    limit: int = 100,
+    offset: int = 0,
+    user: Optional[str] = None,
+    action: Optional[str] = None,
+    module_id: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    x_user: Optional[str] = Header("admin"),
+):
+    """Возвращает серверный журнал аудита с фильтрами и пагинацией."""
+    perms = get_user_permissions(x_user)
+    if not has_permission(perms, "audit.view") and "analytics.view_all" not in perms and "*" not in perms:
+        raise HTTPException(status_code=403, detail="Нет прав на просмотр журнала аудита")
+
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+
     import sqlite3
     from utils.db_manager import DB_PATH
+    conditions = []
+    params = []
+
+    if user:
+        conditions.append("user_id = ?")
+        params.append(user)
+    if action:
+        conditions.append("action = ?")
+        params.append(action)
+    if module_id:
+        conditions.append("module_id = ?")
+        params.append(module_id)
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+    if search:
+        conditions.append("(user_id LIKE ? OR action LIKE ? OR object_type LIKE ? OR object_id LIKE ? OR details LIKE ?)")
+        q = f"%{search}%"
+        params.extend([q, q, q, q, q])
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
-        cur.execute("SELECT * FROM audit_events ORDER BY id DESC LIMIT ?", (limit,))
-        rows = cur.fetchall()
-        return [dict(r) for r in rows]
+        cur.execute(f"SELECT COUNT(*) FROM audit_events {where}", params)
+        total = int(cur.fetchone()[0])
+        cur.execute(
+            f"SELECT * FROM audit_events {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+
+    return {"items": rows, "total": total, "limit": limit, "offset": offset}
 
 # ─── Раздача скомпилированного React Frontend ──────────────────
 
