@@ -90,6 +90,6 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
       </div>
     </div>}
 
-    <ConfirmModal isOpen={!!deleteTarget} title="Удалить запись архива?" message={deleteTarget ? `Запись сверки «${deleteTarget.bank_name}» будет удалена из локального архива.` : ''} confirmText="Удалить" isDanger onConfirm={confirmDelete} onClose={() => setDeleteTarget(null)} />
+    <ConfirmModal isOpen={!!deleteTarget} title="Удалить запись архива?" message={deleteTarget ? `Запись сверки «${deleteTarget.bank_name}» будет удалена из серверного архива.` : ''} confirmText="Удалить" isDanger onConfirm={confirmDelete} onClose={() => setDeleteTarget(null)} />
   </div>;
 };
