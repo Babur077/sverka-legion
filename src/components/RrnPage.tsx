@@ -10,6 +10,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
 import { RawRow, ReconciliationConfig, ReconciliationResult, UnmatchedRow, AmountMismatchRow, DateSummaryRow, SystemSettings, User, EposTerminal } from '../types';
+import { hasPermission } from '../utils/permissions';
 import { parseFile, guessCol, exportReconciliationToExcel } from '../utils/fileParser';
 import { runBankRrnViaApi } from '../utils/bankRrnApi';
 import { getStoredDraft, saveActiveDraft, clearActiveDraft } from '../utils/storage';
@@ -36,8 +37,8 @@ const REASON_OPTIONS = [
 ];
 
 export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
-  const canRun = user.permissions?.includes('*') || user.permissions?.includes('bank_rrn.run') || false;
-  const canExport = user.permissions?.includes('*') || user.permissions?.includes('bank_rrn.export') || false;
+  const canRun = hasPermission(user, 'bank_rrn.run');
+  const canExport = hasPermission(user, 'bank_rrn.export');
   const isReadOnly = !canRun;
 
   // Modal states

@@ -10,6 +10,7 @@ import {
   Play,
 } from 'lucide-react';
 import { User } from '../types';
+import { hasPermission } from '../utils/permissions';
 
 export type BankRrnSection = 'overview' | 'workspace' | 'registry' | 'analytics' | 'archive';
 
@@ -45,7 +46,7 @@ export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
   children,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const can = (permission: string) => user.permissions?.includes('*') || user.permissions?.includes(permission) || false;
+  const can = (permission: string) => hasPermission(user, permission);
   const visibleMenuItems = menuItems.filter(
     item => !item.requiredPermissions || item.requiredPermissions.some(can),
   );
