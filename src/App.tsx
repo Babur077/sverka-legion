@@ -190,9 +190,11 @@ export const App: React.FC = () => {
 
   if (!user) return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
 
-  const openBankRrn = () => {
-    setCurrentTab('bank_rrn');
-    setBankSection('overview');
+  const openModule = (moduleId: string) => {
+    if (moduleId === 'bank_rrn') {
+      setCurrentTab('bank_rrn');
+      setBankSection('overview');
+    }
   };
 
   const renderBankSection = () => {
@@ -216,7 +218,7 @@ export const App: React.FC = () => {
       <UploadProgressIndicator />
       {currentTab !== 'bank_rrn' && <Navbar user={user} currentTab={currentTab} onSelectTab={setCurrentTab} onLogout={handleLogout} />}
       <main className="flex-1 overflow-y-auto">
-        {currentTab === 'modules' && <ModuleWorkspace user={user} onSelectRrnModule={openBankRrn} />}
+        {currentTab === 'modules' && <ModuleWorkspace user={user} onOpenModule={openModule} />}
         {currentTab === 'bank_rrn' && <BankRrnWorkspace user={user} activeSection={bankSection} onNavigate={setBankSection} onBack={() => setCurrentTab('modules')} onOpenReconciliation={() => setBankSection('workspace')}>{renderBankSection()}</BankRrnWorkspace>}
         {currentTab === 'analytics' && <AnalyticsPage user={user} />}
         {currentTab === 'audit' && <AuditPage user={user} />}

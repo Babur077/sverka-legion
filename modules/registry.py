@@ -5,7 +5,6 @@
 from typing import Dict, List, Optional
 from modules.base import BaseReconciliationModule, ModuleManifest
 from modules.bank_rrn.engine import BankRrnModule
-from modules.paynet.engine import PaynetModule
 
 
 class ModuleRegistry:
@@ -15,7 +14,6 @@ class ModuleRegistry:
         self._modules: Dict[str, BaseReconciliationModule] = {}
         # Регистрируем встроенные модули
         self.register(BankRrnModule())
-        self.register(PaynetModule())
 
     def register(self, module: BaseReconciliationModule):
         """Регистрация модуля в платформе"""
