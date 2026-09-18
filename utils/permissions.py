@@ -217,6 +217,85 @@ def update_user_access(
     return True, f"Доступ пользователя '{username}' обновлён", access
 
 
+
+def query_audit_events(
+    *,
+    limit: int = 100,
+    offset: int = 0,
+    user: Optional[str] = None,
+    action: Optional[str] = None,
+    module_id: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return paginated audit events with server-side filters."""
+    limit = max(1, min(int(limit), 500))
+    offset = max(0, int(offset))
+
+    conditions: List[str] = []
+    params: List[Any] = []
+
+    if user:
+        conditions.append("user_id = ?")
+        params.append(user)
+    if action:
+        conditions.append("action = ?")
+        params.append(action)
+    if module_id:
+        conditions.append("module_id = ?")
+        params.append(module_id)
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+    if date_from:
+        conditions.append("timestamp >= ?")
+        params.append(date_from)
+    if date_to:
+        conditions.append("timestamp < ?")
+        params.append(date_to)
+    if search:
+        conditions.append(
+            "(user_id LIKE ? OR action LIKE ? OR module_id LIKE ? OR object_type LIKE ? OR object_id LIKE ? OR details LIKE ?)"
+        )
+        q = f"%{search}%"
+        params.extend([q, q, q, q, q, q])
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(f"SELECT COUNT(*) FROM audit_events {where}", params)
+        total = int(cur.fetchone()[0])
+        cur.execute(
+            f"SELECT * FROM audit_events {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        )
+        items = [dict(row) for row in cur.fetchall()]
+
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+def get_audit_filter_options() -> Dict[str, List[str]]:
+    """Return complete distinct filter values, independent of current page."""
+    def distinct_values(cursor: sqlite3.Cursor, column: str) -> List[str]:
+        cursor.execute(
+            f"SELECT DISTINCT {column} FROM audit_events "
+            f"WHERE {column} IS NOT NULL AND TRIM({column}) != '' ORDER BY {column}"
+        )
+        return [str(row[0]) for row in cursor.fetchall()]
+
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        return {
+            "users": distinct_values(cursor, "user_id"),
+            "actions": distinct_values(cursor, "action"),
+            "modules": distinct_values(cursor, "module_id"),
+            "statuses": distinct_values(cursor, "status"),
+        }
+
 def has_permission(user_permissions: List[str], required_perm: str) -> bool:
     if "*" in user_permissions:
         return True
