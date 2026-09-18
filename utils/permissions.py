@@ -15,7 +15,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
     "finance_manager": [
         "bank_rrn.view", "bank_rrn.run", "bank_rrn.export",
         "paynet.view", "paynet.run", "paynet.export",
-        "epos.manage", "analytics.view_all", "archive.view",
+        "epos.manage", "analytics.view_all", "audit.view", "archive.view",
     ],
     "accountant_acquiring": [
         "bank_rrn.view", "bank_rrn.run", "bank_rrn.export",
