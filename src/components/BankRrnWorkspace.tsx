@@ -45,7 +45,7 @@ export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
   children,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const can = (permission: string) => user.role === 'admin' || user.permissions?.includes(permission) || false;
+  const can = (permission: string) => user.permissions?.includes('*') || user.permissions?.includes(permission) || false;
   const visibleMenuItems = menuItems.filter((item) => !item.requiredPermission || can(item.requiredPermission));
   const active = visibleMenuItems.find((item) => item.id === activeSection) ?? visibleMenuItems[0] ?? menuItems[0];
 
