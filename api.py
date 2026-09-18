@@ -26,6 +26,9 @@ from utils.db_manager import (
     add_epos_terminal,
     update_epos_terminal,
     delete_epos_terminal,
+    save_reconciliation,
+    get_archive_data,
+    delete_archive_record,
 )
 from utils.permissions import (
     init_permissions_db,
@@ -183,6 +186,97 @@ async def run_module_reconciliation(
             details=str(e),
         )
         raise HTTPException(status_code=500, detail=f"Ошибка выполнения модуля: {str(e)}")
+
+@app.post("/api/modules/{module_id}/archive")
+async def save_module_archive(
+    module_id: str,
+    payload: Dict[str, Any],
+    x_user: Optional[str] = Header("admin"),
+):
+    """Сохраняет метаданные результата сверки в серверный архив."""
+    perms = get_user_permissions(x_user)
+    if not has_permission(perms, f"{module_id}.run") and "*" not in perms:
+        raise HTTPException(status_code=403, detail="Нет прав на сохранение результата сверки")
+    if module_id != "bank_rrn":
+        raise HTTPException(status_code=404, detail="Серверный архив для этого модуля пока не реализован")
+
+    try:
+        ok, message = save_reconciliation(
+            user=x_user,
+            bank_name=str(payload.get("bank_name") or "Не указан"),
+            tot_our=float(payload.get("total_our") or 0),
+            tot_bank=float(payload.get("total_bank") or 0),
+            diff=float(payload.get("difference") or 0),
+            matched_c=int(payload.get("matched_count") or 0),
+            mismatch_c=int(payload.get("mismatch_count") or 0),
+            only_our_c=int(payload.get("only_our_count") or 0),
+            only_bank_c=int(payload.get("only_bank_count") or 0),
+            period_month=payload.get("period_month"),
+            total_commission=float(payload.get("total_commission") or 0),
+            terminals_data=payload.get("terminals_summary") or [],
+        )
+        if not ok:
+            raise HTTPException(status_code=500, detail=message)
+
+        record_audit_event(
+            user_id=x_user,
+            action="ARCHIVE_SAVE",
+            module_id=module_id,
+            object_type="ReconciliationArchive",
+            status="SUCCESS",
+            details=message,
+        )
+        return {"success": True, "message": message}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка сохранения архива: {e}")
+
+@app.get("/api/modules/{module_id}/archive")
+async def fetch_module_archive(
+    module_id: str,
+    x_user: Optional[str] = Header("admin"),
+):
+    """Возвращает серверный архив конкретного модуля."""
+    perms = get_user_permissions(x_user)
+    if not has_permission(perms, f"{module_id}.view") and not has_permission(perms, "analytics.view_all") and "*" not in perms:
+        raise HTTPException(status_code=403, detail="Доступ к архиву ограничен")
+    if module_id != "bank_rrn":
+        raise HTTPException(status_code=404, detail="Серверный архив для этого модуля пока не реализован")
+
+    df = get_archive_data()
+    records = df.to_dict(orient="records") if hasattr(df, "to_dict") else []
+    for item in records:
+        try:
+            item["terminals_summary"] = json.loads(item.get("terminals_json") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            item["terminals_summary"] = []
+        item.pop("terminals_json", None)
+    return records
+
+@app.delete("/api/modules/{module_id}/archive/{record_id}")
+async def remove_module_archive(
+    module_id: str,
+    record_id: int,
+    x_user: Optional[str] = Header("admin"),
+):
+    """Удаляет запись из серверного архива."""
+    perms = get_user_permissions(x_user)
+    if not has_permission(perms, f"{module_id}.run") and "*" not in perms:
+        raise HTTPException(status_code=403, detail="Нет прав на удаление записи архива")
+    if module_id != "bank_rrn":
+        raise HTTPException(status_code=404, detail="Серверный архив для этого модуля пока не реализован")
+    delete_archive_record(record_id)
+    record_audit_event(
+        user_id=x_user,
+        action="ARCHIVE_DELETE",
+        module_id=module_id,
+        object_type="ReconciliationArchive",
+        object_id=str(record_id),
+        status="SUCCESS",
+        details=f"Удалена запись архива #{record_id}",
+    )
+    return {"success": True}
 
 @app.get("/api/modules/{module_id}/analytics")
 async def get_module_analytics(module_id: str, x_user: Optional[str] = Header("admin")):
