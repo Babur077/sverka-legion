@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Building2, BarChart3, Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X, Layers, History } from 'lucide-react';
+import { Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X, Layers, History } from 'lucide-react';
 import { User } from '../types';
 
 interface NavbarProps {
@@ -41,20 +41,25 @@ export const Navbar: React.FC<NavbarProps> = ({
       id: 'modules',
       label: 'Модули сверок',
       icon: Layers,
-      adminOnly: false
-    },
-    { 
-      id: 'rrn', 
-      label: user.role === 'auditor' ? 'Сверка RRN (Аудит)' : 'Сверка по RRN', 
-      icon: RefreshCw, 
       adminOnly: false,
-      requiredPermission: 'bank_rrn.view'
     },
-    { id: 'epos', label: 'Реестр банков', icon: Building2, adminOnly: false, requiredPermission: 'epos.view' },
-    { id: 'analytics', label: 'Аналитика', icon: BarChart3, adminOnly: false, requiredPermission: 'analytics.view_all' },
-    { id: 'audit', label: 'Аудит', icon: History, adminOnly: false, requiredPermission: 'audit.view' },
-    { id: 'admin', label: 'Настройки', icon: Settings, adminOnly: true },
-  ].filter(item => (!item.adminOnly || user.role === 'admin') && (!item.requiredPermission || user.role === 'admin' || user.permissions?.includes(item.requiredPermission)));
+    {
+      id: 'audit',
+      label: 'Аудит',
+      icon: History,
+      adminOnly: false,
+      requiredPermission: 'audit.view',
+    },
+    {
+      id: 'admin',
+      label: 'Администрирование',
+      icon: Settings,
+      adminOnly: true,
+    },
+  ].filter(item =>
+    (!item.adminOnly || user.role === 'admin')
+    && (!item.requiredPermission || user.role === 'admin' || user.permissions?.includes(item.requiredPermission))
+  );
 
   const handleItemClick = (tabId: string) => {
     onSelectTab(tabId);
