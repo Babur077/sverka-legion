@@ -15,7 +15,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
     "finance_manager": [
         "bank_rrn.view", "bank_rrn.run", "bank_rrn.export",
         "paynet.view", "paynet.run", "paynet.export",
-        "epos.manage", "analytics.view_all", "archive.view",
+        "epos.view", "epos.manage", "analytics.view_all", "audit.view", "archive.view",
     ],
     "accountant_acquiring": [
         "bank_rrn.view", "bank_rrn.run", "bank_rrn.export",
@@ -54,6 +54,8 @@ def init_permissions_db():
             cursor.execute("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass  # уже добавлено
+        # Migrate the old generic accountant role to the canonical acquiring role.
+        cursor.execute("UPDATE users SET role = ? WHERE role = ?", ("accountant_acquiring", "accountant"))
         conn.commit()
 
 

@@ -27,12 +27,13 @@ const menuItems: Array<{
   label: string;
   description: string;
   icon: React.ElementType;
+  requiredPermission?: string;
 }> = [
-  { id: 'overview', label: 'Обзор', description: 'Состояние сверки и последние запуски', icon: LayoutDashboard },
-  { id: 'workspace', label: 'Новая сверка', description: 'Загрузить данные и запустить сверку', icon: Play },
-  { id: 'registry', label: 'Реестр банков', description: 'Банки, комиссии и терминалы', icon: Building2 },
-  { id: 'analytics', label: 'Аналитика', description: 'Метрики и динамика сверки', icon: BarChart3 },
-  { id: 'archive', label: 'Архив', description: 'История запусков и результаты', icon: History },
+  { id: 'overview', label: 'Обзор', description: 'Состояние сверки и последние запуски', icon: LayoutDashboard, requiredPermission: 'bank_rrn.view' },
+  { id: 'workspace', label: 'Новая сверка', description: 'Загрузить данные и запустить сверку', icon: Play, requiredPermission: 'bank_rrn.run' },
+  { id: 'registry', label: 'Реестр банков', description: 'Банки, комиссии и терминалы', icon: Building2, requiredPermission: 'epos.view' },
+  { id: 'analytics', label: 'Аналитика', description: 'Метрики и динамика сверки', icon: BarChart3, requiredPermission: 'bank_rrn.view' },
+  { id: 'archive', label: 'Архив', description: 'История запусков и результаты', icon: History, requiredPermission: 'bank_rrn.view' },
 ];
 
 export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
@@ -44,7 +45,9 @@ export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
   children,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const active = menuItems.find((item) => item.id === activeSection) ?? menuItems[0];
+  const can = (permission: string) => user.role === 'admin' || user.permissions?.includes(permission) || false;
+  const visibleMenuItems = menuItems.filter((item) => !item.requiredPermission || can(item.requiredPermission));
+  const active = visibleMenuItems.find((item) => item.id === activeSection) ?? visibleMenuItems[0] ?? menuItems[0];
 
   return (
     <div className="min-h-full bg-slate-50">
@@ -74,13 +77,15 @@ export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={onOpenReconciliation}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition-colors"
-              >
-                <Play className="w-3.5 h-3.5 fill-white" />
-                Новая сверка
-              </button>
+              {can('bank_rrn.run') && (
+                <button
+                  onClick={onOpenReconciliation}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition-colors"
+                >
+                  <Play className="w-3.5 h-3.5 fill-white" />
+                  Новая сверка
+                </button>
+              )}
               <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200 ml-1">
                 <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs border border-indigo-200">
                   {user.username.slice(0, 2).toUpperCase()}
@@ -110,7 +115,7 @@ export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
             </div>
 
             <nav className="space-y-1">
-              {menuItems.map((item) => {
+              {visibleMenuItems.map((item) => {
                 const Icon = item.icon;
                 const selected = activeSection === item.id;
                 return (

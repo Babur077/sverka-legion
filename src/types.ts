@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'accountant' | 'auditor' | 'finance_manager';
+export type Role = 'admin' | 'finance_manager' | 'accountant_acquiring' | 'accountant_paynet' | 'auditor' | 'accountant';
 
 export interface User {
   id: number;
