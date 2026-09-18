@@ -9,13 +9,12 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
-import { RawRow, ReconciliationConfig, ReconciliationResult, UnmatchedRow, AmountMismatchRow, DateSummaryRow, SystemSettings, User } from '../types';
+import { RawRow, ReconciliationConfig, ReconciliationResult, UnmatchedRow, AmountMismatchRow, DateSummaryRow, SystemSettings, User, EposTerminal } from '../types';
 import { parseFile, guessCol, exportReconciliationToExcel, generateSampleData } from '../utils/fileParser';
 import { runBankRrnViaApi } from '../utils/bankRrnApi';
-import {
-  getStoredEpos, logAction, getStoredBanks, addStoredBank,
-  getStoredDraft, saveActiveDraft, clearActiveDraft
-} from '../utils/storage';
+import { getStoredDraft, saveActiveDraft, clearActiveDraft } from '../utils/storage';
+import { getEposViaApi } from '../utils/eposApi';
+import { DEFAULT_BANKS, getBanksViaApi } from '../utils/banksApi';
 import { AlertModal, ConfirmModal } from './Modal';
 import { saveBankRrnArchive } from '../utils/archiveApi';
 
@@ -110,7 +109,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   // Bank selection state (Quick Bank Select)
-  const [availableBanks, setAvailableBanks] = useState<string[]>(getStoredBanks());
+  const [availableBanks, setAvailableBanks] = useState<string[]>(DEFAULT_BANKS);
+  const [eposTerminals, setEposTerminals] = useState<EposTerminal[]>([]);
   const [selectedBank, setSelectedBank] = useState<string>('Aloqa Bank');
   const [showAddBank, setShowAddBank] = useState<boolean>(false);
   const [newBankInput, setNewBankInput] = useState<string>('');
@@ -123,6 +123,31 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       setShowDraftBanner(true);
     }
   }, []);
+
+  // Server-backed reference data. Custom banks added during a reconciliation stay
+  // local to the current workspace until they are registered through EPOS.
+  useEffect(() => {
+    let active = true;
+
+    void getBanksViaApi()
+      .then((banks) => {
+        if (active) setAvailableBanks(prev => Array.from(new Set([...prev, ...banks])));
+      })
+      .catch(() => {});
+
+    void getEposViaApi(user.username)
+      .then((terminals) => {
+        if (!active) return;
+        setEposTerminals(terminals);
+        setAvailableBanks(prev => Array.from(new Set([
+          ...prev,
+          ...terminals.map(t => t.bank_acquirer).filter(Boolean),
+        ])));
+      })
+      .catch(() => {});
+
+    return () => { active = false; };
+  }, [user.username]);
 
   // Auto-save active draft to localStorage
   useEffect(() => {
@@ -214,8 +239,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   const handleSelectBank = (bankName: string) => {
     setSelectedBank(bankName);
-    const eposList = getStoredEpos();
-    const bankEpos = eposList.find(t => t.bank_acquirer.toLowerCase() === bankName.toLowerCase() && t.is_active);
+    const bankEpos = eposTerminals.find(
+      t => t.bank_acquirer.toLowerCase() === bankName.toLowerCase() && t.is_active,
+    );
     if (bankEpos) {
       setCommissionPct(bankEpos.commission_pct);
     }
@@ -225,9 +251,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     e.preventDefault();
     const clean = newBankInput.trim();
     if (!clean) return;
-    addStoredBank(clean);
-    const updated = getStoredBanks();
-    setAvailableBanks(updated);
+    setAvailableBanks(prev => Array.from(new Set([...prev, clean])));
     setSelectedBank(clean);
     setNewBankInput('');
     setShowAddBank(false);
@@ -678,7 +702,6 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         },
       );
       setSaveSuccessMsg(`Сверка за ${selectedArchiveMonth} успешно записана в архив!`);
-      logAction(user.username, 'SAVE_RECON', `Сохранена сверка по банку (${bankNameForArchive}) за месяц ${selectedArchiveMonth}`);
       setAlertState({
         isOpen: true,
         title: 'Успешно сохранено',
