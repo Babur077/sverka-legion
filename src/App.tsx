@@ -3,7 +3,6 @@ import { AlertCircle, CheckCircle2, LoaderCircle } from 'lucide-react';
 import { LoginScreen } from './components/LoginScreen';
 import { Navbar } from './components/Navbar';
 import { RrnPage } from './components/RrnPage';
-import { AnalyticsPage } from './components/AnalyticsPage';
 import { AdminPage } from './components/AdminPage';
 import { EposPage } from './components/EposPage';
 import { AuditPage } from './components/AuditPage';
@@ -220,9 +219,7 @@ export const App: React.FC = () => {
       <main className="flex-1 overflow-y-auto">
         {currentTab === 'modules' && <ModuleWorkspace user={user} onOpenModule={openModule} />}
         {currentTab === 'bank_rrn' && <BankRrnWorkspace user={user} activeSection={bankSection} onNavigate={setBankSection} onBack={() => setCurrentTab('modules')} onOpenReconciliation={() => setBankSection('workspace')}>{renderBankSection()}</BankRrnWorkspace>}
-        {currentTab === 'analytics' && <AnalyticsPage user={user} />}
         {currentTab === 'audit' && <AuditPage user={user} />}
-        {currentTab === 'epos' && user.role === 'admin' && <EposPage user={user} />}
         {currentTab === 'admin' && user.role === 'admin' && <AdminPage user={user} settings={settings} onUpdateSettings={setSettings} />}
       </main>
     </div>
