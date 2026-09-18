@@ -93,7 +93,7 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
           ['Период', selected.period_month || '—'],
         ].map(([label, value]) => <div key={label} className="bg-slate-50 rounded-xl p-3"><div className="text-[11px] text-slate-500">{label}</div><div className="text-sm font-bold text-slate-900 mt-1">{value}</div></div>)}</div>
 
-        {(selected.run_id || selected.source_our_name || selected.source_bank_name || selected.config) && (
+        {(selected.run_id || selected.source_our_name || selected.source_bank_name || Object.keys(selected.config || {}).length > 0) && (
           <div className="px-5 pb-5">
             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
               <div className="text-sm font-semibold text-slate-900">Контекст сохранённого запуска</div>
