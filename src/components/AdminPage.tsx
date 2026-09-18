@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Shield, UserPlus, Users, Settings as SettingsIcon, History, Trash2, CheckCircle, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { User, AuditLog, SystemSettings } from '../types';
-import { getAuditLogs, saveSettings, logAction } from '../utils/storage';
+import { getAuditLogs } from '../utils/storage';
+import { saveSettingsViaApi } from '../utils/settingsApi';
 import { getUsersViaApi, createUserViaApi, deleteUserViaApi } from '../utils/adminUsersApi';
 import { ConfirmModal, AlertModal } from './Modal';
 
@@ -125,18 +126,26 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
     }
   };
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     const newSettings: SystemSettings = {
       ...settings,
       amount_tolerance: tolerance,
       currency: currency,
     };
-    saveSettings(newSettings);
-    onUpdateSettings(newSettings);
-    setSettingsSaved(true);
-    logAction(user.username, 'UPDATE_SETTINGS', `Допуск: ${tolerance}, Валюта: ${currency}`);
-    setTimeout(() => setSettingsSaved(false), 3000);
+    try {
+      await saveSettingsViaApi(user.username, newSettings);
+      onUpdateSettings(newSettings);
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+    } catch (error: any) {
+      setAlertState({
+        isOpen: true,
+        title: 'Не удалось сохранить настройки',
+        message: error?.message || 'Сервер не принял изменения системных параметров.',
+        type: 'error',
+      });
+    }
   };
 
   return (

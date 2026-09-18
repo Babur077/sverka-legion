@@ -32,6 +32,8 @@ from utils.db_manager import (
     delete_archive_record,
     add_user,
     delete_user,
+    get_settings,
+    save_settings,
 )
 from utils.permissions import (
     init_permissions_db,
@@ -351,6 +353,54 @@ async def get_banks():
         if banks:
             return banks
     return ["Aloqa Bank", "Kapitalbank", "Ipak Yuli", "NBU", "TBC Bank", "Agrobank", "Humo", "Uzcard"]
+
+# ─── Общесистемные настройки ─────────────────────────────────
+
+@app.get("/api/settings")
+async def fetch_settings(x_user: Optional[str] = Header("admin")):
+    """Возвращает общесистемные параметры сверки."""
+    perms = get_user_permissions(x_user)
+    if not perms:
+        raise HTTPException(status_code=403, detail="Пользователь не найден")
+    return get_settings()
+
+
+@app.put("/api/settings")
+async def update_settings(payload: Dict[str, Any], request: Request, x_user: Optional[str] = Header("admin")):
+    """Сохраняет общесистемные параметры сверки."""
+    perms = get_user_permissions(x_user)
+    if "*" not in perms:
+        raise HTTPException(status_code=403, detail="Только администратор может изменять системные настройки")
+
+    try:
+        amount_tolerance = float(payload.get("amount_tolerance", 0.01))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Допустимая погрешность должна быть числом")
+
+    if amount_tolerance < 0:
+        raise HTTPException(status_code=400, detail="Допустимая погрешность не может быть отрицательной")
+
+    currency = str(payload.get("currency") or "UZS").strip().upper()
+    if currency not in {"UZS", "USD", "RUB", "EUR"}:
+        raise HTTPException(status_code=400, detail="Недопустимая валюта")
+
+    dayfirst = bool(payload.get("dayfirst", True))
+    new_settings = {
+        "amount_tolerance": amount_tolerance,
+        "currency": currency,
+        "dayfirst": dayfirst,
+    }
+    save_settings(new_settings)
+    record_audit_event(
+        user_id=x_user,
+        action="UPDATE_SETTINGS",
+        object_type="SystemSettings",
+        status="SUCCESS",
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        details=f"Допуск: {amount_tolerance}, Валюта: {currency}, dayfirst: {dayfirst}",
+    )
+    return new_settings
+
 
 # ─── Аудит и Пользователи ─────────────────────────────────────
 
