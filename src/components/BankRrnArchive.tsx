@@ -33,12 +33,17 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
   };
 
   React.useEffect(() => { refresh(); }, [user.username]);
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
-    deleteBankRrnArchive(user.username, deleteTarget.id).then(() => logAction(user.username, 'DELETE_ARCHIVE', `Удалена запись сверки ${deleteTarget.bank_name} от ${new Date(deleteTarget.timestamp).toLocaleString('ru-RU')}`)).catch((error) => console.error(error));
-    setDeleteTarget(null);
-    void refresh();
-    setSelected(null);
+    try {
+      await deleteBankRrnArchive(user.username, deleteTarget.id);
+      logAction(user.username, 'DELETE_ARCHIVE', `Удалена запись сверки ${deleteTarget.bank_name} от ${new Date(deleteTarget.timestamp).toLocaleString('ru-RU')}`);
+      setDeleteTarget(null);
+      setSelected(null);
+      await refresh();
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const selectedTerminals = useMemo(() => [...(selected?.terminals_summary || [])].sort((a, b) => b.total_volume - a.total_volume), [selected]);
