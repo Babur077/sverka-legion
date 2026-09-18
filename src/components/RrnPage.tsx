@@ -13,10 +13,11 @@ import { RawRow, ReconciliationConfig, ReconciliationResult, UnmatchedRow, Amoun
 import { parseFile, guessCol, exportReconciliationToExcel, generateSampleData } from '../utils/fileParser';
 import { runBankRrnViaApi } from '../utils/bankRrnApi';
 import {
-  getStoredEpos, saveReconciliation, logAction, getStoredBanks, addStoredBank,
+  getStoredEpos, logAction, getStoredBanks, addStoredBank,
   getStoredDraft, saveActiveDraft, clearActiveDraft
 } from '../utils/storage';
 import { AlertModal, ConfirmModal } from './Modal';
+import { saveBankRrnArchive } from '../utils/archiveApi';
 
 interface RrnPageProps {
   user: User;
@@ -650,7 +651,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   }, [reconData]);
 
   // Save to Archive
-  const handleSaveToArchive = () => {
+  const handleSaveToArchive = async () => {
     if (isAuditor) {
       setAlertState({
         isOpen: true,
@@ -663,35 +664,32 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
     if (!dynamicCalculations || !reconData) return;
     const bankNameForArchive = selectedBank || bankFile?.name.replace(/\.[^/.]+$/, '') || 'Банк';
-    const res = saveReconciliation(
-      user.username,
-      bankNameForArchive,
-      dynamicCalculations.totalOurSum,
-      dynamicCalculations.totalBankSum,
-      dynamicCalculations.totalDiff,
-      reconData.matched_count,
-      reconData.mismatch_count,
-      reconData.only_our.filter(x => x.checked).length,
-      reconData.only_bank.filter(x => x.checked).length,
-      selectedArchiveMonth,
-      reconData.total_commission || 0,
-      reconData.terminal_summary || []
-    );
 
-    if (res.success) {
+    try {
+      await saveBankRrnArchive(
+        user.username,
+        bankNameForArchive,
+        reconData,
+        {
+          total_our: dynamicCalculations.totalOurSum,
+          total_bank: dynamicCalculations.totalBankSum,
+          difference: dynamicCalculations.totalDiff,
+          period_month: selectedArchiveMonth,
+        },
+      );
       setSaveSuccessMsg(`Сверка за ${selectedArchiveMonth} успешно записана в архив!`);
       logAction(user.username, 'SAVE_RECON', `Сохранена сверка по банку (${bankNameForArchive}) за месяц ${selectedArchiveMonth}`);
       setAlertState({
         isOpen: true,
         title: 'Успешно сохранено',
-        message: `Сверка по банку "${bankNameForArchive}" за месяц ${selectedArchiveMonth} успешно зафиксирована в архиве с аналитикой по терминалам.`,
+        message: `Сверка по банку "${bankNameForArchive}" за месяц ${selectedArchiveMonth} успешно зафиксирована в серверном архиве с аналитикой по терминалам.`,
         type: 'success',
       });
-    } else {
+    } catch (error: any) {
       setAlertState({
         isOpen: true,
         title: 'Ошибка сохранения',
-        message: res.message,
+        message: error?.message || 'Не удалось сохранить сверку в серверный архив.',
         type: 'error',
       });
     }
