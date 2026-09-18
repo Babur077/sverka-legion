@@ -321,6 +321,7 @@ export function exportReconciliationToExcel(
       'Сумма (Мы)': r.net_amount_our,
       'Сумма (Банк)': r.net_amount_bank,
       'Δ Разница': r['Δ сумма'],
+      'Причина': r.amount_issue || 'Расхождение суммы',
     }));
     const wsMismatch = XLSX.utils.json_to_sheet(cleanMismatch);
     XLSX.utils.book_append_sheet(wb, wsMismatch, 'Расхождения_сумм');

@@ -118,7 +118,7 @@ export interface UnmatchedRow {
   reason: string;
   date_str: string;
   RRN: string;
-  amount: number;
+  amount: number | null;
   status?: string;
   terminal_id?: string;
   commission_pct?: number;
@@ -129,9 +129,10 @@ export interface AmountMismatchRow {
   RRN: string;
   date_our: string;
   date_bank: string;
-  net_amount_our: number;
-  net_amount_bank: number;
-  'Δ сумма': number;
+  net_amount_our: number | null;
+  net_amount_bank: number | null;
+  'Δ сумма': number | null;
+  amount_issue?: string;
   status_our?: string;
   status_bank?: string;
 }
@@ -153,8 +154,8 @@ export interface ReconciliationResult {
   comm_only_diff_count?: number;
   deduct_commission?: boolean;
   data_quality?: {
-    our?: { missing_date?: number; invalid_date?: number; empty_rrn?: number };
-    bank?: { missing_date?: number; invalid_date?: number; empty_rrn?: number };
+    our?: { missing_date?: number; invalid_date?: number; empty_rrn?: number; missing_amount?: number; invalid_amount?: number };
+    bank?: { missing_date?: number; invalid_date?: number; empty_rrn?: number; missing_amount?: number; invalid_amount?: number };
   };
   run_id?: string;
   run_timestamp?: string;

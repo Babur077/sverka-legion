@@ -49,38 +49,33 @@ def load_file_polars(first_arg, second_arg=None, sheet_name=0) -> pl.DataFrame:
 parse_file_to_polars = load_file_polars
 
 
-def _clean_amount_expr(col_name: str) -> pl.Expr:
-    c = pl.col(col_name).cast(pl.Utf8)
+def _clean_amount_expr(col_name: str, *, fill_invalid: bool = True) -> pl.Expr:
+    """Normalize common financial amount formats.
+
+    Legacy callers keep receiving 0.0 for invalid values. Reconciliation
+    logic can request a nullable expression via parse_amount_polars so
+    malformed source amounts remain visible instead of silently becoming zero.
+    """
+    c = pl.col(col_name).cast(pl.Utf8, strict=False).fill_null("").str.strip_chars()
     c = c.str.replace_all(r"[^\d\.,\-]", "")
 
     has_both = c.str.contains(",") & c.str.contains(r"\.")
-    # Если есть и запятые, и точка:
-    # 1. Европейский формат: последняя запятая идет после последней точки (напр. "1.234,56" или "1.234.567,89")
-    # -> убираем точки (разделители тысяч), а запятую меняем на точку
     is_euro_both = has_both & c.str.contains(r"\..*,[^\.]*$")
-    # 2. Стандартный/US формат: последняя точка идет после последней запятой (напр. "1,234.56" или "1,234,567.89")
-    # -> убираем запятые
     is_std_both = has_both & c.str.contains(r",.*\.[^,]*$")
 
     c = pl.when(is_euro_both).then(c.str.replace_all(r"\.", "").str.replace(",", ".")).otherwise(c)
     c = pl.when(is_std_both).then(c.str.replace_all(",", "")).otherwise(c)
 
-    # Запятая с 1-2 цифрами после и без точки — десятичный разделитель (напр. "1234,56").
     is_decimal_comma = c.str.contains(r"^-?\d+,\d{1,2}$")
-    # Запятая(-ые), разбивающая(-ие) число на группы РОВНО по 3 цифры, без точки —
-    # разделитель тысяч (напр. "1,234" или "12,345,678"), а не десятичная дробь.
     is_thousands_comma = c.str.contains(r"^-?\d{1,3}(,\d{3})+$")
-
     c = pl.when(is_decimal_comma).then(c.str.replace(",", ".")).otherwise(c)
     c = pl.when(is_thousands_comma).then(c.str.replace_all(",", "")).otherwise(c)
 
-    # Несколько точек без запятых как разделители тысяч: "1.234.567"
     is_thousands_dots = c.str.contains(r"^-?\d{1,3}(\.\d{3})+$")
     c = pl.when(is_thousands_dots).then(c.str.replace_all(r"\.", "")).otherwise(c)
 
-    return c.cast(pl.Float64, strict=False).fill_null(0.0)
-
-
+    parsed = c.cast(pl.Float64, strict=False)
+    return parsed.fill_null(0.0) if fill_invalid else parsed
 def clean_amount_polars(first_arg, col_name: Optional[str] = None):
     """
     Поддерживает:
@@ -93,6 +88,11 @@ def clean_amount_polars(first_arg, col_name: Optional[str] = None):
         return first_arg
     return _clean_amount_expr(str(first_arg))
 
+
+
+def parse_amount_polars(col_name: str) -> pl.Expr:
+    """Return normalized amount while preserving invalid/missing values as null."""
+    return _clean_amount_expr(str(col_name), fill_invalid=False)
 
 def _clean_date_expr(col_name: str) -> pl.Expr:
     c = pl.col(col_name).cast(pl.Utf8).str.strip_chars()
