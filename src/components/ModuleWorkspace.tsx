@@ -10,11 +10,12 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { ReconciliationModuleManifest, User } from '../types';
+import { hasModuleWorkspace } from '../modules/workspaceRegistry';
 import { getModulesViaApi } from '../utils/modulesApi';
 
 interface ModuleWorkspaceProps {
   user: User;
-  onOpenModule: (moduleId: string) => void;
+  onOpenModule: (module: ReconciliationModuleManifest) => void;
 }
 
 const iconFor = (name: string) => {
@@ -63,7 +64,7 @@ export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onOpenMo
 
   const activeModule = modules.find(module => module.id === selectedModuleId) || modules[0];
   const userPermissions = user.permissions || [];
-  const canOpenCurrentWorkspace = activeModule?.id === 'bank_rrn';
+  const canOpenCurrentWorkspace = hasModuleWorkspace(activeModule?.workspace);
 
   return (
     <div className="w-full max-w-[1800px] mx-auto p-6 xl:px-8 space-y-6">
@@ -183,7 +184,7 @@ export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onOpenMo
 
                 {canOpenCurrentWorkspace ? (
                   <button
-                    onClick={() => onOpenModule(activeModule.id)}
+                    onClick={() => onOpenModule(activeModule)}
                     className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center gap-2 shadow-xs transition-colors"
                   >
                     <Play className="w-4 h-4 fill-white" />
@@ -191,7 +192,7 @@ export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onOpenMo
                   </button>
                 ) : (
                   <span className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                    Backend-модуль зарегистрирован; специализированный workspace подключается отдельно.
+                    Backend-модуль зарегистрирован. Для рабочего места укажите workspace в manifest и добавьте UI в workspace registry.
                   </span>
                 )}
               </div>
