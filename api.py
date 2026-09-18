@@ -3,13 +3,10 @@ ReconcileHub - FastAPI Backend (Modular Monolith)
 Интегрирует централизованный реестр модулей (BaseReconciliationModule), RBAC и аудит.
 """
 import os
-import sys
 import json
 import math
 import time
-import socket
-import subprocess
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Request
@@ -23,7 +20,6 @@ from utils.db_manager import (
     authenticate_user,
     get_user_id,
     get_all_users,
-    get_audit_logs,
     get_epos_registry,
     add_epos_terminal,
     update_epos_terminal,
