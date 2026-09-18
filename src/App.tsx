@@ -245,7 +245,7 @@ export const App: React.FC = () => {
         {currentTab === 'modules' && <ModuleWorkspace user={user} onOpenModule={openModule} />}
         {currentTab === 'module' && renderActiveModule()}
         {currentTab === 'audit' && <AuditPage user={user} />}
-        {currentTab === 'admin' && user.role === 'admin' && <AdminPage user={user} settings={settings} onUpdateSettings={setSettings} />}
+        {currentTab === 'admin' && user.permissions?.includes('*') && <AdminPage user={user} settings={settings} onUpdateSettings={setSettings} />}
       </main>
     </div>
   );
