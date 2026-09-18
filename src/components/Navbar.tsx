@@ -49,9 +49,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     },
     { id: 'epos', label: 'Реестр банков', icon: Building2, adminOnly: true },
     { id: 'analytics', label: 'Аналитика', icon: BarChart3, adminOnly: false },
-    { id: 'audit', label: 'Аудит', icon: History, adminOnly: false },
+    { id: 'audit', label: 'Аудит', icon: History, adminOnly: false, requiredPermission: 'audit.view' },
     { id: 'admin', label: 'Настройки', icon: Settings, adminOnly: true },
-  ].filter(item => !item.adminOnly || user.role === 'admin');
+  ].filter(item => (!item.adminOnly || user.role === 'admin') && (!item.requiredPermission || user.role === 'admin' || user.permissions?.includes(item.requiredPermission)));
 
   const handleItemClick = (tabId: string) => {
     onSelectTab(tabId);
