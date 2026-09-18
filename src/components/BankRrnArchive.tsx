@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Archive, Eye, Search, Trash2, RefreshCw, X, Terminal } from 'lucide-react';
 import { ReconciliationArchive, User } from '../types';
+import { hasPermission } from '../utils/permissions';
 import { deleteBankRrnArchive, getBankRrnArchive } from '../utils/archiveApi';
 import { ConfirmModal } from './Modal';
 import { getReconciliationQuality } from '../utils/reconciliationMetrics';
@@ -10,7 +11,7 @@ const money = (n: number) => n.toLocaleString('ru-RU', { maximumFractionDigits: 
 const pct = (n: number) => `${n.toFixed(2)}%`;
 
 export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) => {
-  const canRun = user.permissions?.includes('*') || user.permissions?.includes('bank_rrn.run') || false;
+  const canRun = hasPermission(user, 'bank_rrn.run');
   const [archive, setArchive] = useState<ReconciliationArchive[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
