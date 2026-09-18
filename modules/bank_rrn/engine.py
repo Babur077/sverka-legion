@@ -54,8 +54,10 @@ class BankRrnModule(BaseReconciliationModule):
         required_params = [
             ("our_date_col", "Дата (наша сторона)"),
             ("our_rrn_col", "RRN (наша сторона)"),
+            ("our_amt_col", "Сумма (наша сторона)"),
             ("bank_date_col", "Дата (банк)"),
             ("bank_rrn_col", "RRN (банк)"),
+            ("bank_amt_col", "Сумма (банк)"),
         ]
         for key, label in required_params:
             if not str(params.get(key, "")).strip():
@@ -144,7 +146,7 @@ class BankRrnModule(BaseReconciliationModule):
             "bank_rev": str(params.get("bank_rev_action", "Удалить строку")),
             "dup_action": str(params.get("dup_action", "Ничего не делать (оставить все)")),
             "unbind_mismatches": self._as_bool(params.get("unbind_mismatches", False)),
-            "tolerance": float(params.get("tolerance", 0.01)),
+            "tolerance": max(0.0, float(params.get("tolerance", 0.01))),
             "deduct_commission": self._as_bool(params.get("deduct_commission", False)),
         }
 
@@ -198,6 +200,7 @@ class BankRrnModule(BaseReconciliationModule):
             "deduct_commission": bool(result.get("deduct_commission", False)),
             "terminal_summary": self._records(result.get("terminal_summary")),
             "total_commission": float(result.get("total_commission", 0.0)),
+            "effective_commission_rate": float(result.get("effective_commission_rate", 0.0)),
             "detected_months": result.get("detected_months", []),
             "dup_action": result.get("dup_action", cfg["dup_action"]),
         }
@@ -229,28 +232,14 @@ class BankRrnModule(BaseReconciliationModule):
         )
 
     def get_analytics(self, run_id: Optional[str] = None) -> Dict[str, Any]:
-        """Возвращает аналитику по эквайрингу."""
+        """Module analytics are built from the server archive in the React workspace."""
         return {
             "module": "bank_rrn",
             "run_id": run_id,
-            "metrics": {
-                "avg_ticket": 128500.0,
-                "top_acquirers": [
-                    {"bank": "Aloqa Bank", "volume": 452000000.0, "share_pct": 52.4},
-                    {"bank": "Kapitalbank", "volume": 289000000.0, "share_pct": 33.5},
-                    {"bank": "Ipak Yuli", "volume": 122000000.0, "share_pct": 14.1},
-                ],
-                "avg_match_rate": 99.4,
-                "discrepancy_trend": [
-                    {"date": "2026-09-10", "count": 14, "resolved": 14},
-                    {"date": "2026-09-11", "count": 8, "resolved": 8},
-                    {"date": "2026-09-12", "count": 19, "resolved": 16},
-                    {"date": "2026-09-13", "count": 3, "resolved": 3},
-                    {"date": "2026-09-14", "count": 0, "resolved": 0},
-                ],
-            },
+            "metrics": {},
+            "source": "archive",
         }
 
     def export(self, run_id: str, format: str = "xlsx") -> bytes:
-        # Заглушка экспорта для RRN.
-        return b"Dummy Excel Report"
+        # Export is currently generated client-side from the visible result set.
+        return b""
