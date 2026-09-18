@@ -14,6 +14,7 @@ import { BankRrnArchive } from './components/BankRrnArchive';
 import { User, SystemSettings, ReconciliationModuleManifest } from './types';
 import { hasModuleWorkspace, ModuleWorkspaceKey } from './modules/workspaceRegistry';
 import { getSettingsViaApi } from './utils/settingsApi';
+import { getCurrentUserViaApi } from './utils/authApi';
 
 interface FileParseProgressDetail {
   status: 'loading' | 'success' | 'error';
@@ -176,6 +177,19 @@ export const App: React.FC = () => {
       // Keep safe defaults if the settings endpoint is temporarily unavailable.
     });
   }, [user?.username]);
+
+  useEffect(() => {
+    if (!user) return;
+    void getCurrentUserViaApi(user.username).then(refreshed => {
+      setUser(current => {
+        if (!current || current.username !== refreshed.username) return current;
+        try { sessionStorage.setItem('reconcile_active_user', JSON.stringify(refreshed)); } catch {}
+        return refreshed;
+      });
+    }).catch(() => {
+      // Backend remains authoritative even if a permission refresh temporarily fails.
+    });
+  }, [user?.username, currentTab]);
 
   const handleLogout = () => {
     try { sessionStorage.removeItem('reconcile_active_user'); } catch {}
