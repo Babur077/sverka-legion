@@ -1,27 +1,116 @@
-# Reconciliation modules
+# Модули сверок ReconcileHub
 
-`modules/` contains only real reconciliation engines used by ReconcileHub.
-Demo/example reconciliations should not be registered in production.
+В каталоге `modules/` находятся только реальные движки сверок. Демонстрационные
+Paynet/Payme/EPOS-модули в production registry не добавляются.
 
-## Add a new reconciliation
+## Быстрое создание новой сверки
 
-1. Create `modules/<module_id>/engine.py`.
-2. Implement `BaseReconciliationModule` from `modules/base.py`.
-3. Define a unique manifest id, required files and RBAC scopes.
-4. Register the module in `modules/registry.py` with `module_registry.register(...)` (or in `ModuleRegistry.__init__` for a built-in module).
-5. Grant the new scopes to the intended roles in `utils/permissions.py`.
-6. Add a specialized React workspace only when that reconciliation needs its own UI.
+Можно создать безопасный каркас:
 
-The Modules screen reads `GET /api/modules` from FastAPI, so a registered module automatically appears in the module registry for users who have at least one required permission.
+```bash
+python scripts/create_reconciliation_module.py cash_register \
+  --name "Сверка кассы" \
+  --category "Касса" \
+  --author "Финансовый отдел"
+```
 
-## Contract
+Скрипт создаст:
 
-Every module provides:
+```text
+modules/cash_register/
+├── __init__.py
+└── engine.py
+```
 
-- `manifest` — metadata, permissions and file inputs;
-- `validate_inputs()` — validation before execution;
-- `run()` — reconciliation engine;
-- `get_analytics()` — module-specific analytics contract;
-- `export()` — optional module export implementation.
+Каркас создаётся со статусом `draft`, с не реализованным `run()` и валидацией,
+которая запрещает запуск. Его нужно закончить до выдачи прав пользователям.
 
-The universal endpoint is `POST /api/modules/{module_id}/run`. The platform handles RBAC and audit logging before and after the module execution.
+## Автоматическая регистрация
+
+Редактировать `modules/registry.py` при добавлении новой сверки больше не нужно.
+
+Registry автоматически ищет:
+
+```text
+modules/<module_id>/engine.py
+```
+
+и ожидает в файле явную точку входа:
+
+```python
+MODULE_CLASS = MyReconciliationModule
+```
+
+Класс обязан наследоваться от `BaseReconciliationModule`.
+
+Если новый модуль не импортируется или имеет неправильный контракт, ошибка
+фиксируется в `ModuleRegistry.discovery_errors`, а остальные рабочие сверки
+продолжают запускаться. Один незавершённый модуль не должен ломать всю платформу.
+
+## Контракт модуля
+
+Каждая реальная сверка реализует:
+
+- `manifest` — id, название, версия, категория, права, входные файлы и workspace;
+- `validate_inputs()` — проверка файлов и параметров до расчёта;
+- `run()` — каноническая бизнес-логика сверки;
+- `get_analytics()` — контракт специализированной аналитики;
+- `export()` — экспорт, если он реализован на backend.
+
+Универсальный запуск выполняется через:
+
+```text
+POST /api/modules/{module_id}/run
+```
+
+Платформа сама выполняет RBAC-проверку и пишет аудит запуска.
+
+## Правила manifest
+
+`id` должен быть стабильным техническим ключом в формате:
+
+```text
+[a-z][a-z0-9_]*
+```
+
+Например: `bank_rrn`, `cash_register`, `settlement_control`.
+
+Права модуля должны иметь тот же prefix:
+
+```text
+cash_register.view
+cash_register.run
+cash_register.export
+```
+
+Ключи `required_files[*].key` внутри одного модуля должны быть уникальными.
+
+## Подключение UI
+
+Backend-модуль автоматически появится в реестре модулей для пользователя,
+которому выданы его права.
+
+Если модулю нужен отдельный React workspace:
+
+1. реализуйте UI-компоненты модуля;
+2. задайте `workspace="..." ` в его manifest;
+3. добавьте этот ключ в `src/modules/workspaceRegistry.ts`;
+4. подключите renderer нового workspace в `App.tsx`.
+
+Таким образом новая сверка требует только собственного engine + собственного UI.
+Глобальную навигацию, экран реестра модулей и FastAPI route переписывать не нужно.
+
+## RBAC
+
+После реализации добавьте права нового модуля в нужные роли в
+`utils/permissions.py`. Администратор с `*` получает доступ автоматически.
+
+## Checklist перед production
+
+- business-logic покрыта pytest;
+- `validate_inputs()` отклоняет неполные входные данные;
+- manifest id и permission prefix корректны;
+- пользователь без `<module>.run` не может запустить модуль;
+- пользователь с `<module>.view` видит модуль;
+- ошибки одного нового модуля не ломают Bank RRN;
+- специализированный workspace подключён только если реально нужен.
