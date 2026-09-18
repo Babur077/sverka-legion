@@ -1,3 +1,5 @@
+import { apiFetch } from './apiClient';
+
 export const DEFAULT_BANKS = [
   'Aloqa Bank',
   'Kapitalbank',
@@ -10,7 +12,7 @@ export const DEFAULT_BANKS = [
 ];
 
 export async function getBanksViaApi(): Promise<string[]> {
-  const response = await fetch('/api/banks');
+  const response = await apiFetch('/api/banks');
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
