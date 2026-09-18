@@ -1,6 +1,7 @@
 import { User } from '../types';
 
 interface LoginApiResponse {
+  id: number;
   username: string;
   role: User['role'];
   permissions?: string[];
@@ -25,7 +26,7 @@ export async function loginViaApi(username: string, password: string): Promise<U
 
   const data = payload as LoginApiResponse;
   return {
-    id: 0,
+    id: Number((data as LoginApiResponse & { id?: number }).id || 0),
     username: data.username,
     role: data.role,
     permissions: data.permissions || [],
