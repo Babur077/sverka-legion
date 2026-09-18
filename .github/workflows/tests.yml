@@ -37,6 +37,12 @@ jobs:
             echo "::warning::package-lock.json is missing; falling back to npm install"
             npm install --no-audit --no-fund
           fi
+      - name: Upload generated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-package-lock
+          path: package-lock.json
+          retention-days: 1
       - name: TypeScript check
         run: npm run lint
       - name: Production build
