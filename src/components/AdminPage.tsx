@@ -20,7 +20,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
   // Add User Form
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState<'admin' | 'accountant' | 'auditor'>('accountant');
+  const [newRole, setNewRole] = useState<User['role']>('accountant_acquiring');
   const [userMsg, setUserMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Settings state
@@ -208,7 +208,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
                 onChange={(e) => setNewRole(e.target.value as any)}
                 className="w-full py-2 px-3 border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500"
               >
-                <option value="accountant">Бухгалтер (Сверка + Аналитика)</option>
+                <option value="finance_manager">Финансовый менеджер (Все модули)</option>
+                <option value="accountant_acquiring">Бухгалтер эквайринга (Сверка + EPOS)</option>
+                <option value="accountant_paynet">Бухгалтер Paynet (Сверка Paynet)</option>
                 <option value="auditor">Аудитор (Только просмотр)</option>
                 <option value="admin">Администратор (Полный доступ)</option>
               </select>
@@ -275,11 +277,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
                     <td className="px-3 py-2.5 font-bold text-slate-900">{u.username}</td>
                     <td className="px-3 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${u.role === 'admin' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : u.role === 'accountant' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                        {u.role === 'admin' ? 'Администратор' : u.role === 'accountant' ? 'Бухгалтер' : 'Аудитор'}
+                        {u.role === 'admin' ? 'Администратор' : u.role === 'finance_manager' ? 'Фин. менеджер' : u.role === 'accountant_acquiring' ? 'Бухгалтер эквайринга' : u.role === 'accountant_paynet' ? 'Бухгалтер Paynet' : 'Аудитор'}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-slate-600">
-                      {u.role === 'admin' ? 'Все модули (Сверка, EPOS, Аналитика, Настройки)' : u.role === 'accountant' ? 'Сверка по RRN, Аналитика' : 'Просмотр аналитики и отчётов'}
+                      {u.role === 'admin' ? 'Все модули и настройки' : u.role === 'finance_manager' ? 'Все модули, EPOS, аналитика и аудит' : u.role === 'accountant_acquiring' ? 'Сверка RRN, экспорт, просмотр EPOS' : u.role === 'accountant_paynet' ? 'Сверка Paynet и экспорт' : 'Просмотр модулей, аналитики, архива и аудита'}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       {u.username !== 'admin' && (
