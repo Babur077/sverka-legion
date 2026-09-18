@@ -27,13 +27,13 @@ const menuItems: Array<{
   label: string;
   description: string;
   icon: React.ElementType;
-  requiredPermission?: string;
+  requiredPermissions?: string[];
 }> = [
-  { id: 'overview', label: 'Обзор', description: 'Состояние сверки и последние запуски', icon: LayoutDashboard, requiredPermission: 'bank_rrn.view' },
-  { id: 'workspace', label: 'Новая сверка', description: 'Загрузить данные и запустить сверку', icon: Play, requiredPermission: 'bank_rrn.run' },
-  { id: 'registry', label: 'Реестр банков', description: 'Банки, комиссии и терминалы', icon: Building2, requiredPermission: 'epos.view' },
-  { id: 'analytics', label: 'Аналитика', description: 'Метрики и динамика сверки', icon: BarChart3, requiredPermission: 'bank_rrn.view' },
-  { id: 'archive', label: 'Архив', description: 'История запусков и результаты', icon: History, requiredPermission: 'bank_rrn.view' },
+  { id: 'overview', label: 'Обзор', description: 'Состояние сверки и последние запуски', icon: LayoutDashboard, requiredPermissions: ['bank_rrn.view'] },
+  { id: 'workspace', label: 'Новая сверка', description: 'Загрузить данные и запустить сверку', icon: Play, requiredPermissions: ['bank_rrn.run'] },
+  { id: 'registry', label: 'Реестр банков', description: 'Банки, комиссии и терминалы', icon: Building2, requiredPermissions: ['epos.view', 'epos.manage'] },
+  { id: 'analytics', label: 'Аналитика', description: 'Метрики и динамика сверки', icon: BarChart3, requiredPermissions: ['bank_rrn.view', 'analytics.view_all'] },
+  { id: 'archive', label: 'Архив', description: 'История запусков и результаты', icon: History, requiredPermissions: ['bank_rrn.view', 'archive.view'] },
 ];
 
 export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
@@ -46,7 +46,9 @@ export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   const can = (permission: string) => user.permissions?.includes('*') || user.permissions?.includes(permission) || false;
-  const visibleMenuItems = menuItems.filter((item) => !item.requiredPermission || can(item.requiredPermission));
+  const visibleMenuItems = menuItems.filter(
+    item => !item.requiredPermissions || item.requiredPermissions.some(can),
+  );
   const active = visibleMenuItems.find((item) => item.id === activeSection) ?? visibleMenuItems[0] ?? menuItems[0];
 
   return (
