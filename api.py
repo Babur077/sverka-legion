@@ -427,7 +427,7 @@ async def create_user(payload: Dict[str, Any], x_user: Optional[str] = Header("a
 
     if not username or not password:
         raise HTTPException(status_code=400, detail="Логин и пароль обязательны")
-    if role not in {"admin", "accountant", "auditor"}:
+    if role not in {"admin", "finance_manager", "accountant_acquiring", "accountant_paynet", "auditor"}:
         raise HTTPException(status_code=400, detail="Недопустимая роль пользователя")
 
     ok, message = add_user(username, password, role)
