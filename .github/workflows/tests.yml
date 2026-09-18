@@ -28,15 +28,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
       - name: Install frontend dependencies
-        shell: bash
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            echo "::warning::package-lock.json is missing; falling back to npm install"
-            npm install --no-audit --no-fund
-          fi
+        run: npm ci --no-audit --no-fund
       - name: TypeScript check
         run: npm run lint
       - name: Production build
