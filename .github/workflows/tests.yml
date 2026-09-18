@@ -7,14 +7,37 @@ on:
     branches: [main]
 
 jobs:
-  pytest:
+  backend:
+    name: Backend / pytest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: python -m pip install --upgrade pip && pip install -r requirements.txt
-      - name: Run tests
+      - name: Run backend tests
         run: python -m pytest -q
+
+  frontend:
+    name: Frontend / TypeScript + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install frontend dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "::warning::package-lock.json is missing; falling back to npm install"
+            npm install --no-audit --no-fund
+          fi
+      - name: TypeScript check
+        run: npm run lint
+      - name: Production build
+        run: npm run build

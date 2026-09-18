@@ -606,7 +606,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     excludedBank.forEach(r => {
       const cur = excludedBankByDate.get(r.date_str) || { count: 0, sum: 0 };
       cur.count += 1;
-      cur.sum += r.amount;
+      cur.sum += Number(r.amount ?? 0);
       excludedBankByDate.set(r.date_str, cur);
     });
 
