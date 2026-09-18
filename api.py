@@ -158,7 +158,7 @@ async def run_module_reconciliation(
     x_user: Optional[str] = Header("admin"),
 ):
     """
-    Универсальный эндпоинт запуска ЛЮБОГО модуля сверки (RRN, Paynet, EPOS и т.д.).
+    Универсальный эндпоинт запуска зарегистрированного модуля сверки.
     Платформа проверяет права доступа, вызывает контракт модуля и фиксирует аудит-трейл.
     """
     perms = get_user_permissions(x_user)
@@ -451,7 +451,7 @@ async def create_user(payload: Dict[str, Any], x_user: Optional[str] = Header("a
 
     if not username or not password:
         raise HTTPException(status_code=400, detail="Логин и пароль обязательны")
-    if role not in {"admin", "finance_manager", "accountant_acquiring", "accountant_paynet", "auditor"}:
+    if role not in {"admin", "finance_manager", "accountant_acquiring", "auditor"}:
         raise HTTPException(status_code=400, detail="Недопустимая роль пользователя")
 
     ok, message = add_user(username, password, role)
