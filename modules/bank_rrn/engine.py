@@ -2,6 +2,7 @@
 Модуль сверки банковского эквайринга по кодам RRN.
 Оборачивает канонический RRN-движок в стандартный контракт BaseReconciliationModule.
 """
+import json
 import time
 import uuid
 from datetime import datetime
@@ -74,13 +75,28 @@ class BankRrnModule(BaseReconciliationModule):
 
     @staticmethod
     def _records(value: Any) -> list[dict]:
+        """Return JSON-safe records for FastAPI responses.
+
+        Pandas/Polars frames may contain Timestamp, NaN and NumPy scalar values.
+        Returning those objects directly can make response serialization fail
+        after the reconciliation itself has already completed.
+        """
         if value is None:
             return []
+        if hasattr(value, "to_json"):
+            try:
+                return json.loads(value.to_json(orient="records", date_format="iso"))
+            except (TypeError, ValueError, OverflowError):
+                pass
         if hasattr(value, "to_dict"):
-            return value.to_dict(orient="records")
-        if isinstance(value, list):
-            return value
-        return []
+            records = value.to_dict(orient="records")
+        elif isinstance(value, list):
+            records = value
+        else:
+            return []
+
+        # Last-resort normalisation for plain record lists.
+        return json.loads(json.dumps(records, default=str, allow_nan=False))
 
     def run(self, files: Dict[str, bytes], params: Dict[str, Any]) -> ReconResult:
         t_start = time.time()
