@@ -43,6 +43,12 @@ jobs:
           name: generated-package-lock
           path: package-lock.json
           retention-days: 1
+      - name: Emit generated lockfile
+        shell: bash
+        run: |
+          echo "__LOCKFILE_BEGIN__"
+          cat package-lock.json
+          echo "__LOCKFILE_END__"
       - name: TypeScript check
         run: npm run lint
       - name: Production build
