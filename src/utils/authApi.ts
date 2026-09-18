@@ -32,3 +32,25 @@ export async function loginViaApi(username: string, password: string): Promise<U
     permissions: data.permissions || [],
   };
 }
+
+
+export async function getCurrentUserViaApi(username: string): Promise<User> {
+  const response = await fetch('/api/auth/me', {
+    headers: { 'X-User': username },
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(typeof payload?.detail === 'string' ? payload.detail : 'Не удалось обновить права пользователя.');
+  }
+  if (!payload?.username || !payload?.role) {
+    throw new Error('Сервер вернул некорректные данные пользователя.');
+  }
+
+  return {
+    id: Number(payload.id || 0),
+    username: String(payload.username),
+    role: payload.role as User['role'],
+    permissions: Array.isArray(payload.permissions) ? payload.permissions : [],
+  };
+}
