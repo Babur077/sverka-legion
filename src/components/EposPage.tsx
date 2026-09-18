@@ -1,11 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Building2, Plus, Trash2, CheckCircle, AlertCircle, RotateCcw, Landmark, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { EposTerminal, User } from '../types';
+import { getEposViaApi, createEposViaApi, updateEposViaApi, deleteEposViaApi } from '../utils/eposApi';
 import { 
-  getStoredEpos, 
-  saveEposTerminal, 
-  deleteEposTerminal, 
-  toggleEposActive, 
   logAction, 
   getStoredBanks, 
   addStoredBank,
@@ -18,8 +15,25 @@ interface EposPageProps {
 }
 
 export const EposPage: React.FC<EposPageProps> = ({ user }) => {
-  const [terminals, setTerminals] = useState<EposTerminal[]>(getStoredEpos());
+  const [terminals, setTerminals] = useState<EposTerminal[]>([]);
   const [availableBanks, setAvailableBanks] = useState<string[]>(getStoredBanks());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const refreshTerminals = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await getEposViaApi(user.username);
+      setTerminals(data);
+      if (data.length) setAvailableBanks(prev => Array.from(new Set([...prev, ...data.map(t => t.bank_acquirer).filter(Boolean)])));
+    } catch (error: any) {
+      setLoadError(error?.message || 'Не удалось загрузить реестр EPOS.');
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { void refreshTerminals(); }, [user.username]);
 
   const [selectedBank, setSelectedBank] = useState<string>('Aloqa Bank');
   const [showAddBankInput, setShowAddBankInput] = useState<boolean>(false);
@@ -92,22 +106,27 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
       is_active: true,
     };
 
-    const res = saveEposTerminal(newTerm);
-    if (res.success) {
-      setTerminals(getStoredEpos());
+    setSaving(true);
+    try {
+      await createEposViaApi(user.username, newTerm);
+      await refreshTerminals();
       setMessage({ type: 'success', text: `Банк ${bankName} (TID: ${cleanTid}) успешно сохранен в реестр!` });
       logAction(user.username, 'ADD_EPOS', `Добавлен банк/терминал ${bankName} (TID: ${cleanTid}, ${commPct}%)`);
-      setTid('');
-      setMid('');
-    } else {
-      setMessage({ type: 'error', text: res.message });
-    }
+      setTid(''); setMid('');
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error?.message || 'Не удалось сохранить терминал.' });
+    } finally { setSaving(false); }
   };
 
-  const handleToggle = (terminalId: string) => {
-    toggleEposActive(terminalId);
-    setTerminals(getStoredEpos());
-    logAction(user.username, 'TOGGLE_EPOS', `Изменен статус активности терминала ${terminalId}`);
+  const handleToggle = async (terminal: EposTerminal) => {
+    setSaving(true);
+    try {
+      await updateEposViaApi(user.username, { ...terminal, is_active: !terminal.is_active });
+      await refreshTerminals();
+      logAction(user.username, 'TOGGLE_EPOS', `Изменен статус активности терминала ${terminal.terminal_id}`);
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error?.message || 'Не удалось изменить статус терминала.' });
+    } finally { setSaving(false); }
   };
 
   const handleDelete = (terminalId: string, bankName: string) => {
@@ -118,12 +137,17 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
     });
   };
 
-  const confirmDeleteTerminal = () => {
+  const confirmDeleteTerminal = async () => {
     const { terminalId, bankName } = deleteConfirm;
     if (terminalId) {
-      deleteEposTerminal(terminalId);
-      setTerminals(getStoredEpos());
-      logAction(user.username, 'DELETE_EPOS', `Удален банк/терминал ${bankName} (${terminalId})`);
+      setSaving(true);
+      try {
+        await deleteEposViaApi(user.username, terminalId);
+        await refreshTerminals();
+        logAction(user.username, 'DELETE_EPOS', `Удален банк/терминал ${bankName} (${terminalId})`);
+      } catch (error: any) {
+        setMessage({ type: 'error', text: error?.message || 'Не удалось удалить терминал.' });
+      } finally { setSaving(false); }
     }
     setDeleteConfirm({ isOpen: false, terminalId: '', bankName: '' });
   };
@@ -326,6 +350,8 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
             </div>
           </div>
 
+          {loadError && <div className="p-3 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-xs">{loadError}</div>}
+
           <div className="overflow-x-auto rounded-xl border border-slate-200 text-xs">
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50 font-bold text-slate-700">
@@ -375,7 +401,9 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {sortedTerminals.length === 0 ? (
+                {loading ? (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Загрузка реестра…</td></tr>
+                ) : sortedTerminals.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                       В реестре пока нет записей. Выберите банк слева и сохраните его.
@@ -399,7 +427,7 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
                         <input
                           type="checkbox"
                           checked={t.is_active}
-                          onChange={() => handleToggle(t.terminal_id)}
+                          onChange={() => void handleToggle(t)}
                           className="rounded text-indigo-600 cursor-pointer"
                         />
                       </td>
