@@ -3,6 +3,7 @@
 Оборачивает канонический RRN-движок в стандартный контракт BaseReconciliationModule.
 """
 import json
+import math
 import time
 import uuid
 from datetime import datetime
@@ -95,8 +96,28 @@ class BankRrnModule(BaseReconciliationModule):
         else:
             return []
 
-        # Last-resort normalisation for plain record lists.
-        return json.loads(json.dumps(records, default=str, allow_nan=False))
+        def safe(value: Any) -> Any:
+            if value is None or isinstance(value, (str, bool, int)):
+                return value
+            if isinstance(value, float):
+                return None if not math.isfinite(value) else value
+            if isinstance(value, dict):
+                return {str(key): safe(item) for key, item in value.items()}
+            if isinstance(value, (list, tuple)):
+                return [safe(item) for item in value]
+            if hasattr(value, "item"):
+                try:
+                    return safe(value.item())
+                except (TypeError, ValueError):
+                    pass
+            if hasattr(value, "isoformat"):
+                try:
+                    return value.isoformat()
+                except (TypeError, ValueError):
+                    pass
+            return str(value)
+
+        return [safe(record) for record in records]
 
     def run(self, files: Dict[str, bytes], params: Dict[str, Any]) -> ReconResult:
         t_start = time.time()
