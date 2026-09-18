@@ -170,6 +170,8 @@ async def run_module_reconciliation(
         )
         return result.model_dump()
 
+    except HTTPException:
+        raise
     except Exception as e:
         duration = (time.time() - t_start) * 1000
         record_audit_event(
