@@ -402,6 +402,16 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   };
 
   const handleRunReconciliation = async () => {
+    if (!canRun) {
+      setAlertState({
+        isOpen: true,
+        title: 'Нет права на запуск сверки',
+        message: 'Для запуска требуется разрешение bank_rrn.run.',
+        type: 'warning',
+      });
+      return;
+    }
+
     // Validation checks
     if (!ourFile || !bankFile) {
       setAlertState({
