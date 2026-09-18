@@ -6,22 +6,52 @@ import numpy as np
 from core.parsers import clean_amount_polars, clean_date_polars, clean_rrn_polars
 
 
+def _reversal_action_kind(action: str) -> str:
+    """Normalize UI and legacy reversal action labels to engine operations."""
+    normalized = str(action or "").strip().lower()
+    if "💥" in normalized or "rrn полностью" in normalized:
+        return "drop_rrn"
+    if "🗑" in normalized or "удалить строк" in normalized or "удалить возврат" in normalized:
+        return "drop_row"
+    if "➖" in normalized or "минусовать" in normalized or "изменить знак" in normalized:
+        return "negate"
+    return "none"
+
+
 def apply_reversals(df: pl.DataFrame, status_col: str, action: str, amt_col: str, rev_words: list) -> pl.DataFrame:
     if not status_col or status_col not in df.columns or not rev_words:
         return df
-    status_norm = pl.col(status_col).cast(pl.Utf8).str.to_lowercase().str.strip_chars()
-    rev_mask = functools.reduce(
-        lambda acc, w: acc | status_norm.str.contains(w, literal=True),
-        rev_words[1:],
-        status_norm.str.contains(rev_words[0], literal=True),
+
+    words = [str(word).strip().lower() for word in rev_words if str(word).strip()]
+    if not words:
+        return df
+
+    status_norm = (
+        pl.col(status_col)
+        .cast(pl.Utf8, strict=False)
+        .fill_null("")
+        .str.to_lowercase()
+        .str.strip_chars()
     )
-    if "💥" in action:
+    rev_mask = functools.reduce(
+        lambda acc, word: acc | status_norm.str.contains(word, literal=True),
+        words[1:],
+        status_norm.str.contains(words[0], literal=True),
+    ).fill_null(False)
+
+    action_kind = _reversal_action_kind(action)
+    if action_kind == "drop_rrn":
         bad_rrns = df.filter(rev_mask).select("RRN").unique()
         return df.join(bad_rrns, on="RRN", how="anti")
-    elif "🗑" in action:
+    if action_kind == "drop_row":
         return df.filter(~rev_mask)
-    elif "➖" in action:
-        return df.with_columns(pl.when(rev_mask).then(-pl.col(amt_col).abs()).otherwise(pl.col(amt_col)).alias(amt_col))
+    if action_kind == "negate":
+        return df.with_columns(
+            pl.when(rev_mask)
+            .then(-pl.col(amt_col).abs())
+            .otherwise(pl.col(amt_col))
+            .alias(amt_col)
+        )
     return df
 
 
@@ -112,20 +142,37 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     ])
 
     if cfg["bank_tid"]:
-        if epos_registry is not None and not epos_registry.empty:
+        if cfg["bank_tid"] != "terminal_id":
+            pl_bank = pl_bank.rename({cfg["bank_tid"]: "terminal_id"})
+        pl_bank = pl_bank.with_columns(pl.col("terminal_id").cast(pl.Utf8, strict=False))
+
+        epos_source = epos_registry.copy() if epos_registry is not None else None
+        if epos_source is not None and not epos_source.empty and "is_active" in epos_source.columns:
+            active_mask = epos_source["is_active"].map(
+                lambda value: value in (True, 1, "1", "true", "True", "yes", "Yes", "да", "Да")
+            )
+            epos_source = epos_source[active_mask]
+
+        if epos_source is not None and not epos_source.empty:
             required_epos = {"terminal_id", "legal_entity", "commission_pct"}
-            missing_epos = required_epos.difference(epos_registry.columns)
+            missing_epos = required_epos.difference(epos_source.columns)
             if missing_epos:
                 raise ValueError(f"EPOS registry is missing columns: {sorted(missing_epos)}")
-            pl_epos = pl.from_pandas(epos_registry[["terminal_id", "legal_entity", "commission_pct"]])
-            if cfg["bank_tid"] != "terminal_id": pl_bank = pl_bank.rename({cfg["bank_tid"]: "terminal_id"})
-            pl_bank = pl_bank.with_columns(pl.col("terminal_id").cast(pl.Utf8))
-            pl_epos = pl_epos.with_columns([pl.col("terminal_id").cast(pl.Utf8), pl.col("commission_pct").cast(pl.Float64)])
+            pl_epos = pl.from_pandas(epos_source[["terminal_id", "legal_entity", "commission_pct"]])
+            pl_epos = pl_epos.with_columns([
+                pl.col("terminal_id").cast(pl.Utf8, strict=False),
+                pl.col("commission_pct").cast(pl.Float64, strict=False).fill_null(0.0),
+            ])
             pl_bank = pl_bank.join(pl_epos, on="terminal_id", how="left")
-            pl_bank = pl_bank.with_columns(pl.col("commission_pct").fill_null(0.0))
+            pl_bank = pl_bank.with_columns([
+                pl.col("commission_pct").fill_null(0.0),
+                pl.col("legal_entity").fill_null(""),
+            ])
         else:
-            if cfg["bank_tid"] != "terminal_id": pl_bank = pl_bank.rename({cfg["bank_tid"]: "terminal_id"})
-            pl_bank = pl_bank.with_columns([pl.col("terminal_id").cast(pl.Utf8), pl.lit(0.0).alias("commission_pct"), pl.lit("").alias("legal_entity")])
+            pl_bank = pl_bank.with_columns([
+                pl.lit(0.0).alias("commission_pct"),
+                pl.lit("").alias("legal_entity"),
+            ])
 
     pl_our = apply_reversals(pl_our, "status_our" if cfg["our_status"] else None, cfg["our_rev"], "net_amount_our", cfg["rev_words"])
     pl_bank = apply_reversals(pl_bank, "status_bank" if cfg["bank_status"] else None, cfg["bank_rev"], "raw_amount", cfg["rev_words"])
@@ -143,11 +190,11 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     dups_our_pl = pl_our.filter(pl.col("RRN").is_duplicated())
     dups_bank_pl = pl_bank.filter(pl.col("RRN").is_duplicated())
     if "первую" in cfg["dup_action"]:
-        pl_our = pl_our.unique(subset=["RRN"], keep="first")
-        pl_bank = pl_bank.unique(subset=["RRN"], keep="first")
+        pl_our = pl_our.unique(subset=["RRN"], keep="first", maintain_order=True)
+        pl_bank = pl_bank.unique(subset=["RRN"], keep="first", maintain_order=True)
     elif "последнюю" in cfg["dup_action"]:
-        pl_our = pl_our.unique(subset=["RRN"], keep="last")
-        pl_bank = pl_bank.unique(subset=["RRN"], keep="last")
+        pl_our = pl_our.unique(subset=["RRN"], keep="last", maintain_order=True)
+        pl_bank = pl_bank.unique(subset=["RRN"], keep="last", maintain_order=True)
     elif "Удалить все" in cfg["dup_action"]:
         pl_our = pl_our.filter(~pl.col("RRN").is_in(dups_our_pl["RRN"]))
         pl_bank = pl_bank.filter(~pl.col("RRN").is_in(dups_bank_pl["RRN"]))
@@ -165,9 +212,9 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         pl.when(pl.col("date").is_not_null() & pl.col("date_bank").is_null()).then(pl.lit("left_only"))
         .when(pl.col("date").is_null() & pl.col("date_bank").is_not_null()).then(pl.lit("right_only"))
         .otherwise(pl.lit("both")).alias("_merge")
-    ])
+    ]).with_row_index("_match_row_id")
 
-    tolerance = cfg["tolerance"]
+    tolerance = max(0.0, float(cfg["tolerance"]))
     amt_mismatches_pl = merged_pl.filter((pl.col("_merge") == "both") & ((pl.col("net_amount_bank").fill_null(0.0) - pl.col("net_amount_our").fill_null(0.0)).abs() > tolerance))
     only_our = merged_pl.filter(pl.col("_merge") == "left_only").to_pandas()
     only_bank = merged_pl.filter(pl.col("_merge") == "right_only").to_pandas()
@@ -183,18 +230,25 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
 
     unbound_count = 0
     if cfg["unbind_mismatches"] and not amt_mismatches.empty:
-        mismatched_rrns_set = set(amt_mismatches['RRN'].dropna().unique())
-        unbound_count = len(mismatched_rrns_set)
+        # Unbind exactly the mismatching joined rows, not every row sharing the
+        # same RRN. This matters when the same RRN occurs more than once.
+        mismatched_row_ids = set(amt_mismatches["_match_row_id"].dropna().astype(int).tolist())
+        unbound_count = len(mismatched_row_ids)
+
         our_part = amt_mismatches.copy()
-        for col in our_part.columns:
-            if col not in {'date', 'net_amount_our', 'status_our', 'RRN', 'date_unified', 'date_str'}: our_part[col] = np.nan
-        our_part['_merge'] = 'left_only'
+        for col in ["date_bank", "net_amount_bank", "raw_amount", "status_bank", "terminal_id", "commission_pct", "commission_amount", "legal_entity"]:
+            if col in our_part.columns:
+                our_part[col] = np.nan
+        our_part["_merge"] = "left_only"
+
         bank_part = amt_mismatches.copy()
-        for col in bank_part.columns:
-            if col not in {'date_bank', 'net_amount_bank', 'status_bank', 'RRN', 'date_unified', 'date_str'}: bank_part[col] = np.nan
-        bank_part['date_unified'] = bank_part['date_bank']
-        bank_part['_merge'] = 'right_only'
-        merged = merged[~((merged['_merge'] == 'both') & (merged['RRN'].isin(mismatched_rrns_set)))]
+        for col in ["date", "net_amount_our", "status_our"]:
+            if col in bank_part.columns:
+                bank_part[col] = np.nan
+        bank_part["date_unified"] = bank_part["date_bank"]
+        bank_part["_merge"] = "right_only"
+
+        merged = merged[~merged["_match_row_id"].isin(mismatched_row_ids)]
         merged = pd.concat([merged, our_part, bank_part], ignore_index=True)
         only_our = pd.concat([only_our, our_part], ignore_index=True)
         only_bank = pd.concat([only_bank, bank_part], ignore_index=True)
@@ -209,6 +263,14 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     only_our["📝 Причина"] = ""
     only_bank["📝 Причина"] = ""
 
+    # Empty RRN values use an internal non-matching sentinel during the join.
+    # Never expose that implementation detail to users.
+    for frame in (only_our, only_bank):
+        if "RRN" in frame.columns:
+            empty_rrn_mask = frame["RRN"].astype(str).str.startswith("_EMPTY_")
+            frame.loc[empty_rrn_mask, "RRN"] = ""
+            frame.loc[empty_rrn_mask, "📝 Причина"] = "Пустой RRN"
+
     summary = date_summary(pl_our, pl_bank)
     tot_our_raw = float(summary["Сумма_у_нас"].sum())
     tot_bank_raw = float(summary["Сумма_в_банке"].sum())
@@ -221,6 +283,7 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
 
     terminal_summary_list = []
     total_commission = 0.0
+    effective_commission_rate = 0.0
     detected_months = []
     if "date" in pl_bank.columns:
         dates_series = pl_bank.select(pl.col("date").dt.strftime("%Y-%m").drop_nulls()).to_series().to_list()
@@ -229,6 +292,8 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         t_df = terminal_summary(pl_bank, "terminal_id")
         if not t_df.empty:
             total_commission = float(t_df["commission_amount"].sum())
+            total_volume = float(t_df["total_volume"].sum())
+            effective_commission_rate = (total_commission / total_volume * 100.0) if total_volume else 0.0
             terminal_summary_list = t_df.to_dict(orient="records")
 
     return {
@@ -246,6 +311,7 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         "deduct_commission": deduct_comm,
         "terminal_summary": terminal_summary_list,
         "total_commission": total_commission,
+        "effective_commission_rate": effective_commission_rate,
         "detected_months": detected_months,
         "merged": merged,
         "dup_action": cfg["dup_action"],
