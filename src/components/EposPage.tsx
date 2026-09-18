@@ -10,6 +10,7 @@ interface EposPageProps {
 }
 
 export const EposPage: React.FC<EposPageProps> = ({ user }) => {
+  const canManage = user.permissions?.includes('*') || user.permissions?.includes('epos.manage') || false;
   const [terminals, setTerminals] = useState<EposTerminal[]>([]);
   const [availableBanks, setAvailableBanks] = useState<string[]>(DEFAULT_BANKS);
   const [loading, setLoading] = useState(true);
@@ -72,6 +73,7 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
   // Add custom bank to list
   const handleCreateNewBank = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) return;
     const clean = customBankName.trim();
     if (!clean) return;
 
@@ -85,6 +87,10 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
   const handleAddTerminal = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
+    if (!canManage) {
+      setMessage({ type: 'error', text: 'Нет права epos.manage для изменения реестра.' });
+      return;
+    }
 
     const bankName = selectedBank.trim();
     if (!bankName) {
@@ -116,6 +122,7 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
   };
 
   const handleToggle = async (terminal: EposTerminal) => {
+    if (!canManage) return;
     setSaving(true);
     try {
       await updateEposViaApi(user.username, { ...terminal, is_active: !terminal.is_active });
@@ -126,6 +133,7 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
   };
 
   const handleDelete = (terminalId: string, bankName: string) => {
+    if (!canManage) return;
     setDeleteConfirm({
       isOpen: true,
       terminalId,
@@ -177,6 +185,11 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
           <Building2 className="w-6 h-6 text-indigo-600" />
           <span>Реестр банков-эквайеров</span>
+          {!canManage && (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+              Только просмотр
+            </span>
+          )}
         </h1>
         <p className="text-sm text-slate-500 mt-1">
           Справочник банков-эквайеров и персональных комиссионных ставок для расчёта нетто-сумм при сверке.
@@ -227,8 +240,9 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
 
               <button
                 type="button"
+                disabled={!canManage}
                 onClick={() => setShowAddBankInput(!showAddBankInput)}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/80 transition-colors flex items-center gap-1 cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/80 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Добавить банк</span>
@@ -324,7 +338,8 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
             <button
               id="epos-submit-button"
               type="submit"
-              className="w-full mt-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              disabled={!canManage || saving}
+              className="w-full mt-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:text-slate-500 text-white font-semibold rounded-lg shadow-xs transition-colors cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
               <span>Сохранить банк в реестр</span>
@@ -422,18 +437,21 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
                         <input
                           type="checkbox"
                           checked={t.is_active}
+                          disabled={!canManage}
                           onChange={() => void handleToggle(t)}
-                          className="rounded text-indigo-600 cursor-pointer"
+                          className="rounded text-indigo-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </td>
                       <td className="px-3 py-2.5 text-right">
-                        <button
-                          onClick={() => handleDelete(t.terminal_id, t.bank_acquirer)}
-                          className="text-slate-400 hover:text-rose-600 transition-colors p-1 cursor-pointer"
-                          title="Удалить"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canManage && (
+                          <button
+                            onClick={() => handleDelete(t.terminal_id, t.bank_acquirer)}
+                            className="text-slate-400 hover:text-rose-600 transition-colors p-1 cursor-pointer"
+                            title="Удалить"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
