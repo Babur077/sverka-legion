@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Lock, User as UserIcon, ArrowRight, AlertCircle, KeyRound } from 'lucide-react';
-import { verifyUser, logAction } from '../utils/storage';
 import { User } from '../types';
+import { loginViaApi } from '../utils/authApi';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: User) => void;
@@ -13,30 +13,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const cleanUser = username.trim();
+    const cleanPass = password.trim();
+
+    if (!cleanUser || !cleanPass) {
+      setError('Введите логин и пароль');
+      return;
+    }
+
     setLoading(true);
-
-    setTimeout(() => {
-      const cleanUser = username.trim();
-      const cleanPass = password.trim();
-
-      if (!cleanUser || !cleanPass) {
-        setError('Введите логин и пароль');
-        setLoading(false);
-        return;
-      }
-
-      const user = verifyUser(cleanUser, cleanPass);
-      if (user) {
-        logAction(user.username, 'LOGIN', 'Успешный вход в систему');
-        onLoginSuccess(user);
-      } else {
-        setError('Неверный логин или пароль');
-        setLoading(false);
-      }
-    }, 250);
+    try {
+      const user = await loginViaApi(cleanUser, cleanPass);
+      onLoginSuccess(user);
+    } catch (error: any) {
+      setError(error?.message || 'Неверный логин или пароль');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleQuickFill = (u: string, p: string) => {

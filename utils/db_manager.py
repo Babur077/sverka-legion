@@ -161,6 +161,15 @@ def authenticate_user(username, password):
     return False, None
 
 
+def get_user_id(username: str) -> int:
+    """Возвращает ID пользователя по логину."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+        row = cursor.fetchone()
+        return int(row[0]) if row else 0
+
+
 def log_action(username: str, action: str, details: str = ""):
     """Записывает критичное действие пользователя в системный лог."""
     with sqlite3.connect(DB_PATH) as conn:

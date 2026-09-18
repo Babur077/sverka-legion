@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from utils.db_manager import (
     init_db,
     authenticate_user,
+    get_user_id,
     get_all_users,
     get_audit_logs,
     get_epos_registry,
@@ -104,6 +105,7 @@ async def login(req: LoginRequest, request: Request):
     )
 
     return {
+        "id": get_user_id(req.username),
         "username": req.username,
         "role": role,
         "permissions": perms,
