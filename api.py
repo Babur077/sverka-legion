@@ -30,6 +30,9 @@ from utils.db_manager import (
     save_reconciliation,
     get_archive_data,
     delete_archive_record,
+    add_user,
+    delete_user,
+    get_all_users,
 )
 from utils.permissions import (
     init_permissions_db,
@@ -310,6 +313,69 @@ async def get_banks():
     return ["Aloqa Bank", "Kapitalbank", "Ipak Yuli", "NBU", "TBC Bank", "Agrobank", "Humo", "Uzcard"]
 
 # ─── Аудит и Пользователи ─────────────────────────────────────
+
+@app.get("/api/admin/users")
+async def fetch_users(x_user: Optional[str] = Header("admin")):
+    """Возвращает учётные записи без паролей. Только администратору."""
+    perms = get_user_permissions(x_user)
+    if "*" not in perms:
+        raise HTTPException(status_code=403, detail="Только администратор может управлять пользователями")
+    df = get_all_users()
+    return df.to_dict(orient="records") if hasattr(df, "to_dict") else []
+
+
+@app.post("/api/admin/users")
+async def create_user(payload: Dict[str, Any], x_user: Optional[str] = Header("admin")):
+    """Создаёт пользователя через серверную БД."""
+    perms = get_user_permissions(x_user)
+    if "*" not in perms:
+        raise HTTPException(status_code=403, detail="Только администратор может управлять пользователями")
+
+    username = str(payload.get("username") or "").strip()
+    password = str(payload.get("password") or "")
+    role = str(payload.get("role") or "").strip()
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Логин и пароль обязательны")
+    if role not in {"admin", "accountant", "auditor"}:
+        raise HTTPException(status_code=400, detail="Недопустимая роль пользователя")
+
+    ok, message = add_user(username, password, role)
+    if not ok:
+        raise HTTPException(status_code=400, detail=message)
+
+    record_audit_event(
+        user_id=x_user,
+        action="CREATE_USER",
+        object_type="User",
+        object_id=username,
+        status="SUCCESS",
+        details=f"Создан пользователь {username} ({role})",
+    )
+    return {"success": True, "message": message}
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def remove_user(user_id: int, x_user: Optional[str] = Header("admin")):
+    """Удаляет пользователя через серверную БД."""
+    perms = get_user_permissions(x_user)
+    if "*" not in perms:
+        raise HTTPException(status_code=403, detail="Только администратор может управлять пользователями")
+
+    ok, message = delete_user(user_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail=message)
+
+    record_audit_event(
+        user_id=x_user,
+        action="DELETE_USER",
+        object_type="User",
+        object_id=str(user_id),
+        status="SUCCESS",
+        details=message,
+    )
+    return {"success": True, "message": message}
+
 
 @app.get("/api/audit")
 async def fetch_audit_trail(limit: int = 100, x_user: Optional[str] = Header("admin")):
