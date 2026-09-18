@@ -13,7 +13,6 @@ import { BankRrnOverview } from './components/BankRrnOverview';
 import { BankRrnAnalytics } from './components/BankRrnAnalytics';
 import { BankRrnArchive } from './components/BankRrnArchive';
 import { User, SystemSettings } from './types';
-import { logAction } from './utils/storage';
 import { getSettingsViaApi } from './utils/settingsApi';
 
 interface FileParseProgressDetail {
@@ -178,7 +177,6 @@ export const App: React.FC = () => {
   }, [user?.username]);
 
   const handleLogout = () => {
-    if (user) logAction(user.username, 'LOGOUT', 'Выход из системы');
     try { sessionStorage.removeItem('reconcile_active_user'); } catch {}
     setUser(null);
   };

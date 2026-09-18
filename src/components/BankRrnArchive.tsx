@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Archive, Eye, Search, Trash2, RefreshCw, X, Terminal } from 'lucide-react';
 import { ReconciliationArchive, User } from '../types';
-import { logAction } from '../utils/storage';
 import { deleteBankRrnArchive, getBankRrnArchive } from '../utils/archiveApi';
 import { ConfirmModal } from './Modal';
 
@@ -37,7 +36,6 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
     if (!deleteTarget) return;
     try {
       await deleteBankRrnArchive(user.username, deleteTarget.id);
-      logAction(user.username, 'DELETE_ARCHIVE', `Удалена запись сверки ${deleteTarget.bank_name} от ${new Date(deleteTarget.timestamp).toLocaleString('ru-RU')}`);
       setDeleteTarget(null);
       setSelected(null);
       await refresh();

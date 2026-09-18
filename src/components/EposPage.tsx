@@ -2,11 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Building2, Plus, Trash2, CheckCircle, AlertCircle, RotateCcw, Landmark, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { EposTerminal, User } from '../types';
 import { getEposViaApi, createEposViaApi, updateEposViaApi, deleteEposViaApi } from '../utils/eposApi';
-import {
-  getStoredBanks, 
-  addStoredBank,
-  DEFAULT_BANKS
-} from '../utils/storage';
+import { DEFAULT_BANKS, getBanksViaApi } from '../utils/banksApi';
 import { ConfirmModal } from './Modal';
 
 interface EposPageProps {
@@ -15,7 +11,7 @@ interface EposPageProps {
 
 export const EposPage: React.FC<EposPageProps> = ({ user }) => {
   const [terminals, setTerminals] = useState<EposTerminal[]>([]);
-  const [availableBanks, setAvailableBanks] = useState<string[]>(getStoredBanks());
+  const [availableBanks, setAvailableBanks] = useState<string[]>(DEFAULT_BANKS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -32,7 +28,12 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { void refreshTerminals(); }, [user.username]);
+  useEffect(() => {
+    void refreshTerminals();
+    void getBanksViaApi()
+      .then(setAvailableBanks)
+      .catch(() => {});
+  }, [user.username]);
 
   const [selectedBank, setSelectedBank] = useState<string>('Aloqa Bank');
   const [showAddBankInput, setShowAddBankInput] = useState<boolean>(false);
@@ -74,13 +75,11 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
     const clean = customBankName.trim();
     if (!clean) return;
 
-    addStoredBank(clean);
-    const updatedBanks = getStoredBanks();
-    setAvailableBanks(updatedBanks);
+    setAvailableBanks(prev => Array.from(new Set([...prev, clean])));
     setSelectedBank(clean);
     setCustomBankName('');
     setShowAddBankInput(false);
-    setMessage({ type: 'success', text: `Банк «${clean}» добавлен в список быстрого выбора!` });
+    setMessage({ type: 'success', text: `Банк «${clean}» выбран. Сохраните терминал, чтобы закрепить его в серверном реестре.` });
   };
 
   const handleAddTerminal = async (e: React.FormEvent) => {

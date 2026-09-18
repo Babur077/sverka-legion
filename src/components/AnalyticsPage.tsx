@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   BarChart3, TrendingUp, Calendar, Filter, Archive, CheckCircle, AlertCircle,
   Download, Trash2, ArrowUpDown, ArrowUp, ArrowDown, FolderOpen, Building2,
@@ -10,7 +10,7 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { ReconciliationArchive, TerminalSummaryItem, User } from '../types';
-import { getArchiveData, deleteArchiveRecord, logAction } from '../utils/storage';
+import { deleteBankRrnArchive, getBankRrnArchive } from '../utils/archiveApi';
 import { ConfirmModal } from './Modal';
 
 interface AnalyticsPageProps {
@@ -27,8 +27,22 @@ interface FlatTerminalRecord extends TerminalSummaryItem {
 }
 
 export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ user }) => {
-  const [archive, setArchive] = useState<ReconciliationArchive[]>(getArchiveData());
+  const [archive, setArchive] = useState<ReconciliationArchive[]>([]);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'banks' | 'terminals'>('banks');
+
+  const refreshArchive = async () => {
+    setArchiveError(null);
+    try {
+      setArchive(await getBankRrnArchive(user.username));
+    } catch (error: any) {
+      setArchiveError(error?.message || 'Не удалось загрузить серверный архив.');
+    }
+  };
+
+  useEffect(() => {
+    void refreshArchive();
+  }, [user.username]);
 
   // Filters
   const [bankFilter, setBankFilter] = useState<string>('(Все)');
@@ -205,13 +219,15 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ user }) => {
     });
   };
 
-  const confirmDeleteArchive = () => {
-    const { id, bankName, timestamp } = deleteConfirm;
+  const confirmDeleteArchive = async () => {
+    const { id } = deleteConfirm;
     if (id) {
-      deleteArchiveRecord(id);
-      const updated = getArchiveData();
-      setArchive(updated);
-      logAction(user.username, 'DELETE_ARCHIVE', `Удалена запись сверки ${bankName} от ${timestamp}`);
+      try {
+        await deleteBankRrnArchive(user.username, id);
+        await refreshArchive();
+      } catch (error: any) {
+        setArchiveError(error?.message || 'Не удалось удалить запись архива.');
+      }
     }
     setDeleteConfirm({ isOpen: false, id: 0, bankName: '', timestamp: '' });
   };
@@ -272,6 +288,11 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ user }) => {
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
+      {archiveError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+          {archiveError}
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
