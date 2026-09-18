@@ -291,7 +291,7 @@ async def fetch_module_archive(
             item["config"] = {}
         item.pop("terminals_json", None)
         item.pop("config_json", None)
-    return records
+    return _json_safe(records)
 
 @app.delete("/api/modules/{module_id}/archive/{record_id}")
 async def remove_module_archive(
