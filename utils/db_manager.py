@@ -98,7 +98,9 @@ def init_db():
                 only_bank_count INTEGER,
                 period_month TEXT,
                 total_commission REAL DEFAULT 0.0,
-                terminals_json TEXT
+                terminals_json TEXT,
+                module_id TEXT DEFAULT 'bank_rrn',
+                extra_json TEXT
             )
         ''')
 
@@ -106,12 +108,16 @@ def init_db():
         for col_name, col_type in [
             ("period_month", "TEXT"),
             ("total_commission", "REAL DEFAULT 0.0"),
-            ("terminals_json", "TEXT")
+            ("terminals_json", "TEXT"),
+            ("module_id", "TEXT DEFAULT 'bank_rrn'"),
+            ("extra_json", "TEXT")
         ]:
             try:
                 cursor.execute(f"ALTER TABLE reconciliation_archive ADD COLUMN {col_name} {col_type}")
             except sqlite3.OperationalError:
                 pass  # Колонка уже существует
+
+        cursor.execute("UPDATE reconciliation_archive SET module_id = 'bank_rrn' WHERE module_id IS NULL OR module_id = ''")
 
         # Общесистемные настройки (единые для ВСЕХ пользователей,
         # а не только для сессии одного браузера, как было раньше).
@@ -317,8 +323,23 @@ def get_audit_logs(limit=100) -> pd.DataFrame:
         )
 
 
-def save_reconciliation(user, bank_name, tot_our, tot_bank, diff, matched_c, mismatch_c, only_our_c, only_bank_c, period_month=None, total_commission=0.0, terminals_data=None):
-    """Сохраняет метаданные сверки в системный архив (БД) с разбивкой по терминалам и отчётному месяцу."""
+def save_reconciliation(
+    user,
+    bank_name,
+    tot_our,
+    tot_bank,
+    diff,
+    matched_c,
+    mismatch_c,
+    only_our_c,
+    only_bank_c,
+    period_month=None,
+    total_commission=0.0,
+    terminals_data=None,
+    module_id="bank_rrn",
+    extra_data=None,
+):
+    """Сохраняет метаданные сверки в общий серверный архив модулей."""
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         try:
@@ -330,18 +351,27 @@ def save_reconciliation(user, bank_name, tot_our, tot_bank, diff, matched_c, mis
                 if isinstance(terminals_data, pd.DataFrame):
                     terminals_json = terminals_data.to_json(orient="records", date_format="iso")
                 elif isinstance(terminals_data, (list, dict)):
-                    terminals_json = json.dumps(terminals_data, ensure_ascii=False)
+                    terminals_json = json.dumps(terminals_data, ensure_ascii=False, default=str)
                 elif isinstance(terminals_data, str):
                     terminals_json = terminals_data
 
+            extra_json = ""
+            if extra_data is not None:
+                if isinstance(extra_data, str):
+                    extra_json = extra_data
+                else:
+                    extra_json = json.dumps(extra_data, ensure_ascii=False, default=str)
+
             cursor.execute('''
                 INSERT INTO reconciliation_archive
-                (timestamp, username, bank_name, total_our, total_bank, difference, matched_count, mismatch_count, only_our_count, only_bank_count, period_month, total_commission, terminals_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (timestamp, username, bank_name, total_our, total_bank, difference, matched_count, mismatch_count,
+                 only_our_count, only_bank_count, period_month, total_commission, terminals_json, module_id, extra_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 datetime.now().isoformat(), user, bank_name,
-                float(tot_our), float(tot_bank), float(diff), int(matched_c), int(mismatch_c), int(only_our_c), int(only_bank_c),
-                str(period_month), float(total_commission or 0.0), str(terminals_json)
+                float(tot_our), float(tot_bank), float(diff), int(matched_c), int(mismatch_c),
+                int(only_our_c), int(only_bank_c), str(period_month), float(total_commission or 0.0),
+                str(terminals_json), str(module_id or "bank_rrn"), str(extra_json),
             ))
             conn.commit()
             return True, "Сверка успешно сохранена в системный архив!"
@@ -349,12 +379,18 @@ def save_reconciliation(user, bank_name, tot_our, tot_bank, diff, matched_c, mis
             return False, f"Ошибка при сохранении: {e}"
 
 
-def get_archive_data() -> pd.DataFrame:
-    """Возвращает историю всех сверок из БД."""
+def get_archive_data(module_id: str | None = None) -> pd.DataFrame:
+    """Возвращает историю сверок, при необходимости только для одного модуля."""
     with sqlite3.connect(DB_PATH) as conn:
+        if module_id:
+            return pd.read_sql_query(
+                "SELECT * FROM reconciliation_archive WHERE module_id = ? ORDER BY timestamp DESC",
+                conn,
+                params=(module_id,),
+            )
         return pd.read_sql_query(
             "SELECT * FROM reconciliation_archive ORDER BY timestamp DESC",
-            conn
+            conn,
         )
 
 
