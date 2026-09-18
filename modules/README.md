@@ -75,12 +75,17 @@ POST /api/modules/{module_id}/run
 
 Например: `bank_rrn`, `cash_register`, `settlement_control`.
 
-Права модуля должны иметь тот же prefix:
+Права модуля должны иметь тот же prefix. `required_permissions` описывает права,
+которые делают модуль доступным пользователю, а `available_permissions` публикует
+полный набор прав для Administration UI:
 
-```text
-cash_register.view
-cash_register.run
-cash_register.export
+```python
+required_permissions=["cash_register.view", "cash_register.run"]
+available_permissions=[
+    "cash_register.view",
+    "cash_register.run",
+    "cash_register.export",
+]
 ```
 
 Ключи `required_files[*].key` внутри одного модуля должны быть уникальными.
@@ -102,8 +107,14 @@ Backend-модуль автоматически появится в реестр
 
 ## RBAC
 
-После реализации добавьте права нового модуля в нужные роли в
-`utils/permissions.py`. Администратор с `*` получает доступ автоматически.
+Роли являются базовыми шаблонами. Для подключения нового модуля больше не нужно
+создавать новую роль или редактировать Python role-map: права из
+`available_permissions` автоматически появляются в **Администрирование → доступ
+пользователя**, где администратор может добавить или отозвать конкретные
+разрешения.
+
+Индивидуальные настройки хранятся как `allow / deny` поверх базовой роли.
+Администратор с ролью `admin` по-прежнему получает `*` автоматически.
 
 ## Checklist перед production
 
