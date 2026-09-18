@@ -183,8 +183,19 @@ class BankRrnModule(BaseReconciliationModule):
         only_our_count = len(result.get("only_our", []))
         only_bank_count = len(result.get("only_bank", []))
         matched_count = int(result.get("matched_count", 0))
+        exact_matched_count = max(0, matched_count - mismatch_count)
+        reconciliation_scope = matched_count + only_our_count + only_bank_count
         diff_sum = round(total_bank - total_our, 2)
-        match_percentage = round((matched_count / max(total_records_our, 1)) * 100, 2)
+        match_percentage = round(
+            (exact_matched_count / reconciliation_scope) * 100,
+            2,
+        ) if reconciliation_scope else 0.0
+        data_quality = result.get("data_quality", {})
+        data_quality_issue_count = sum(
+            int(value or 0)
+            for side in ("our", "bank")
+            for value in (data_quality.get(side, {}) or {}).values()
+        )
         duration_ms = round((time.time() - t_start) * 1000, 2)
 
         rich_result = {
@@ -202,7 +213,7 @@ class BankRrnModule(BaseReconciliationModule):
             "terminal_summary": self._records(result.get("terminal_summary")),
             "total_commission": float(result.get("total_commission", 0.0)),
             "effective_commission_rate": float(result.get("effective_commission_rate", 0.0)),
-            "data_quality": result.get("data_quality", {}),
+            "data_quality": data_quality,
             "detected_months": result.get("detected_months", []),
             "dup_action": result.get("dup_action", cfg["dup_action"]),
         }
@@ -213,7 +224,10 @@ class BankRrnModule(BaseReconciliationModule):
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             status=(
                 "COMPLETED"
-                if mismatch_count == 0 and only_our_count == 0 and only_bank_count == 0
+                if mismatch_count == 0
+                and only_our_count == 0
+                and only_bank_count == 0
+                and data_quality_issue_count == 0
                 else "WARNING"
             ),
             summary=ReconSummary(
