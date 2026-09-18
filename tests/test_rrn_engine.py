@@ -236,3 +236,40 @@ def test_empty_rrn_is_unmatched_without_exposing_internal_sentinel():
     assert result["only_bank"].iloc[0]["RRN"] == ""
     assert result["only_our"].iloc[0]["📝 Причина"] == "Пустой RRN"
     assert result["only_bank"].iloc[0]["📝 Причина"] == "Пустой RRN"
+
+
+
+def test_invalid_date_does_not_change_rrn_presence_classification():
+    our = frame([
+        {"date": "not-a-date", "rrn": "Q100", "amount": "1000", "status": "OK"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "Q100", "amount": "1000", "status": "OK"},
+    ])
+
+    result = run_rrn_reconciliation(our, bank, base_cfg())
+
+    assert result["matched_count"] == 1
+    assert result["mismatch_count"] == 0
+    assert result["only_our"].empty
+    assert result["only_bank"].empty
+    assert result["data_quality"]["our"]["invalid_date"] == 1
+    assert result["data_quality"]["bank"]["invalid_date"] == 0
+
+
+def test_missing_date_is_reported_but_same_rrn_can_still_match():
+    our = frame([
+        {"date": "", "rrn": "Q200", "amount": "500", "status": "OK"},
+    ])
+    bank = frame([
+        {"date": "", "rrn": "Q200", "amount": "500", "status": "OK"},
+    ])
+
+    result = run_rrn_reconciliation(our, bank, base_cfg())
+
+    assert result["matched_count"] == 1
+    assert result["only_our"].empty
+    assert result["only_bank"].empty
+    assert result["data_quality"]["our"]["missing_date"] == 1
+    assert result["data_quality"]["bank"]["missing_date"] == 1
+    assert "Дата не распознана" in result["summary"]["date"].tolist()
