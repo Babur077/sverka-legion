@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Type
 
@@ -71,10 +72,10 @@ class ModuleRegistry:
         module_id = manifest.id.strip()
         if not module_id:
             raise ValueError("Module manifest id cannot be empty")
-        if module_id != manifest.id or not module_id.replace("_", "").isalnum() or module_id.lower() != module_id:
+        if module_id != manifest.id or not re.fullmatch(r"[a-z][a-z0-9_]*", module_id):
             raise ValueError(
-                "Module id must use lowercase letters, digits and underscores only "
-                f"(received: {manifest.id!r})"
+                "Module id must start with a lowercase ASCII letter and contain only "
+                f"lowercase letters, digits and underscores (received: {manifest.id!r})"
             )
 
         permission_prefix = f"{module_id}."
