@@ -70,6 +70,39 @@ class DuplicateFileKeyModule(DummyModule):
         )
 
 
+class DraftModule(DummyModule):
+    @property
+    def manifest(self) -> ModuleManifest:
+        return ModuleManifest(
+            id="draft_recon",
+            name="Draft reconciliation",
+            version="0.1.0",
+            description="Draft test module",
+            category="Tests",
+            icon="Layers",
+            author="Tests",
+            status="draft",
+            required_permissions=["draft_recon.view", "draft_recon.run"],
+            required_files=[],
+        )
+
+
+class InvalidIdModule(DummyModule):
+    @property
+    def manifest(self) -> ModuleManifest:
+        return ModuleManifest(
+            id="Bad-Module",
+            name="Invalid id",
+            version="0.1.0",
+            description="Invalid test module",
+            category="Tests",
+            icon="Layers",
+            author="Tests",
+            required_permissions=["Bad-Module.view"],
+            required_files=[],
+        )
+
+
 def test_registry_auto_discovers_only_production_bank_module():
     registry = ModuleRegistry()
 
@@ -114,3 +147,30 @@ def test_registry_rejects_duplicate_required_file_keys():
 
     with pytest.raises(ValueError, match="duplicate required file keys"):
         registry.register(DuplicateFileKeyModule())
+
+
+def test_regular_users_do_not_see_draft_modules_but_admin_can():
+    registry = ModuleRegistry(auto_discover=False)
+    registry.register(DummyModule())
+    registry.register(DraftModule())
+
+    regular_ids = [
+        manifest.id
+        for manifest in registry.list_manifests(
+            user_permissions=["dummy_recon.view", "draft_recon.view"]
+        )
+    ]
+    admin_ids = [
+        manifest.id
+        for manifest in registry.list_manifests(user_permissions=["*"])
+    ]
+
+    assert regular_ids == ["dummy_recon"]
+    assert admin_ids == ["dummy_recon", "draft_recon"]
+
+
+def test_registry_rejects_invalid_module_id_format():
+    registry = ModuleRegistry(auto_discover=False)
+
+    with pytest.raises(ValueError, match="lowercase ASCII letter"):
+        registry.register(InvalidIdModule())
