@@ -12,7 +12,8 @@ import { BankRrnOverview } from './components/BankRrnOverview';
 import { BankRrnAnalytics } from './components/BankRrnAnalytics';
 import { BankRrnArchive } from './components/BankRrnArchive';
 import { User, SystemSettings } from './types';
-import { getStoredSettings, logAction } from './utils/storage';
+import { logAction } from './utils/storage';
+import { getSettingsViaApi } from './utils/settingsApi';
 
 interface FileParseProgressDetail {
   status: 'loading' | 'success' | 'error';
@@ -166,7 +167,14 @@ export const App: React.FC = () => {
   });
   const [currentTab, setCurrentTab] = useState<string>('modules');
   const [bankSection, setBankSection] = useState<BankRrnSection>('overview');
-  const [settings, setSettings] = useState<SystemSettings>(getStoredSettings());
+  const [settings, setSettings] = useState<SystemSettings>({ amount_tolerance: 0.01, currency: 'UZS', dayfirst: true });
+
+  useEffect(() => {
+    if (!user) return;
+    void getSettingsViaApi(user.username).then(setSettings).catch(() => {
+      // Keep safe defaults if the settings endpoint is temporarily unavailable.
+    });
+  }, [user?.username]);
 
   const handleLogout = () => {
     if (user) logAction(user.username, 'LOGOUT', 'Выход из системы');
