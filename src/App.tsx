@@ -12,6 +12,7 @@ import { BankRrnWorkspace, BankRrnSection } from './components/BankRrnWorkspace'
 import { BankRrnOverview } from './components/BankRrnOverview';
 import { BankRrnAnalytics } from './components/BankRrnAnalytics';
 import { BankRrnArchive } from './components/BankRrnArchive';
+import { PaynetWorkspace } from './components/PaynetWorkspace';
 import { User, SystemSettings } from './types';
 import { getSettingsViaApi } from './utils/settingsApi';
 
@@ -195,6 +196,10 @@ export const App: React.FC = () => {
     setBankSection('overview');
   };
 
+  const openPaynet = () => {
+    setCurrentTab('paynet');
+  };
+
   const renderBankSection = () => {
     switch (bankSection) {
       case 'workspace':
@@ -214,9 +219,10 @@ export const App: React.FC = () => {
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
       <UploadProgressIndicator />
-      {currentTab !== 'bank_rrn' && <Navbar user={user} currentTab={currentTab} onSelectTab={setCurrentTab} onLogout={handleLogout} />}
+      {currentTab !== 'bank_rrn' && currentTab !== 'paynet' && <Navbar user={user} currentTab={currentTab} onSelectTab={setCurrentTab} onLogout={handleLogout} />}
       <main className="flex-1 overflow-y-auto">
-        {currentTab === 'modules' && <ModuleWorkspace user={user} onSelectRrnModule={openBankRrn} />}
+        {currentTab === 'modules' && <ModuleWorkspace user={user} onSelectRrnModule={openBankRrn} onSelectPaynetModule={openPaynet} />}
+        {currentTab === 'paynet' && <PaynetWorkspace user={user} settings={settings} onBack={() => setCurrentTab('modules')} />}
         {currentTab === 'bank_rrn' && <BankRrnWorkspace user={user} activeSection={bankSection} onNavigate={setBankSection} onBack={() => setCurrentTab('modules')} onOpenReconciliation={() => setBankSection('workspace')}>{renderBankSection()}</BankRrnWorkspace>}
         {currentTab === 'analytics' && <AnalyticsPage user={user} />}
         {currentTab === 'audit' && <AuditPage user={user} />}
