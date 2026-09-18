@@ -1,4 +1,4 @@
-import { User } from '../types';
+import { PermissionCatalog, PermissionOverrides, Role, User } from '../types';
 
 const request = async (path: string, username: string, init: RequestInit = {}) => {
   const response = await fetch(path, {
@@ -34,4 +34,25 @@ export async function createUserViaApi(
 
 export async function deleteUserViaApi(username: string, userId: number): Promise<void> {
   await request('/api/admin/users/' + userId, username, { method: 'DELETE' });
+}
+
+
+export async function getPermissionCatalogViaApi(username: string): Promise<PermissionCatalog> {
+  return request('/api/admin/permissions', username);
+}
+
+export async function updateUserAccessViaApi(
+  username: string,
+  userId: number,
+  role: Role,
+  overrides: PermissionOverrides,
+): Promise<User> {
+  return request('/api/admin/users/' + userId + '/access', username, {
+    method: 'PUT',
+    body: JSON.stringify({
+      role,
+      allow: overrides.allow,
+      deny: overrides.deny,
+    }),
+  });
 }
