@@ -88,6 +88,8 @@ def terminal_summary(pl_bank: pl.DataFrame, tid_col: str = "terminal_id") -> pd.
     if not amt_col:
         return pd.DataFrame()
     has_legal = "legal_entity" in pl_bank.columns
+    has_merchant = "merchant_id" in pl_bank.columns
+    has_bank_name = "bank_acquirer" in pl_bank.columns
     has_comm = "commission_pct" in pl_bank.columns
     agg_exprs = [pl.len().alias("tx_count"), pl.col(amt_col).sum().alias("total_volume")]
     if has_comm:
@@ -96,6 +98,10 @@ def terminal_summary(pl_bank: pl.DataFrame, tid_col: str = "terminal_id") -> pd.
             agg_exprs.append(pl.col("commission_amount").sum().alias("commission_amount"))
     if has_legal:
         agg_exprs.append(pl.col("legal_entity").first().alias("legal_entity"))
+    if has_merchant:
+        agg_exprs.append(pl.col("merchant_id").first().alias("merchant_id"))
+    if has_bank_name:
+        agg_exprs.append(pl.col("bank_acquirer").first().alias("bank_acquirer"))
     t_df = pl_bank.group_by(col_name).agg(agg_exprs).to_pandas()
     if col_name != "terminal_id" and "terminal_id" not in t_df.columns:
         t_df["terminal_id"] = t_df[col_name]
@@ -158,7 +164,11 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
             missing_epos = required_epos.difference(epos_source.columns)
             if missing_epos:
                 raise ValueError(f"EPOS registry is missing columns: {sorted(missing_epos)}")
-            pl_epos = pl.from_pandas(epos_source[["terminal_id", "legal_entity", "commission_pct"]])
+            epos_columns = ["terminal_id", "legal_entity", "commission_pct"]
+            for optional_col in ("merchant_id", "bank_acquirer"):
+                if optional_col in epos_source.columns:
+                    epos_columns.append(optional_col)
+            pl_epos = pl.from_pandas(epos_source[epos_columns])
             pl_epos = pl_epos.with_columns([
                 pl.col("terminal_id").cast(pl.Utf8, strict=False),
                 pl.col("commission_pct").cast(pl.Float64, strict=False).fill_null(0.0),
