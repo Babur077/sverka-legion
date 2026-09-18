@@ -32,8 +32,8 @@ const menuItems: Array<{
   { id: 'overview', label: 'Обзор', description: 'Состояние сверки и последние запуски', icon: LayoutDashboard, requiredPermission: 'bank_rrn.view' },
   { id: 'workspace', label: 'Новая сверка', description: 'Загрузить данные и запустить сверку', icon: Play, requiredPermission: 'bank_rrn.run' },
   { id: 'registry', label: 'Реестр банков', description: 'Банки, комиссии и терминалы', icon: Building2, requiredPermission: 'epos.view' },
-  { id: 'analytics', label: 'Аналитика', description: 'Метрики и динамика сверки', icon: BarChart3, requiredPermission: 'analytics.view_all' },
-  { id: 'archive', label: 'Архив', description: 'История запусков и результаты', icon: History, requiredPermission: 'archive.view' },
+  { id: 'analytics', label: 'Аналитика', description: 'Метрики и динамика сверки', icon: BarChart3, requiredPermission: 'bank_rrn.view' },
+  { id: 'archive', label: 'Архив', description: 'История запусков и результаты', icon: History, requiredPermission: 'bank_rrn.view' },
 ];
 
 export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
