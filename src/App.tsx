@@ -97,7 +97,7 @@ const UploadProgressIndicator: React.FC = () => {
       let node: Node | null;
       while ((node = walker.nextNode())) {
         if (node.nodeValue?.includes('до 50 МБ')) {
-          node.nodeValue = node.nodeValue.replaceAll('до 50 МБ', 'до 200 МБ');
+          node.nodeValue = node.nodeValue.split('до 50 МБ').join('до 200 МБ');
         }
       }
     };
