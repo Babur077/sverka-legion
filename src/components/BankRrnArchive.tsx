@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Archive, Eye, Search, Trash2, RefreshCw, X, Terminal } from 'lucide-react';
 import { ReconciliationArchive, User } from '../types';
-import { deleteArchiveRecord, getArchiveData, logAction } from '../utils/storage';
+import { logAction } from '../utils/storage';
+import { deleteBankRrnArchive, getBankRrnArchive } from '../utils/archiveApi';
 import { ConfirmModal } from './Modal';
 
 interface Props { user: User; onNewReconciliation: () => void; }
@@ -9,7 +10,8 @@ const money = (n: number) => n.toLocaleString('ru-RU', { maximumFractionDigits: 
 const pct = (n: number) => `${n.toFixed(2)}%`;
 
 export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) => {
-  const [archive, setArchive] = useState<ReconciliationArchive[]>(getArchiveData());
+  const [archive, setArchive] = useState<ReconciliationArchive[]>([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [month, setMonth] = useState('(Все)');
   const [selected, setSelected] = useState<ReconciliationArchive | null>(null);
@@ -23,13 +25,19 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
     return hit && (month === '(Все)' || aMonth === month);
   }), [archive, query, month]);
 
-  const refresh = () => setArchive(getArchiveData());
+  const refresh = async () => {
+    setLoading(true);
+    try { setArchive(await getBankRrnArchive(user.username)); }
+    catch (error: any) { console.error(error); setArchive([]); }
+    finally { setLoading(false); }
+  };
+
+  React.useEffect(() => { refresh(); }, [user.username]);
   const confirmDelete = () => {
     if (!deleteTarget) return;
-    deleteArchiveRecord(deleteTarget.id);
-    logAction(user.username, 'DELETE_ARCHIVE', `Удалена запись сверки ${deleteTarget.bank_name} от ${new Date(deleteTarget.timestamp).toLocaleString('ru-RU')}`);
+    deleteBankRrnArchive(user.username, deleteTarget.id).then(() => logAction(user.username, 'DELETE_ARCHIVE', `Удалена запись сверки ${deleteTarget.bank_name} от ${new Date(deleteTarget.timestamp).toLocaleString('ru-RU')}`)).catch((error) => console.error(error));
     setDeleteTarget(null);
-    refresh();
+    void refresh();
     setSelected(null);
   };
 
