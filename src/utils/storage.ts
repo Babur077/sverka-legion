@@ -78,30 +78,66 @@ const DEFAULT_EPOS: EposTerminal[] = [
 ];
 const DEFAULT_SETTINGS: SystemSettings = { amount_tolerance: 0.01, currency: 'UZS', dayfirst: true };
 
+function isDefaultUserSet(users: Array<User & { passwordHash: string }>): boolean {
+  if (users.length !== DEFAULT_USERS.length) return false;
+  return DEFAULT_USERS.every(defaultUser => {
+    const user = users.find(u => u.username.toLowerCase() === defaultUser.username.toLowerCase());
+    return user?.role === defaultUser.role;
+  });
+}
+
 export function getStoredUsers(): Array<User & { passwordHash: string }> {
   try {
     const raw = localStorage.getItem(USERS_KEY);
-    if (!raw) { localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS)); return DEFAULT_USERS; }
+    if (!raw) {
+      localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS));
+      return DEFAULT_USERS;
+    }
+
     const parsed: Array<User & { passwordHash: string }> = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.length) {
+      localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS));
+      return DEFAULT_USERS;
+    }
+
     let migrated = false;
-    parsed.forEach(u => { if (u.passwordHash && !u.passwordHash.startsWith('sha256:')) { u.passwordHash = hashPassword(u.passwordHash); migrated = true; } });
+    parsed.forEach(u => {
+      if (u.passwordHash && !u.passwordHash.startsWith('sha256:')) {
+        u.passwordHash = hashPassword(u.passwordHash);
+        migrated = true;
+      }
+    });
+
+    // Older builds could leave the built-in accounts with an incompatible
+    // hash format. Recover only the untouched default user set; custom users
+    // are never overwritten.
+    if (isDefaultUserSet(parsed)) {
+      const hasInvalidDefaultHash = DEFAULT_USERS.some(defaultUser => {
+        const user = parsed.find(u => u.username.toLowerCase() === defaultUser.username.toLowerCase());
+        return !user || user.passwordHash !== defaultUser.passwordHash;
+      });
+      if (hasInvalidDefaultHash) {
+        localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS));
+        return DEFAULT_USERS;
+      }
+    }
+
     if (migrated) localStorage.setItem(USERS_KEY, JSON.stringify(parsed));
     return parsed;
-  } catch { return DEFAULT_USERS; }
+  } catch {
+    return DEFAULT_USERS;
+  }
 }
 
 export function verifyUser(username: string, password: string): User | null {
   const users = getStoredUsers();
+  const cleanUser = username.trim().toLowerCase();
   const cleanPass = password.trim();
   const hashedInput = hashPassword(cleanPass);
-  let userUpdated = false;
-  const found = users.find(u => {
-    if (u.username.toLowerCase() !== username.trim().toLowerCase()) return false;
-    if (u.passwordHash === hashedInput) return true;
-    if (u.passwordHash === cleanPass) { u.passwordHash = hashedInput; userUpdated = true; return true; }
-    return false;
-  });
-  if (userUpdated) { try { localStorage.setItem(USERS_KEY, JSON.stringify(users)); } catch {} }
+  const found = users.find(u =>
+    u.username.trim().toLowerCase() === cleanUser &&
+    u.passwordHash === hashedInput
+  );
   return found ? { id: found.id, username: found.username, role: found.role } : null;
 }
 
