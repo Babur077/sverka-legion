@@ -585,7 +585,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     excludedOur.forEach(r => {
       const cur = excludedOurByDate.get(r.date_str) || { count: 0, sum: 0 };
       cur.count += 1;
-      cur.sum += r.amount;
+      cur.sum += Number(r.amount ?? 0);
       excludedOurByDate.set(r.date_str, cur);
     });
 
@@ -704,7 +704,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       (sum, quality) => sum
         + Number(quality.missing_date || 0)
         + Number(quality.invalid_date || 0)
-        + Number(quality.empty_rrn || 0),
+        + Number(quality.empty_rrn || 0)
+        + Number(quality.missing_amount || 0)
+        + Number(quality.invalid_amount || 0),
       0,
     );
 
@@ -849,8 +851,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const currency = settings.currency || 'UZS';
   const tolerance = settings.amount_tolerance || 0.01;
 
-  const fmt = (n: number) => {
-    return n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = (n: number | null | undefined) => {
+    if (n == null || !Number.isFinite(Number(n))) return '—';
+    return Number(n).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   return (
@@ -1470,12 +1473,13 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 ] as const).map(([label, quality]) => (
                   <div key={label} className="rounded-lg border border-orange-200/70 bg-white/60 px-3 py-2">
                     <span className="font-semibold">{label}:</span>{' '}
-                    пустая дата {quality?.missing_date || 0}, дата не распознана {quality?.invalid_date || 0}, пустой RRN {quality?.empty_rrn || 0}
+                    пустая дата {quality?.missing_date || 0}, дата не распознана {quality?.invalid_date || 0}, пустой RRN {quality?.empty_rrn || 0},
+                    пустая сумма {quality?.missing_amount || 0}, сумма не распознана {quality?.invalid_amount || 0}
                   </div>
                 ))}
               </div>
               <div className="text-[11px] text-orange-700 mt-2">
-                Нераспознанная дата больше не влияет на факт совпадения RRN, но такие строки стоит исправить до окончательного закрытия периода.
+                Нераспознанная дата не меняет факт совпадения RRN. Невалидная сумма больше не превращается в 0: такая транзакция помечается как проблема суммы и требует проверки до закрытия периода.
               </div>
             </div>
           )}
@@ -2235,6 +2239,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                         <th className="px-3 py-2 text-right">Сумма (Мы)</th>
                         <th className="px-3 py-2 text-right">Сумма (Банк)</th>
                         <th className="px-3 py-2 text-right">Δ Разница</th>
+                        <th className="px-3 py-2 text-left">Причина</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
@@ -2246,7 +2251,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                           <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_our)}</td>
                           <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_bank)}</td>
                           <td className="px-3 py-2 text-right font-bold text-rose-600">
-                            {m['Δ сумма'] > 0 ? `+${fmt(m['Δ сумма'])}` : fmt(m['Δ сумма'])}
+                            {m['Δ сумма'] == null ? '—' : (m['Δ сумма'] > 0 ? `+${fmt(m['Δ сумма'])}` : fmt(m['Δ сумма']))}
+                          </td>
+                          <td className="px-3 py-2 text-left text-slate-600">
+                            {m.amount_issue || 'Расхождение суммы'}
                           </td>
                         </tr>
                       ))}
