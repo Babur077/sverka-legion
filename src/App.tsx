@@ -15,6 +15,7 @@ import { User, SystemSettings, ReconciliationModuleManifest } from './types';
 import { hasModuleWorkspace, ModuleWorkspaceKey } from './modules/workspaceRegistry';
 import { getSettingsViaApi } from './utils/settingsApi';
 import { getCurrentUserViaApi } from './utils/authApi';
+import { hasPermission } from './utils/permissions';
 
 interface FileParseProgressDetail {
   status: 'loading' | 'success' | 'error';
@@ -212,18 +213,16 @@ export const App: React.FC = () => {
     setCurrentTab('module');
 
     if (module.workspace === 'bank_rrn') {
-      const has = (permission: string) =>
-        user.permissions?.includes('*') || user.permissions?.includes(permission) || false;
       setBankSection(
-        has('bank_rrn.view')
+        hasPermission(user, 'bank_rrn.view')
           ? 'overview'
-          : has('bank_rrn.run')
+          : hasPermission(user, 'bank_rrn.run')
             ? 'workspace'
-            : has('epos.view') || has('epos.manage')
+            : hasPermission(user, 'epos.view') || hasPermission(user, 'epos.manage')
               ? 'registry'
-              : has('analytics.view_all')
+              : hasPermission(user, 'analytics.view_all')
                 ? 'analytics'
-                : has('archive.view')
+                : hasPermission(user, 'archive.view')
                   ? 'archive'
                   : 'overview',
       );
@@ -276,7 +275,7 @@ export const App: React.FC = () => {
         {currentTab === 'modules' && <ModuleWorkspace user={user} onOpenModule={openModule} />}
         {currentTab === 'module' && renderActiveModule()}
         {currentTab === 'audit' && <AuditPage user={user} />}
-        {currentTab === 'admin' && user.permissions?.includes('*') && <AdminPage user={user} settings={settings} onUpdateSettings={setSettings} />}
+        {currentTab === 'admin' && hasPermission(user, '*') && <AdminPage user={user} settings={settings} onUpdateSettings={setSettings} />}
       </main>
     </div>
   );
