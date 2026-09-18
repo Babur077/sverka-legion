@@ -2,6 +2,8 @@
 Модуль сверки банковского эквайринга по кодам RRN.
 Оборачивает канонический RRN-движок в стандартный контракт BaseReconciliationModule.
 """
+import json
+import math
 import time
 import uuid
 from datetime import datetime
@@ -74,13 +76,48 @@ class BankRrnModule(BaseReconciliationModule):
 
     @staticmethod
     def _records(value: Any) -> list[dict]:
+        """Return JSON-safe records for FastAPI responses.
+
+        Pandas/Polars frames may contain Timestamp, NaN and NumPy scalar values.
+        Returning those objects directly can make response serialization fail
+        after the reconciliation itself has already completed.
+        """
         if value is None:
             return []
+        if hasattr(value, "to_json"):
+            try:
+                return json.loads(value.to_json(orient="records", date_format="iso"))
+            except (TypeError, ValueError, OverflowError):
+                pass
         if hasattr(value, "to_dict"):
-            return value.to_dict(orient="records")
-        if isinstance(value, list):
-            return value
-        return []
+            records = value.to_dict(orient="records")
+        elif isinstance(value, list):
+            records = value
+        else:
+            return []
+
+        def safe(value: Any) -> Any:
+            if value is None or isinstance(value, (str, bool, int)):
+                return value
+            if isinstance(value, float):
+                return None if not math.isfinite(value) else value
+            if isinstance(value, dict):
+                return {str(key): safe(item) for key, item in value.items()}
+            if isinstance(value, (list, tuple)):
+                return [safe(item) for item in value]
+            if hasattr(value, "item"):
+                try:
+                    return safe(value.item())
+                except (TypeError, ValueError):
+                    pass
+            if hasattr(value, "isoformat"):
+                try:
+                    return value.isoformat()
+                except (TypeError, ValueError):
+                    pass
+            return str(value)
+
+        return [safe(record) for record in records]
 
     def run(self, files: Dict[str, bytes], params: Dict[str, Any]) -> ReconResult:
         t_start = time.time()
