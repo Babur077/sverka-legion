@@ -1,292 +1,253 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Building2, 
-  CreditCard, 
-  Receipt, 
-  Layers, 
-  CheckCircle2, 
-  ShieldAlert, 
-  FileSpreadsheet, 
-  Upload, 
-  Play, 
-  BarChart3, 
-  HelpCircle,
-  ExternalLink,
-  Users
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  CheckCircle2,
+  CreditCard,
+  FileSpreadsheet,
+  Layers,
+  Play,
+  Receipt,
+  RefreshCw,
+  ShieldAlert,
 } from 'lucide-react';
-import { User, ReconciliationModuleManifest } from '../types';
+import { ReconciliationModuleManifest, User } from '../types';
+import { getModulesViaApi } from '../utils/modulesApi';
 
 interface ModuleWorkspaceProps {
   user: User;
-  onSelectRrnModule: () => void;
+  onOpenModule: (moduleId: string) => void;
 }
 
-export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onSelectRrnModule }) => {
-  const [modules, setModules] = useState<ReconciliationModuleManifest[]>([
-    {
-      id: 'bank_rrn',
-      name: 'Сверка эквайринга (RRN)',
-      version: '1.4.2',
-      description: 'Потранзакционная сверка 1С / АБС с выписками банков по номерам RRN, суммам и комиссиям.',
-      category: 'Эквайринг',
-      icon: 'CreditCard',
-      author: 'Отдел эквайринга',
-      status: 'active',
-      required_permissions: ['bank_rrn.view', 'bank_rrn.run'],
-      required_files: [
-        { key: 'our_file', label: 'Реестр операций 1С / Базы данных (Excel/CSV)' },
-        { key: 'bank_file', label: 'Банковская выписка эквайринга (Excel/CSV)' }
-      ]
-    },
-    {
-      id: 'paynet_agents',
-      name: 'Сверка платежных систем (Paynet / Payme)',
-      version: '1.0.1',
-      description: 'Сверка агентских реестров с внутренним биллингом по Transaction ID, комиссиям и статусам холда.',
-      category: 'Платежные системы',
-      icon: 'Receipt',
-      author: 'Отдел e-commerce',
-      status: 'active',
-      required_permissions: ['paynet.view', 'paynet.run'],
-      required_files: [
-        { key: 'billing_file', label: 'Выгрузка биллинга / Orders' },
-        { key: 'agent_file', label: 'Реестр провайдера (Paynet/Payme)' }
-      ]
-    },
-    {
-      id: 'epos_registry',
-      name: 'Сверка и учет терминалов (EPOS)',
-      version: '2.1.0',
-      description: 'Контроль активности терминалов, ставок комиссий и проверка корректности банковских начислений.',
-      category: 'Справочники',
-      icon: 'Building2',
-      author: 'Финансовый контроллинг',
-      status: 'active',
-      required_permissions: ['epos.view'],
-      required_files: []
-    }
-  ]);
+const iconFor = (name: string) => {
+  if (name === 'CreditCard') return CreditCard;
+  if (name === 'Receipt') return Receipt;
+  return Layers;
+};
 
-  const [selectedModuleId, setSelectedModuleId] = useState<string>('bank_rrn');
+export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onOpenModule }) => {
+  const [modules, setModules] = useState<ReconciliationModuleManifest[]>([]);
+  const [selectedModuleId, setSelectedModuleId] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Все');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Фильтруем модули с учетом прав пользователя
-  const userPerms = user.permissions || (user.role === 'admin' ? ['*'] : [
-    user.role === 'auditor' ? 'bank_rrn.view' : 'bank_rrn.run',
-    'bank_rrn.view',
-    'paynet.view'
-  ]);
-
-  const hasAccess = (mod: ReconciliationModuleManifest) => {
-    if (user.role === 'admin' || userPerms.includes('*')) return true;
-    return mod.required_permissions.some(p => userPerms.includes(p));
+  const loadModules = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getModulesViaApi(user.username);
+      setModules(data);
+      setSelectedModuleId(current => {
+        if (current && data.some(module => module.id === current)) return current;
+        return data[0]?.id || '';
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Не удалось загрузить реестр модулей.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const categories = ['Все', 'Эквайринг', 'Платежные системы', 'Справочники'];
+  useEffect(() => {
+    void loadModules();
+  }, [user.username]);
 
-  const filteredModules = modules.filter(m => {
-    const catMatch = selectedCategory === 'Все' || m.category === selectedCategory;
-    return catMatch;
-  });
+  const categories = useMemo(
+    () => ['Все', ...Array.from(new Set(modules.map(module => module.category).filter(Boolean)))],
+    [modules],
+  );
 
-  const activeModule = modules.find(m => m.id === selectedModuleId) || modules[0];
-  const userCanRun = user.role !== 'auditor';
+  const filteredModules = useMemo(
+    () => modules.filter(module => selectedCategory === 'Все' || module.category === selectedCategory),
+    [modules, selectedCategory],
+  );
+
+  const activeModule = modules.find(module => module.id === selectedModuleId) || modules[0];
+  const userPermissions = user.permissions || [];
+  const canOpenCurrentWorkspace = activeModule?.id === 'bank_rrn';
 
   return (
     <div className="w-full max-w-[1800px] mx-auto p-6 xl:px-8 space-y-6">
-      {/* Верхний баннер архитектуры модульного монолита */}
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-1">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-              Модульный монолит
+              Реестр модулей
             </span>
-            <span className="text-xs text-slate-500">FastAPI + Python Polars Core</span>
+            <span className="text-xs text-slate-500">FastAPI + Python reconciliation modules</span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            Реестр модулей сверок ReconcileHub
-          </h1>
+          <h1 className="text-2xl font-bold text-slate-900">Модули сверок ReconcileHub</h1>
           <p className="text-sm text-slate-600 mt-1 max-w-2xl">
-            Каждая сверка работает как независимый модуль с собственным расчетным движком, 
-            набором валидаций и персональной аналитикой.
+            Здесь отображаются только реально зарегистрированные backend-модули. Новая сверка появляется в реестре после регистрации её манифеста и движка.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <div className="text-xs font-medium text-slate-500">Текущий сотрудник</div>
-            <div className="text-sm font-semibold text-slate-900">{user.username} ({user.role})</div>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700 font-bold border border-slate-200">
-            {user.username.charAt(0).toUpperCase()}
-          </div>
+        <button
+          onClick={() => void loadModules()}
+          disabled={loading}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          Обновить реестр
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+          {error}
         </div>
-      </div>
+      )}
 
-      {/* Фильтр по категориям */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {categories.map(cat => (
-          <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              selectedCategory === cat
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
+      {!loading && modules.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-xl p-12 text-center shadow-xs">
+          <Layers className="w-8 h-8 text-slate-300 mx-auto" />
+          <h2 className="mt-3 text-sm font-bold text-slate-900">Нет доступных модулей</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Для пользователя нет зарегистрированных сверок с подходящими правами доступа.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {categories.map(category => (
+              <button
+                key={category}
+                onClick={() => setSelectedCategory(category)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  selectedCategory === category
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
 
-      {/* Сетка модулей */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {filteredModules.map(mod => {
-          const permitted = hasAccess(mod);
-          const isSelected = selectedModuleId === mod.id;
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {filteredModules.map(module => {
+              const Icon = iconFor(module.icon);
+              const selected = module.id === activeModule?.id;
 
-          return (
-            <div
-              key={mod.id}
-              onClick={() => setSelectedModuleId(mod.id)}
-              className={`cursor-pointer bg-white rounded-xl border p-5 transition-all relative flex flex-col justify-between ${
-                isSelected
-                  ? 'border-indigo-600 ring-2 ring-indigo-600/10 shadow-sm'
-                  : 'border-slate-200 hover:border-slate-300 shadow-xs'
-              } ${!permitted ? 'opacity-60 bg-slate-50' : ''}`}
-            >
-              <div>
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-                    {mod.icon === 'CreditCard' && <CreditCard className="w-5 h-5" />}
-                    {mod.icon === 'Receipt' && <Receipt className="w-5 h-5" />}
-                    {mod.icon === 'Building2' && <Building2 className="w-5 h-5" />}
+              return (
+                <button
+                  key={module.id}
+                  type="button"
+                  onClick={() => setSelectedModuleId(module.id)}
+                  className={`text-left bg-white rounded-xl border p-5 transition-all relative flex flex-col justify-between ${
+                    selected
+                      ? 'border-indigo-600 ring-2 ring-indigo-600/10 shadow-sm'
+                      : 'border-slate-200 hover:border-slate-300 shadow-xs'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                          v{module.version}
+                        </span>
+                        <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          Зарегистрирован
+                        </span>
+                      </div>
+                    </div>
+
+                    <h3 className="font-bold text-slate-900 text-base leading-snug">{module.name}</h3>
+                    <p className="text-xs text-slate-600 mt-2 line-clamp-2">{module.description}</p>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                      v{mod.version}
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                    <span>{module.author}</span>
+                    <span className="font-medium text-indigo-600">{module.category}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {activeModule && (
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold text-slate-900">{activeModule.name}</h2>
+                    <span className="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
+                      {activeModule.id}
                     </span>
-                    {permitted ? (
-                      <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                        Доступен
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                        <ShieldAlert className="w-3 h-3" />
-                        Нет прав
-                      </span>
-                    )}
+                  </div>
+                  <p className="text-sm text-slate-600 mt-1">{activeModule.description}</p>
+                </div>
+
+                {canOpenCurrentWorkspace ? (
+                  <button
+                    onClick={() => onOpenModule(activeModule.id)}
+                    className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center gap-2 shadow-xs transition-colors"
+                  >
+                    <Play className="w-4 h-4 fill-white" />
+                    Перейти в рабочее место сверки
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                    Backend-модуль зарегистрирован; специализированный workspace подключается отдельно.
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                    <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
+                    Входные файлы по контракту
+                  </h3>
+                  {activeModule.required_files.length ? (
+                    <div className="space-y-2">
+                      {activeModule.required_files.map(file => (
+                        <div key={file.key} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs flex items-center justify-between gap-3">
+                          <span className="font-medium text-slate-800">{file.label}</span>
+                          <span className="font-mono text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                            {file.key}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500">
+                      Внешние файлы не требуются.
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-indigo-600" />
+                    RBAC scopes
+                  </h3>
+                  <div className="space-y-2">
+                    {activeModule.required_permissions.map(permission => {
+                      const allowed = user.role === 'admin' || userPermissions.includes('*') || userPermissions.includes(permission);
+                      return (
+                        <div key={permission} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs flex items-center justify-between">
+                          <span className="font-mono text-slate-700">{permission}</span>
+                          {allowed ? (
+                            <span className="text-emerald-700 font-medium flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Разрешено
+                            </span>
+                          ) : (
+                            <span className="text-rose-600 font-medium">Нет права</span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-
-                <h3 className="font-bold text-slate-900 text-base leading-snug">
-                  {mod.name}
-                </h3>
-                <p className="text-xs text-slate-600 mt-2 line-clamp-2">
-                  {mod.description}
-                </p>
-              </div>
-
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                <span>{mod.author}</span>
-                <span className="font-medium text-indigo-600">{mod.category}</span>
               </div>
             </div>
-          );
-        })}
-      </div>
-
-      {/* Детальная карточка выбранного модуля */}
-      {activeModule && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold text-slate-900">{activeModule.name}</h2>
-                <span className="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                  {activeModule.id}
-                </span>
-              </div>
-              <p className="text-sm text-slate-600 mt-1">{activeModule.description}</p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {activeModule.id === 'bank_rrn' ? (
-                <button
-                  onClick={onSelectRrnModule}
-                  className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center gap-2 shadow-xs transition-colors"
-                >
-                  <Play className="w-4 h-4 fill-white" />
-                  Перейти в рабочее место сверки
-                </button>
-              ) : (
-                <button
-                  disabled
-                  className="px-5 py-2.5 rounded-lg bg-slate-100 text-slate-400 text-sm font-medium cursor-not-allowed flex items-center gap-2"
-                >
-                  Модуль на этапе приёмки (Draft)
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Обязательные входные файлы по контракту */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
-                Входные спецификации файлов (Контракт модуля):
-              </h3>
-              {activeModule.required_files.length > 0 ? (
-                <div className="space-y-2">
-                  {activeModule.required_files.map(f => (
-                    <div key={f.key} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs flex items-center justify-between">
-                      <span className="font-medium text-slate-800">{f.label}</span>
-                      <span className="font-mono text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
-                        key: {f.key}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500">
-                  Модуль использует встроенные справочники базы данных.
-                </div>
-              )}
-            </div>
-
-            {/* Права доступа и политика безопасности */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-indigo-600" />
-                Требуемые привилегии (RBAC Scopes):
-              </h3>
-              <div className="space-y-2">
-                {activeModule.required_permissions.map(perm => {
-                  const has = user.role === 'admin' || userPerms.includes('*') || userPerms.includes(perm);
-                  return (
-                    <div key={perm} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs flex items-center justify-between">
-                      <span className="font-mono text-slate-700">{perm}</span>
-                      {has ? (
-                        <span className="text-emerald-700 font-medium flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Разрешено пользователю
-                        </span>
-                      ) : (
-                        <span className="text-rose-600 font-medium">
-                          Заблокировано политикой
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
     </div>
   );
