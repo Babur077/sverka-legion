@@ -1,11 +1,11 @@
 import { SystemSettings } from '../types';
+import { apiFetch } from './apiClient';
 
-const apiRequest = async (path: string, username: string, init: RequestInit = {}) => {
-  const response = await fetch(path, {
+const apiRequest = async (path: string, _username: string, init: RequestInit = {}) => {
+  const response = await apiFetch(path, {
     ...init,
     headers: {
       ...(init.headers || {}),
-      'X-User': username,
       'Content-Type': 'application/json',
     },
   });
