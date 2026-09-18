@@ -54,6 +54,8 @@ def init_permissions_db():
             cursor.execute("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass  # уже добавлено
+        # Migrate the old generic accountant role to the canonical acquiring role.
+        cursor.execute("UPDATE users SET role = ? WHERE role = ?", ("accountant_acquiring", "accountant"))
         conn.commit()
 
 
@@ -67,8 +69,6 @@ def get_user_permissions(username: str) -> List[str]:
             return []
 
         role, custom_perms_json = row
-        # Legacy role compatibility: old "accountant" means acquiring accountant.
-        role = "accountant_acquiring" if role == "accountant" else role
         # Базовые права из роли
         effective_perms = list(DEFAULT_ROLE_PERMISSIONS.get(role, []))
 
