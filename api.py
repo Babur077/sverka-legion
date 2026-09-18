@@ -143,6 +143,23 @@ async def login(req: LoginRequest, request: Request):
         "permissions": perms,
     }
 
+
+@app.get("/api/auth/me")
+async def current_user(x_user: Optional[str] = Header(None)):
+    """Refresh role and effective permissions for the current browser session."""
+    if not x_user:
+        raise HTTPException(status_code=401, detail="Пользователь не указан")
+    access = get_user_access(x_user)
+    if not access:
+        raise HTTPException(status_code=401, detail="Пользователь не найден")
+    return {
+        "id": access["id"],
+        "username": access["username"],
+        "role": access["role"],
+        "permissions": access["permissions"],
+    }
+
+
 # ─── Модульный API (Модули сверок) ────────────────────────────
 
 @app.get("/api/modules")
