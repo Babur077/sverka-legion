@@ -98,7 +98,11 @@ def init_db():
                 only_bank_count INTEGER,
                 period_month TEXT,
                 total_commission REAL DEFAULT 0.0,
-                terminals_json TEXT
+                terminals_json TEXT,
+                run_id TEXT,
+                source_our_name TEXT,
+                source_bank_name TEXT,
+                config_json TEXT
             )
         ''')
 
@@ -106,7 +110,11 @@ def init_db():
         for col_name, col_type in [
             ("period_month", "TEXT"),
             ("total_commission", "REAL DEFAULT 0.0"),
-            ("terminals_json", "TEXT")
+            ("terminals_json", "TEXT"),
+            ("run_id", "TEXT"),
+            ("source_our_name", "TEXT"),
+            ("source_bank_name", "TEXT"),
+            ("config_json", "TEXT")
         ]:
             try:
                 cursor.execute(f"ALTER TABLE reconciliation_archive ADD COLUMN {col_name} {col_type}")
@@ -317,8 +325,29 @@ def get_audit_logs(limit=100) -> pd.DataFrame:
         )
 
 
-def save_reconciliation(user, bank_name, tot_our, tot_bank, diff, matched_c, mismatch_c, only_our_c, only_bank_c, period_month=None, total_commission=0.0, terminals_data=None):
-    """Сохраняет метаданные сверки в системный архив (БД) с разбивкой по терминалам и отчётному месяцу."""
+def save_reconciliation(
+    user,
+    bank_name,
+    tot_our,
+    tot_bank,
+    diff,
+    matched_c,
+    mismatch_c,
+    only_our_c,
+    only_bank_c,
+    period_month=None,
+    total_commission=0.0,
+    terminals_data=None,
+    run_id=None,
+    source_our_name=None,
+    source_bank_name=None,
+    config_data=None,
+):
+    """Сохраняет или обновляет результат сверки по run_id.
+
+    Повторное сохранение того же запуска обновляет запись вместо создания
+    дубликата, что позволяет безопасно фиксировать ручные исключения повторно.
+    """
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         try:
@@ -334,17 +363,54 @@ def save_reconciliation(user, bank_name, tot_our, tot_bank, diff, matched_c, mis
                 elif isinstance(terminals_data, str):
                     terminals_json = terminals_data
 
-            cursor.execute('''
-                INSERT INTO reconciliation_archive
-                (timestamp, username, bank_name, total_our, total_bank, difference, matched_count, mismatch_count, only_our_count, only_bank_count, period_month, total_commission, terminals_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                datetime.now().isoformat(), user, bank_name,
-                float(tot_our), float(tot_bank), float(diff), int(matched_c), int(mismatch_c), int(only_our_c), int(only_bank_c),
-                str(period_month), float(total_commission or 0.0), str(terminals_json)
-            ))
+            config_json = ""
+            if config_data is not None:
+                if isinstance(config_data, str):
+                    config_json = config_data
+                else:
+                    config_json = json.dumps(config_data, ensure_ascii=False, default=str)
+
+            now = datetime.now().isoformat()
+            normalized_run_id = str(run_id or "").strip() or None
+            existing_id = None
+            if normalized_run_id:
+                cursor.execute(
+                    "SELECT id FROM reconciliation_archive WHERE run_id = ? ORDER BY id DESC LIMIT 1",
+                    (normalized_run_id,),
+                )
+                row = cursor.fetchone()
+                existing_id = int(row[0]) if row else None
+
+            values = (
+                now, user, bank_name,
+                float(tot_our), float(tot_bank), float(diff), int(matched_c), int(mismatch_c),
+                int(only_our_c), int(only_bank_c), str(period_month), float(total_commission or 0.0),
+                str(terminals_json), normalized_run_id, str(source_our_name or ""), str(source_bank_name or ""),
+                str(config_json),
+            )
+
+            if existing_id:
+                cursor.execute('''
+                    UPDATE reconciliation_archive
+                    SET timestamp = ?, username = ?, bank_name = ?, total_our = ?, total_bank = ?,
+                        difference = ?, matched_count = ?, mismatch_count = ?, only_our_count = ?,
+                        only_bank_count = ?, period_month = ?, total_commission = ?, terminals_json = ?,
+                        run_id = ?, source_our_name = ?, source_bank_name = ?, config_json = ?
+                    WHERE id = ?
+                ''', values + (existing_id,))
+                message = f"Сверка #{existing_id} обновлена в системном архиве."
+            else:
+                cursor.execute('''
+                    INSERT INTO reconciliation_archive
+                    (timestamp, username, bank_name, total_our, total_bank, difference, matched_count, mismatch_count,
+                     only_our_count, only_bank_count, period_month, total_commission, terminals_json, run_id,
+                     source_our_name, source_bank_name, config_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', values)
+                message = f"Сверка #{cursor.lastrowid} сохранена в системный архив."
+
             conn.commit()
-            return True, "Сверка успешно сохранена в системный архив!"
+            return True, message
         except Exception as e:
             return False, f"Ошибка при сохранении: {e}"
 
