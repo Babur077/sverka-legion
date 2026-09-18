@@ -5,6 +5,7 @@ ReconcileHub - FastAPI Backend (Modular Monolith)
 import os
 import sys
 import json
+import math
 import time
 import socket
 import subprocess
@@ -74,6 +75,29 @@ class EposItem(BaseModel):
     legal_entity: Optional[str] = ""
     commission_pct: float
     is_active: bool = True
+
+
+def _json_safe(value: Any) -> Any:
+    """Recursively replace values that Starlette cannot encode as strict JSON."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return None if not math.isfinite(value) else value
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if hasattr(value, "item"):
+        try:
+            return _json_safe(value.item())
+        except (TypeError, ValueError):
+            pass
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except (TypeError, ValueError):
+            pass
+    return str(value)
 
 # ─── Базовые эндпоинты платформы ─────────────────────────────
 
@@ -177,7 +201,7 @@ async def run_module_reconciliation(
             duration_ms=duration,
             details=f"Записей А: {result.summary.total_records_a}, Записей B: {result.summary.total_records_b}, Сходимость: {result.summary.match_percentage}%",
         )
-        return result.model_dump()
+        return _json_safe(result.model_dump())
 
     except HTTPException:
         raise
