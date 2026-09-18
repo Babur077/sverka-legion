@@ -168,7 +168,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           bankDateCol, bankRrnCol, bankAmtCol, bankStatusCol, bankTidCol,
         },
         rules: {
-          revInput, ourRev, bankRev, dupAction, unbindMismatches,
+          revInput, ourRev, bankRev, dupAction, unbindMismatches, deductCommission,
         },
       });
     }
@@ -176,7 +176,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     ourFile, bankFile, selectedBank, commissionPct,
     ourDateCol, ourRrnCol, ourAmtCol, ourStatusCol,
     bankDateCol, bankRrnCol, bankAmtCol, bankStatusCol, bankTidCol,
-    revInput, ourRev, bankRev, dupAction, unbindMismatches
+    revInput, ourRev, bankRev, dupAction, unbindMismatches, deductCommission
   ]);
 
   // A result is valid only for the exact files and reconciliation settings
@@ -217,6 +217,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       setBankRev(savedDraft.rules.bankRev || 'Удалить строку');
       setDupAction(savedDraft.rules.dupAction || 'Ничего не делать (оставить все)');
       setUnbindMismatches(!!savedDraft.rules.unbindMismatches);
+      setDeductCommission(!!savedDraft.rules.deductCommission);
     }
     setDraftRestored(true);
     setShowDraftBanner(true);
