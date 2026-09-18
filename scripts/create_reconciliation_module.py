@@ -64,6 +64,7 @@ class {cls}(BaseReconciliationModule):
             status="draft",
             workspace=None,
             required_permissions=["{module_id}.view", "{module_id}.run"],
+            available_permissions=["{module_id}.view", "{module_id}.run", "{module_id}.export"],
             required_files=[],
         )
 
@@ -111,7 +112,7 @@ def main() -> int:
     print("Next steps:")
     print("  1. Implement validate_inputs() and run().")
     print("  2. Define required_files and module-specific permissions in the manifest.")
-    print("  3. Add the new permissions to the intended roles in utils/permissions.py.")
+    print("  3. Grant module permissions to users from Administration -> Access.")
     print("  4. If a specialized UI is needed, add its workspace key to src/modules/workspaceRegistry.ts.")
     print("No edit to modules/registry.py is required.")
     return 0
