@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X, Layers, History } from 'lucide-react';
 import { User } from '../types';
+import { hasPermission } from '../utils/permissions';
 
 interface NavbarProps {
   user: User;
@@ -36,33 +37,26 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
   const currentRoleBadgeColor = roleBadgeColor[user.role] || 'bg-slate-50 text-slate-700 border-slate-200';
 
-  const hasPermission = (permission: string) =>
-    user.permissions?.includes('*') || user.permissions?.includes(permission) || false;
-
   const navItems = [
     {
       id: 'modules',
       label: 'Модули сверок',
       icon: Layers,
-      adminOnly: false,
+      requiredPermission: null,
     },
     {
       id: 'audit',
       label: 'Аудит',
       icon: History,
-      adminOnly: false,
       requiredPermission: 'audit.view',
     },
     {
       id: 'admin',
       label: 'Администрирование',
       icon: Settings,
-      adminOnly: true,
+      requiredPermission: '*',
     },
-  ].filter(item =>
-    (!item.adminOnly || user.permissions?.includes('*'))
-    && (!item.requiredPermission || hasPermission(item.requiredPermission))
-  );
+  ].filter(item => !item.requiredPermission || hasPermission(user, item.requiredPermission));
 
   const handleItemClick = (tabId: string) => {
     onSelectTab(tabId);
