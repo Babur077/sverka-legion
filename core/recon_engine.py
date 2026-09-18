@@ -78,6 +78,23 @@ def date_summary(pl_our: pl.DataFrame, pl_bank: pl.DataFrame) -> pd.DataFrame:
     return s.sort("date", descending=True).to_pandas()
 
 
+def _source_quality(df: pl.DataFrame, date_col: str, rrn_col: str) -> dict:
+    """Count source values that cannot participate cleanly in reconciliation."""
+    if df is None or df.height == 0:
+        return {"missing_date": 0, "invalid_date": 0, "empty_rrn": 0}
+
+    raw_date = pl.col(date_col).cast(pl.Utf8, strict=False).fill_null("").str.strip_chars()
+    raw_rrn = pl.col(rrn_col).cast(pl.Utf8, strict=False).fill_null("").str.strip_chars().str.to_uppercase()
+    parsed_date = clean_date_polars(date_col)
+
+    row = df.select([
+        (raw_date == "").sum().alias("missing_date"),
+        ((raw_date != "") & parsed_date.is_null()).sum().alias("invalid_date"),
+        raw_rrn.is_in(["", "NAN", "NONE", "NAT"]).sum().alias("empty_rrn"),
+    ]).to_dicts()[0]
+    return {key: int(value or 0) for key, value in row.items()}
+
+
 def terminal_summary(pl_bank: pl.DataFrame, tid_col: str = "terminal_id") -> pd.DataFrame:
     if pl_bank is None or getattr(pl_bank, "height", 0) == 0:
         return pd.DataFrame(columns=["terminal_id", "tx_count", "total_volume", "commission_pct", "commission_amount", "net_volume", "legal_entity"])
@@ -129,8 +146,21 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
 
     our_cols = list(dict.fromkeys([c for c in [cfg["our_date"], cfg["our_rrn"], cfg["our_amt"], cfg["our_status"]] if c]))
     bank_cols = list(dict.fromkeys([c for c in [cfg["bank_date"], cfg["bank_rrn"], cfg["bank_amt"], cfg["bank_tid"], cfg["bank_status"]] if c]))
-    pl_our = pl_our_raw.select(our_cols).rename({cfg["our_date"]: "date", cfg["our_rrn"]: "RRN"})
-    pl_bank = pl_bank_raw.select(bank_cols).rename({cfg["bank_date"]: "date", cfg["bank_rrn"]: "RRN"})
+    data_quality = {
+        "our": _source_quality(pl_our_raw, cfg["our_date"], cfg["our_rrn"]),
+        "bank": _source_quality(pl_bank_raw, cfg["bank_date"], cfg["bank_rrn"]),
+    }
+
+    pl_our = (
+        pl_our_raw.select(our_cols)
+        .rename({cfg["our_date"]: "date", cfg["our_rrn"]: "RRN"})
+        .with_columns(pl.lit(True).alias("_our_present"))
+    )
+    pl_bank = (
+        pl_bank_raw.select(bank_cols)
+        .rename({cfg["bank_date"]: "date", cfg["bank_rrn"]: "RRN"})
+        .with_columns(pl.lit(True).alias("_bank_present"))
+    )
     if cfg["our_amt"]: pl_our = pl_our.rename({cfg["our_amt"]: "amount"})
     if cfg["our_status"]: pl_our = pl_our.rename({cfg["our_status"]: "status_our"})
     if cfg["bank_amt"]: pl_bank = pl_bank.rename({cfg["bank_amt"]: "amount"})
@@ -219,8 +249,8 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     merged_pl = merged_pl.with_columns(pl.coalesce(["date", "date_bank"]).alias("date_unified"))
     merged_pl = merged_pl.with_columns([
         pl.col("date_unified").dt.strftime("%d.%m.%Y").fill_null("").alias("date_str"),
-        pl.when(pl.col("date").is_not_null() & pl.col("date_bank").is_null()).then(pl.lit("left_only"))
-        .when(pl.col("date").is_null() & pl.col("date_bank").is_not_null()).then(pl.lit("right_only"))
+        pl.when(pl.col("_our_present").fill_null(False) & ~pl.col("_bank_present").fill_null(False)).then(pl.lit("left_only"))
+        .when(~pl.col("_our_present").fill_null(False) & pl.col("_bank_present").fill_null(False)).then(pl.lit("right_only"))
         .otherwise(pl.lit("both")).alias("_merge")
     ]).with_row_index("_match_row_id")
 
@@ -284,7 +314,11 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     summary = date_summary(pl_our, pl_bank)
     tot_our_raw = float(summary["Сумма_у_нас"].sum())
     tot_bank_raw = float(summary["Сумма_в_банке"].sum())
-    summary["date"] = summary["date"].apply(lambda x: x.strftime("%d.%m.%Y") if hasattr(x, "strftime") and pd.notnull(x) else (str(x) if pd.notnull(x) and x else ""))
+    summary["date"] = summary["date"].apply(
+        lambda x: x.strftime("%d.%m.%Y")
+        if hasattr(x, "strftime") and pd.notnull(x)
+        else (str(x) if pd.notnull(x) and x else "Дата не распознана")
+    )
     total_row = pd.DataFrame([{
         "date": "📊 ИТОГО (исходно)", "Кол_во_у_нас": summary["Кол_во_у_нас"].sum(), "Кол_во_в_банке": summary["Кол_во_в_банке"].sum(),
         "Δ кол-во": summary["Δ кол-во"].sum(), "Сумма_у_нас": tot_our_raw, "Сумма_в_банке": tot_bank_raw, "Δ суммы": tot_bank_raw - tot_our_raw,
@@ -322,6 +356,7 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         "terminal_summary": terminal_summary_list,
         "total_commission": total_commission,
         "effective_commission_rate": effective_commission_rate,
+        "data_quality": data_quality,
         "detected_months": detected_months,
         "merged": merged,
         "dup_action": cfg["dup_action"],
