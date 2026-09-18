@@ -299,7 +299,7 @@ async def fetch_module_archive(
 ):
     """Возвращает серверный архив конкретного модуля."""
     perms = get_user_permissions(x_user)
-    if not has_permission(perms, f"{module_id}.view") and not has_permission(perms, "analytics.view_all") and "*" not in perms:
+    if not has_permission(perms, f"{module_id}.view") and not has_permission(perms, "archive.view") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Доступ к архиву ограничен")
     if module_id != "bank_rrn":
         raise HTTPException(status_code=404, detail="Серверный архив для этого модуля пока не реализован")
@@ -696,7 +696,7 @@ async def fetch_audit_trail(
 ):
     """Возвращает серверный журнал аудита с фильтрами и пагинацией."""
     perms = get_user_permissions(x_user)
-    if not has_permission(perms, "audit.view") and "analytics.view_all" not in perms and "*" not in perms:
+    if not has_permission(perms, "audit.view") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Нет прав на просмотр журнала аудита")
 
     limit = max(1, min(limit, 500))
