@@ -1,10 +1,16 @@
 export type Role = 'admin' | 'finance_manager' | 'accountant_acquiring' | 'auditor' | 'accountant';
 
+export interface PermissionOverrides {
+  allow: string[];
+  deny: string[];
+}
+
 export interface User {
   id: number;
   username: string;
   role: Role;
   permissions?: string[];
+  permission_overrides?: PermissionOverrides;
 }
 
 export interface ReconciliationModuleManifest {
@@ -18,6 +24,7 @@ export interface ReconciliationModuleManifest {
   status: 'active' | 'draft' | 'deprecated';
   workspace?: string | null;
   required_permissions: string[];
+  available_permissions?: string[];
   required_files: Array<{
     key: string;
     label: string;
@@ -171,3 +178,23 @@ export interface ReconciliationResult {
   }>;
   dup_action: string;
 }
+
+export interface PermissionCatalogItem {
+  id: string;
+  label: string;
+}
+
+export interface PermissionCatalogGroup {
+  id: string;
+  name: string;
+  type: 'module' | 'platform';
+  module_id?: string;
+  status?: 'active' | 'draft' | 'deprecated';
+  permissions: PermissionCatalogItem[];
+}
+
+export interface PermissionCatalog {
+  roles: Record<string, string[]>;
+  groups: PermissionCatalogGroup[];
+}
+
