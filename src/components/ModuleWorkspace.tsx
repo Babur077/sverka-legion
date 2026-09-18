@@ -64,7 +64,7 @@ export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onOpenMo
 
   const activeModule = modules.find(module => module.id === selectedModuleId) || modules[0];
   const userPermissions = user.permissions || [];
-  const canOpenCurrentWorkspace = hasModuleWorkspace(activeModule?.workspace);
+  const canOpenCurrentWorkspace = activeModule?.status === 'active' && hasModuleWorkspace(activeModule?.workspace);
 
   return (
     <div className="w-full max-w-[1800px] mx-auto p-6 xl:px-8 space-y-6">
@@ -149,9 +149,21 @@ export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onOpenMo
                         <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                           v{module.version}
                         </span>
-                        <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          Зарегистрирован
+                        <span className={`flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${
+                          module.status === 'active'
+                            ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                            : module.status === 'draft'
+                              ? 'text-amber-700 bg-amber-50 border-amber-200'
+                              : 'text-slate-600 bg-slate-50 border-slate-200'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            module.status === 'active'
+                              ? 'bg-emerald-500'
+                              : module.status === 'draft'
+                                ? 'bg-amber-500'
+                                : 'bg-slate-400'
+                          }`} />
+                          {module.status === 'active' ? 'Активен' : module.status === 'draft' ? 'Черновик' : 'Устарел'}
                         </span>
                       </div>
                     </div>
@@ -192,7 +204,9 @@ export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onOpenMo
                   </button>
                 ) : (
                   <span className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                    Backend-модуль зарегистрирован. Для рабочего места укажите workspace в manifest и добавьте UI в workspace registry.
+                    {activeModule.status !== 'active'
+                      ? 'Модуль пока не активирован для запуска.'
+                      : 'Backend-модуль зарегистрирован. Для рабочего места укажите workspace в manifest и добавьте UI в workspace registry.'}
                   </span>
                 )}
               </div>
