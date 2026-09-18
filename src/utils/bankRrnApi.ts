@@ -1,4 +1,5 @@
 import { ReconciliationConfig, ReconciliationResult, RawRow } from '../types';
+import { apiFetch } from './apiClient';
 
 interface BankRrnApiResult {
   run_id: string;
@@ -116,7 +117,7 @@ export async function runBankRrnViaApi(
   ourFile: File,
   bankFile: File,
   cfg: ReconciliationConfig,
-  username: string,
+  _username: string,
 ): Promise<ReconciliationResult> {
   const form = new FormData();
   form.append('our_file', ourFile, ourFile.name);
@@ -140,9 +141,8 @@ export async function runBankRrnViaApi(
   form.append('tolerance', String(cfg.tolerance));
   form.append('deduct_commission', boolParam(!!cfg.deduct_commission));
 
-  const response = await fetch('/api/modules/bank_rrn/run', {
+  const response = await apiFetch('/api/modules/bank_rrn/run', {
     method: 'POST',
-    headers: { 'X-User': username },
     body: form,
   });
 

@@ -1,11 +1,11 @@
 import { PermissionCatalog, PermissionOverrides, Role, User } from '../types';
+import { apiFetch } from './apiClient';
 
-const request = async (path: string, username: string, init: RequestInit = {}) => {
-  const response = await fetch(path, {
+const request = async (path: string, _username: string, init: RequestInit = {}) => {
+  const response = await apiFetch(path, {
     ...init,
     headers: {
       ...(init.headers || {}),
-      'X-User': username,
       'Content-Type': 'application/json',
     },
   });

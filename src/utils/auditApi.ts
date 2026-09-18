@@ -1,4 +1,5 @@
 import { AuditLog } from '../types';
+import { apiFetch } from './apiClient';
 
 export interface AuditEvent extends AuditLog {
   user_id: string;
@@ -36,7 +37,7 @@ export interface AuditFilterOptions {
   statuses: string[];
 }
 
-export async function getAuditViaApi(username: string, filters: AuditFilters): Promise<AuditResponse> {
+export async function getAuditViaApi(_username: string, filters: AuditFilters): Promise<AuditResponse> {
   const params = new URLSearchParams();
   params.set('limit', String(filters.limit));
   params.set('offset', String(filters.offset));
@@ -48,9 +49,7 @@ export async function getAuditViaApi(username: string, filters: AuditFilters): P
   if (filters.date_from) params.set('date_from', filters.date_from);
   if (filters.date_to) params.set('date_to', filters.date_to);
 
-  const response = await fetch('/api/audit?' + params.toString(), {
-    headers: { 'X-User': username },
-  });
+  const response = await apiFetch('/api/audit?' + params.toString());
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(typeof payload?.detail === 'string' ? payload.detail : 'Не удалось загрузить журнал аудита.');
@@ -59,10 +58,8 @@ export async function getAuditViaApi(username: string, filters: AuditFilters): P
 }
 
 
-export async function getAuditFilterOptionsViaApi(username: string): Promise<AuditFilterOptions> {
-  const response = await fetch('/api/audit/filters', {
-    headers: { 'X-User': username },
-  });
+export async function getAuditFilterOptionsViaApi(_username: string): Promise<AuditFilterOptions> {
+  const response = await apiFetch('/api/audit/filters');
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(typeof payload?.detail === 'string' ? payload.detail : 'Не удалось загрузить фильтры аудита.');

@@ -1,4 +1,5 @@
 import { ReconciliationModuleManifest } from '../types';
+import { apiFetch } from './apiClient';
 
 async function readResponse(response: Response): Promise<any> {
   const raw = await response.text();
@@ -17,10 +18,8 @@ async function readResponse(response: Response): Promise<any> {
   return payload;
 }
 
-export async function getModulesViaApi(username: string): Promise<ReconciliationModuleManifest[]> {
-  const response = await fetch('/api/modules', {
-    headers: { 'X-User': username },
-  });
+export async function getModulesViaApi(_username: string): Promise<ReconciliationModuleManifest[]> {
+  const response = await apiFetch('/api/modules');
   const payload = await readResponse(response);
   return Array.isArray(payload) ? payload : [];
 }

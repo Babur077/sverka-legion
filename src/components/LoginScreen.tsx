@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Lock, User as UserIcon, ArrowRight, AlertCircle, KeyRound } from 'lucide-react';
+import { ShieldCheck, Lock, User as UserIcon, ArrowRight, AlertCircle } from 'lucide-react';
 import { User } from '../types';
 import { loginViaApi } from '../utils/authApi';
 
@@ -8,8 +8,8 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -36,11 +36,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  const handleQuickFill = (u: string, p: string) => {
-    setUsername(u);
-    setPassword(p);
-    setError(null);
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -118,38 +113,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-slate-100">
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 font-medium">
-            <KeyRound className="w-3.5 h-3.5 text-slate-400" />
-            <span>Быстрый вход для тестирования:</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickFill('admin', 'admin123')}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 text-left transition-all"
-            >
-              <div className="text-[11px] font-semibold text-slate-800">Админ</div>
-              <div className="text-[10px] text-slate-400 font-mono">admin / admin123</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickFill('accountant', 'acc123')}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 text-left transition-all"
-            >
-              <div className="text-[11px] font-semibold text-slate-800">Бухгалтер</div>
-              <div className="text-[10px] text-slate-400 font-mono">acc123</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickFill('auditor', 'audit123')}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 text-left transition-all"
-            >
-              <div className="text-[11px] font-semibold text-slate-800">Аудитор</div>
-              <div className="text-[10px] text-slate-400 font-mono">audit123</div>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -49,10 +49,17 @@ from utils.permissions import (
     get_audit_filter_options,
 )
 from modules.registry import module_registry
+from utils.auth_sessions import (
+    init_auth_sessions_db,
+    create_session,
+    get_session_user,
+    revoke_session,
+)
 
 # Инициализация схемы БД
 init_db()
 init_permissions_db()
+init_auth_sessions_db()
 
 app = FastAPI(
     title="ReconcileHub Platform API",
@@ -67,6 +74,42 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _extract_bearer_token(authorization: Optional[str]) -> str:
+    value = str(authorization or "").strip()
+    if not value.lower().startswith("bearer "):
+        return ""
+    return value[7:].strip()
+
+
+@app.middleware("http")
+async def authenticate_api_request(request: Request, call_next):
+    """Resolve bearer session to X-User before existing RBAC checks run."""
+    path = request.url.path
+    if (
+        request.method == "OPTIONS"
+        or not path.startswith("/api/")
+        or path in {"/api/health", "/api/auth/login"}
+    ):
+        return await call_next(request)
+
+    token = _extract_bearer_token(request.headers.get("authorization"))
+    username = get_session_user(token)
+    if not username:
+        return JSONResponse(
+            {"detail": "Сессия недействительна или истекла. Войдите снова."},
+            status_code=401,
+        )
+
+    headers = [
+        (key, value)
+        for key, value in request.scope.get("headers", [])
+        if key.lower() != b"x-user"
+    ]
+    headers.append((b"x-user", username.encode("utf-8")))
+    request.scope["headers"] = headers
+    return await call_next(request)
 
 # ─── Pydantic Модели ──────────────────────────────────────────
 
@@ -130,6 +173,7 @@ async def login(req: LoginRequest, request: Request):
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
 
     perms = get_user_permissions(req.username)
+    session_token, expires_at = create_session(req.username)
     record_audit_event(
         user_id=req.username,
         action="LOGIN_SUCCESS",
@@ -143,7 +187,23 @@ async def login(req: LoginRequest, request: Request):
         "username": req.username,
         "role": role,
         "permissions": perms,
+        "session_token": session_token,
+        "expires_at": expires_at,
     }
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request, x_user: Optional[str] = Header(None)):
+    token = _extract_bearer_token(request.headers.get("authorization"))
+    revoke_session(token)
+    if x_user:
+        record_audit_event(
+            user_id=x_user,
+            action="LOGOUT",
+            status="SUCCESS",
+            ip_address=request.client.host if request.client else "127.0.0.1",
+        )
+    return {"success": True}
 
 
 @app.get("/api/auth/me")
