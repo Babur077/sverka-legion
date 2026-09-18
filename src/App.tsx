@@ -210,7 +210,24 @@ export const App: React.FC = () => {
     if (!hasModuleWorkspace(module.workspace)) return;
     setActiveModuleWorkspace(module.workspace);
     setCurrentTab('module');
-    setBankSection('overview');
+
+    if (module.workspace === 'bank_rrn') {
+      const has = (permission: string) =>
+        user.permissions?.includes('*') || user.permissions?.includes(permission) || false;
+      setBankSection(
+        has('bank_rrn.view')
+          ? 'overview'
+          : has('bank_rrn.run')
+            ? 'workspace'
+            : has('epos.view') || has('epos.manage')
+              ? 'registry'
+              : has('analytics.view_all')
+                ? 'analytics'
+                : has('archive.view')
+                  ? 'archive'
+                  : 'overview',
+      );
+    }
   };
 
   const renderBankSection = () => {
