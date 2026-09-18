@@ -17,6 +17,7 @@ import { getEposViaApi } from '../utils/eposApi';
 import { DEFAULT_BANKS, getBanksViaApi } from '../utils/banksApi';
 import { AlertModal, ConfirmModal } from './Modal';
 import { saveBankRrnArchive } from '../utils/archiveApi';
+import { getReconciliationQuality } from '../utils/reconciliationMetrics';
 
 interface RrnPageProps {
   user: User;
@@ -634,17 +635,81 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       'Δ суммы': totalDiff,
     });
 
-    const totalTxns = reconData.matched_count + reconData.only_our.length + reconData.only_bank.length;
-    const matchRate = totalTxns > 0 ? (reconData.matched_count / totalTxns) * 100 : 0;
+    const activeOnlyOurCount = reconData.only_our.length - excludedOur.length;
+    const activeOnlyBankCount = reconData.only_bank.length - excludedBank.length;
+    const quality = getReconciliationQuality(
+      reconData.matched_count,
+      reconData.mismatch_count,
+      activeOnlyOurCount,
+      activeOnlyBankCount,
+    );
+
+    const excludedByTerminal = new Map<string, { tx: number; volume: number; commission: number }>();
+    excludedBank.forEach(row => {
+      const terminalId = String(row.terminal_id || row.raw?.terminal_id || '').trim();
+      if (!terminalId) return;
+      const rawAmount = Number(row.raw?.raw_amount ?? row.amount ?? 0);
+      const commissionPct = Number(row.raw?.commission_pct ?? row.commission_pct ?? 0);
+      const directCommission = Number(row.raw?.commission_amount);
+      const commission = Number.isFinite(directCommission)
+        ? directCommission
+        : (Number.isFinite(rawAmount) && Number.isFinite(commissionPct) ? rawAmount * commissionPct / 100 : 0);
+      const current = excludedByTerminal.get(terminalId) || { tx: 0, volume: 0, commission: 0 };
+      current.tx += 1;
+      current.volume += Number.isFinite(rawAmount) ? rawAmount : 0;
+      current.commission += Number.isFinite(commission) ? commission : 0;
+      excludedByTerminal.set(terminalId, current);
+    });
+
+    const adjustedTerminalSummary = (reconData.terminal_summary || [])
+      .map(terminal => {
+        const excluded = excludedByTerminal.get(terminal.terminal_id) || { tx: 0, volume: 0, commission: 0 };
+        const txCount = Math.max(0, terminal.tx_count - excluded.tx);
+        const totalVolume = terminal.total_volume - excluded.volume;
+        const commissionAmount = Math.max(0, terminal.commission_amount - excluded.commission);
+        return {
+          ...terminal,
+          tx_count: txCount,
+          total_volume: totalVolume,
+          commission_amount: commissionAmount,
+          net_volume: totalVolume - commissionAmount,
+        };
+      })
+      .filter(terminal => terminal.tx_count > 0 || Math.abs(terminal.total_volume) > 0.000001);
+
+    const fallbackExcludedCommission = excludedBank.reduce((sum, row) => {
+      const directCommission = Number(row.raw?.commission_amount);
+      if (Number.isFinite(directCommission)) return sum + directCommission;
+      const rawAmount = Number(row.raw?.raw_amount ?? row.amount ?? 0);
+      const commissionPct = Number(row.raw?.commission_pct ?? row.commission_pct ?? 0);
+      return sum + (
+        Number.isFinite(rawAmount) && Number.isFinite(commissionPct)
+          ? rawAmount * commissionPct / 100
+          : 0
+      );
+    }, 0);
+
+    const adjustedCommission = adjustedTerminalSummary.length
+      ? adjustedTerminalSummary.reduce((sum, terminal) => sum + terminal.commission_amount, 0)
+      : Math.max(0, (reconData.total_commission || 0) - fallbackExcludedCommission);
+
+    const netBankSettlement = reconData.deduct_commission
+      ? totalBankSum
+      : totalBankSum - adjustedCommission;
 
     return {
       adjustedSummary,
+      adjustedTerminalSummary,
+      adjustedCommission,
+      netBankSettlement,
       totalOurSum,
       totalBankSum,
       totalDiff,
       excludedOurCount: excludedOur.length,
       excludedBankCount: excludedBank.length,
-      matchRate,
+      activeOnlyOurCount,
+      activeOnlyBankCount,
+      quality,
     };
   }, [reconData]);
 
@@ -710,6 +775,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           total_bank: dynamicCalculations.totalBankSum,
           difference: dynamicCalculations.totalDiff,
           period_month: selectedArchiveMonth,
+          only_our_count: dynamicCalculations.activeOnlyOurCount,
+          only_bank_count: dynamicCalculations.activeOnlyBankCount,
+          total_commission: dynamicCalculations.adjustedCommission,
+          terminals_summary: dynamicCalculations.adjustedTerminalSummary,
         },
       );
       setSaveSuccessMsg(`Сверка за ${selectedArchiveMonth} успешно записана в архив!`);
@@ -739,7 +808,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       reconData.amt_mismatches,
       reconData.dups_our,
       reconData.dups_bank,
-      reconData.terminal_summary
+      dynamicCalculations.adjustedTerminalSummary
     );
   };
 
@@ -1408,17 +1477,18 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             </div>
 
             <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Совпало / Δ Сумм</div>
+              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Точно / Δ сумм</div>
               <div className="text-base font-bold text-slate-900 mt-1 break-words tabular-nums">
-                {reconData.matched_count} <span className="text-xs text-slate-400 font-normal">/</span> <span className={reconData.mismatch_count > 0 ? 'text-amber-600' : 'text-slate-500'}>{reconData.mismatch_count}</span>
+                {dynamicCalculations.quality.exactMatched} <span className="text-xs text-slate-400 font-normal">/</span> <span className={reconData.mismatch_count > 0 ? 'text-amber-600' : 'text-slate-500'}>{reconData.mismatch_count}</span>
               </div>
             </div>
 
             <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs col-span-2 md:col-span-1">
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Процент сверки</div>
+              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Точное совпадение</div>
               <div className="text-base font-bold text-indigo-600 mt-1 break-words tabular-nums">
-                {dynamicCalculations.matchRate.toFixed(1)}%
+                {dynamicCalculations.quality.exactMatchRate.toFixed(1)}%
               </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">RRN найдено: {dynamicCalculations.quality.rrnMatchRate.toFixed(1)}%</div>
             </div>
           </div>
 
@@ -1433,11 +1503,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                   <div className="font-bold text-slate-900">
                     Комиссия эквайринга EPOS:
                     <span className="ml-1.5 text-rose-600 font-extrabold tabular-nums">
-                      {fmt(reconData.total_commission || 0)} {currency}
+                      {fmt(dynamicCalculations.adjustedCommission)} {currency}
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-500">
-                    Эффективная ставка: <strong className="text-slate-800">{reconData.effective_commission_rate?.toFixed(2) || 0}%</strong> по совпавшим терминалам
+                    Эффективная ставка: <strong className="text-slate-800">{reconData.effective_commission_rate?.toFixed(2) || 0}%</strong> по операциям банка
                   </div>
                 </div>
               </div>
@@ -1445,7 +1515,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               <div className="hidden sm:block border-l border-slate-200 pl-4">
                 <span className="text-slate-500">К зачислению (нетто): </span>
                 <strong className="text-emerald-700 tabular-nums">
-                  {fmt(dynamicCalculations.totalBankSum - (reconData.total_commission || 0))} {currency}
+                  {fmt(dynamicCalculations.netBankSettlement)} {currency}
                 </strong>
               </div>
 
@@ -1454,7 +1524,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 onClick={() => setActiveTab('terminals')}
                 className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
               >
-                Детализация по {reconData.terminal_summary?.length || 0} терминалам →
+                Детализация по {dynamicCalculations.adjustedTerminalSummary.length} терминалам →
               </button>
             </div>
 
