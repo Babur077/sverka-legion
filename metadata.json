@@ -1,8 +1,0 @@
-{
-  "name": "ReconcileHub",
-  "description": "Платформа для потранзакционной сверки по RRN с интеграцией реестра EPOS, аналитикой и системным аудитом.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
