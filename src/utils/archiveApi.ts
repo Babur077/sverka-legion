@@ -30,8 +30,13 @@ export async function saveBankRrnArchive(
     total_commission?: number;
     terminals_summary?: ReconciliationResult['terminal_summary'];
   },
-): Promise<void> {
-  await apiRequest('/api/modules/bank_rrn/archive', username, {
+  context?: {
+    source_our_name?: string;
+    source_bank_name?: string;
+    config?: Record<string, any>;
+  },
+): Promise<string> {
+  const payload = await apiRequest('/api/modules/bank_rrn/archive', username, {
     method: 'POST',
     body: JSON.stringify({
       bank_name: bankName,
@@ -45,8 +50,13 @@ export async function saveBankRrnArchive(
       period_month: totals.period_month,
       total_commission: totals.total_commission ?? result.total_commission ?? 0,
       terminals_summary: totals.terminals_summary ?? result.terminal_summary ?? [],
+      run_id: result.run_id || null,
+      source_our_name: context?.source_our_name || '',
+      source_bank_name: context?.source_bank_name || '',
+      config: context?.config || {},
     }),
   });
+  return String(payload?.message || 'Сверка сохранена в архив.');
 }
 
 export async function deleteBankRrnArchive(username: string, id: number): Promise<void> {
