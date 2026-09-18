@@ -107,3 +107,132 @@ def test_epos_commission_is_joined_and_can_be_deducted():
     assert result["matched_count"] == 1
     assert result["mismatch_count"] == 0
     assert result["total_commission"] == 20.0
+
+
+
+def test_ui_reversal_labels_are_applied_case_insensitively_and_keep_null_status_rows():
+    our = frame([
+        {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "REFUND"},
+        {"date": "2026-09-01", "rrn": "R101", "amount": "700", "status": None},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "refund"},
+        {"date": "2026-09-01", "rrn": "R101", "amount": "700", "status": None},
+    ])
+
+    result = run_rrn_reconciliation(
+        our,
+        bank,
+        base_cfg(
+            our_rev="Удалить строку",
+            bank_rev="Удалить строку",
+            rev_words=["Refund"],
+        ),
+    )
+
+    assert result["matched_count"] == 1
+    assert result["mismatch_count"] == 0
+    assert result["summary"].iloc[-1]["Кол_во_у_нас"] == 1
+    assert result["summary"].iloc[-1]["Кол_во_в_банке"] == 1
+
+
+def test_unbind_mismatch_only_splits_the_mismatching_duplicate_row():
+    our = frame([
+        {"date": "2026-09-01", "rrn": "D100", "amount": "100", "status": "OK"},
+        {"date": "2026-09-02", "rrn": "D100", "amount": "200", "status": "OK"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "D100", "amount": "100", "status": "OK"},
+        {"date": "2026-09-02", "rrn": "D100", "amount": "250", "status": "OK"},
+    ])
+
+    result = run_rrn_reconciliation(
+        our,
+        bank,
+        base_cfg(unbind_mismatches=True),
+    )
+
+    assert result["matched_count"] == 1
+    assert result["mismatch_count"] == 0
+    assert len(result["only_our"]) == 1
+    assert len(result["only_bank"]) == 1
+    assert int((result["merged"]["_merge"] == "both").sum()) == 1
+
+
+def test_inactive_epos_terminal_does_not_apply_commission():
+    epos_registry = pd.DataFrame([
+        {
+            "terminal_id": "T1",
+            "merchant_id": "MID1",
+            "bank_acquirer": "Test Bank",
+            "legal_entity": "LLC Test",
+            "commission_pct": 2.0,
+            "is_active": 0,
+        },
+    ])
+    our = frame([
+        {"date": "2026-09-01", "rrn": "C200", "amount": "1000", "status": "OK"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "C200", "amount": "1000", "terminal": "T1", "status": "OK"},
+    ])
+
+    result = run_rrn_reconciliation(
+        our,
+        bank,
+        base_cfg(bank_tid="terminal", deduct_commission=True),
+        epos_registry=epos_registry,
+    )
+
+    assert result["matched_count"] == 1
+    assert result["mismatch_count"] == 0
+    assert result["total_commission"] == 0.0
+
+
+def test_effective_commission_rate_and_epos_metadata_are_returned():
+    epos_registry = pd.DataFrame([
+        {
+            "terminal_id": "T1",
+            "merchant_id": "MID1",
+            "bank_acquirer": "Test Bank",
+            "legal_entity": "LLC Test",
+            "commission_pct": 2.0,
+            "is_active": 1,
+        },
+    ])
+    our = frame([
+        {"date": "2026-09-01", "rrn": "C300", "amount": "1000", "status": "OK"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "C300", "amount": "1000", "terminal": "T1", "status": "OK"},
+    ])
+
+    result = run_rrn_reconciliation(
+        our,
+        bank,
+        base_cfg(bank_tid="terminal"),
+        epos_registry=epos_registry,
+    )
+
+    terminal = result["terminal_summary"][0]
+    assert result["total_commission"] == 20.0
+    assert result["effective_commission_rate"] == 2.0
+    assert terminal["merchant_id"] == "MID1"
+    assert terminal["bank_acquirer"] == "Test Bank"
+
+
+def test_empty_rrn_is_unmatched_without_exposing_internal_sentinel():
+    our = frame([
+        {"date": "2026-09-01", "rrn": "", "amount": "100", "status": "OK"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "", "amount": "100", "status": "OK"},
+    ])
+
+    result = run_rrn_reconciliation(our, bank, base_cfg())
+
+    assert result["matched_count"] == 0
+    assert result["only_our"].iloc[0]["RRN"] == ""
+    assert result["only_bank"].iloc[0]["RRN"] == ""
+    assert result["only_our"].iloc[0]["📝 Причина"] == "Пустой RRN"
+    assert result["only_bank"].iloc[0]["📝 Причина"] == "Пустой RRN"
