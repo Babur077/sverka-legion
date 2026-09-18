@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BarChart3, TrendingUp, Coins, CheckCircle2, AlertTriangle, Building2, Terminal, WalletCards } from 'lucide-react';
 import { ReconciliationArchive, TerminalSummaryItem, User } from '../types';
 import { getBankRrnArchive } from '../utils/archiveApi';
+import { getReconciliationQuality } from '../utils/reconciliationMetrics';
 
 interface Props { user: User; }
 
@@ -65,17 +66,22 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
     return terminalRows.filter(t => t.terminal_id === terminal);
   }, [terminalRows, terminal]);
 
-  const totals = useMemo(() => filtered.reduce((s, a) => ({
-    our: s.our + a.total_our,
-    bank: s.bank + a.total_bank,
-    diff: s.diff + a.difference,
-    comm: s.comm + (a.total_commission || 0),
-    matched: s.matched + a.matched_count,
-    total: s.total + a.matched_count + a.mismatch_count + a.only_our_count + a.only_bank_count,
-  }), { our: 0, bank: 0, diff: 0, comm: 0, matched: 0, total: 0 }), [filtered]);
+  const totals = useMemo(() => filtered.reduce((s, a) => {
+    const quality = getReconciliationQuality(a.matched_count, a.mismatch_count, a.only_our_count, a.only_bank_count);
+    return {
+      our: s.our + a.total_our,
+      bank: s.bank + a.total_bank,
+      diff: s.diff + a.difference,
+      comm: s.comm + (a.total_commission || 0),
+      exactMatched: s.exactMatched + quality.exactMatched,
+      rrnMatched: s.rrnMatched + quality.rrnMatched,
+      total: s.total + quality.scope,
+      issues: s.issues + quality.issueCount,
+    };
+  }, { our: 0, bank: 0, diff: 0, comm: 0, exactMatched: 0, rrnMatched: 0, total: 0, issues: 0 }), [filtered]);
 
   const selectedTerminal = terminal === '(Все)' ? null : terminalRows.find(t => t.terminal_id === terminal) || null;
-  const matchRate = totals.total ? totals.matched / totals.total * 100 : 0;
+  const matchRate = totals.total ? totals.exactMatched / totals.total * 100 : 0;
   const effectiveCommission = totals.bank ? totals.comm / totals.bank * 100 : 0;
 
   return <div className="space-y-5">
@@ -99,7 +105,7 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
 
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
       {[
-        { l: 'Match rate', v: `${matchRate.toFixed(1)}%`, i: CheckCircle2, c: 'text-emerald-600 bg-emerald-50' },
+        { l: 'Точное совпадение', v: `${matchRate.toFixed(1)}%`, i: CheckCircle2, c: 'text-emerald-600 bg-emerald-50' },
         { l: 'Оборот банка', v: money(totals.bank), i: TrendingUp, c: 'text-indigo-600 bg-indigo-50' },
         { l: 'Общая комиссия', v: money(totals.comm), i: Coins, c: 'text-violet-600 bg-violet-50' },
         { l: 'Ставка факт.', v: pct(effectiveCommission), i: WalletCards, c: 'text-sky-600 bg-sky-50' },
@@ -126,7 +132,7 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
         <div className="flex items-center justify-between mb-4"><div><h4 className="font-semibold text-slate-900">Динамика по запускам</h4><p className="text-xs text-slate-500">Объём и качество последних результатов</p></div><Building2 className="w-5 h-5 text-slate-300" /></div>
-        <div className="space-y-3">{filtered.slice(0, 8).map(a => { const c = a.matched_count + a.mismatch_count + a.only_our_count + a.only_bank_count; const r = c ? a.matched_count / c * 100 : 0; return <div key={a.id}><div className="flex justify-between text-xs mb-1"><span className="text-slate-600">{new Date(a.timestamp).toLocaleDateString('ru-RU')} · {a.bank_name}</span><span className="font-semibold">{r.toFixed(1)}%</span></div><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min(100, r)}%` }} /></div></div>; })}</div>
+        <div className="space-y-3">{filtered.slice(0, 8).map(a => { const quality = getReconciliationQuality(a.matched_count, a.mismatch_count, a.only_our_count, a.only_bank_count); const r = quality.exactMatchRate; return <div key={a.id}><div className="flex justify-between text-xs mb-1"><span className="text-slate-600">{new Date(a.timestamp).toLocaleDateString('ru-RU')} · {a.bank_name}</span><span className="font-semibold">{r.toFixed(1)}%</span></div><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min(100, r)}%` }} /></div></div>; })}</div>
       </div>
       <div className="bg-slate-900 text-white rounded-xl p-5 shadow-xs">
         <div className="text-xs font-semibold text-indigo-200 uppercase tracking-wider">Период анализа</div>

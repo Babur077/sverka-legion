@@ -29,8 +29,11 @@ interface BankRrnApiResult {
       dup_bank_c?: number;
       matched_count?: number;
       mismatch_count?: number;
+      comm_only_diff_count?: number;
+      deduct_commission?: boolean;
       terminal_summary?: RawRow[];
       total_commission?: number;
+      effective_commission_rate?: number;
       detected_months?: string[];
       dup_action?: string;
     };
@@ -170,6 +173,9 @@ export async function runBankRrnViaApi(
     mismatch_count: Number(rrn.mismatch_count ?? 0),
     terminal_summary: (rrn.terminal_summary || []) as ReconciliationResult['terminal_summary'],
     total_commission: Number(rrn.total_commission || 0),
+    effective_commission_rate: Number(rrn.effective_commission_rate || 0),
+    comm_only_diff_count: Number(rrn.comm_only_diff_count || 0),
+    deduct_commission: Boolean(rrn.deduct_commission),
     detected_months: rrn.detected_months || [],
     merged_rows: [],
     dup_action: rrn.dup_action || cfg.dup_action,

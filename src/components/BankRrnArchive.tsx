@@ -3,6 +3,7 @@ import { Archive, Eye, Search, Trash2, RefreshCw, X, Terminal } from 'lucide-rea
 import { ReconciliationArchive, User } from '../types';
 import { deleteBankRrnArchive, getBankRrnArchive } from '../utils/archiveApi';
 import { ConfirmModal } from './Modal';
+import { getReconciliationQuality } from '../utils/reconciliationMetrics';
 
 interface Props { user: User; onNewReconciliation: () => void; }
 const money = (n: number) => n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
@@ -51,6 +52,12 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
     commission: s.commission + t.commission_amount,
     net: s.net + t.net_volume,
   }), { tx: 0, volume: 0, commission: 0, net: 0 }), [selectedTerminals]);
+  const selectedQuality = useMemo(
+    () => selected
+      ? getReconciliationQuality(selected.matched_count, selected.mismatch_count, selected.only_our_count, selected.only_bank_count)
+      : null,
+    [selected],
+  );
 
   return <div className="space-y-5">
     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -66,7 +73,7 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
 
     <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900">Результаты</div><div className="text-xs text-slate-500 mt-0.5">Показано {filtered.length} из {archive.length}</div></div>
-      {filtered.length === 0 ? <div className="p-12 text-center text-slate-500 text-sm">Записи не найдены.</div> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['Дата', 'Банк', 'Оператор', 'Сумма банка', 'Комиссия', 'Δ', 'Совпадений', 'Действия'].map(h => <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{filtered.map(a => { const count = a.matched_count + a.mismatch_count + a.only_our_count + a.only_bank_count; const rate = count ? a.matched_count / count * 100 : 0; return <tr key={a.id} className="hover:bg-slate-50"><td className="px-5 py-3.5 whitespace-nowrap">{new Date(a.timestamp).toLocaleString('ru-RU')}</td><td className="px-5 py-3.5 font-medium">{a.bank_name}</td><td className="px-5 py-3.5 text-slate-600">{a.username}</td><td className="px-5 py-3.5 text-slate-600">{money(a.total_bank)}</td><td className="px-5 py-3.5 text-violet-700 font-semibold">{money(a.total_commission || 0)}</td><td className={`px-5 py-3.5 font-medium ${a.difference === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>{money(a.difference)}</td><td className="px-5 py-3.5"><span className="font-semibold">{rate.toFixed(1)}%</span><span className="text-xs text-slate-400 ml-2">({a.matched_count})</span></td><td className="px-5 py-3.5"><div className="flex items-center gap-1"><button onClick={() => setSelected(a)} className="p-2 rounded-lg hover:bg-indigo-50 text-slate-500 hover:text-indigo-600" title="Просмотр"><Eye className="w-4 h-4" /></button><button onClick={() => setDeleteTarget(a)} className="p-2 rounded-lg hover:bg-rose-50 text-slate-500 hover:text-rose-600" title="Удалить"><Trash2 className="w-4 h-4" /></button></div></td></tr>; })}</tbody></table></div>}
+      {filtered.length === 0 ? <div className="p-12 text-center text-slate-500 text-sm">Записи не найдены.</div> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['Дата', 'Банк', 'Оператор', 'Сумма банка', 'Комиссия', 'Δ', 'Точное совпадение', 'Действия'].map(h => <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{filtered.map(a => { const quality = getReconciliationQuality(a.matched_count, a.mismatch_count, a.only_our_count, a.only_bank_count); const rate = quality.exactMatchRate; return <tr key={a.id} className="hover:bg-slate-50"><td className="px-5 py-3.5 whitespace-nowrap">{new Date(a.timestamp).toLocaleString('ru-RU')}</td><td className="px-5 py-3.5 font-medium">{a.bank_name}</td><td className="px-5 py-3.5 text-slate-600">{a.username}</td><td className="px-5 py-3.5 text-slate-600">{money(a.total_bank)}</td><td className="px-5 py-3.5 text-violet-700 font-semibold">{money(a.total_commission || 0)}</td><td className={`px-5 py-3.5 font-medium ${a.difference === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>{money(a.difference)}</td><td className="px-5 py-3.5"><span className="font-semibold">{rate.toFixed(1)}%</span><span className="text-xs text-slate-400 ml-2">({quality.exactMatched})</span></td><td className="px-5 py-3.5"><div className="flex items-center gap-1"><button onClick={() => setSelected(a)} className="p-2 rounded-lg hover:bg-indigo-50 text-slate-500 hover:text-indigo-600" title="Просмотр"><Eye className="w-4 h-4" /></button><button onClick={() => setDeleteTarget(a)} className="p-2 rounded-lg hover:bg-rose-50 text-slate-500 hover:text-rose-600" title="Удалить"><Trash2 className="w-4 h-4" /></button></div></td></tr>; })}</tbody></table></div>}
     </div>
 
     {selected && <div className="fixed inset-0 z-50 bg-slate-950/40 flex items-center justify-center p-4" onClick={() => setSelected(null)}>
@@ -77,7 +84,7 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
           ['Сумма банка', money(selected.total_bank)],
           ['Разница', money(selected.difference)],
           ['Общая комиссия', money(selected.total_commission || 0)],
-          ['Совпадений', selected.matched_count.toLocaleString('ru-RU')],
+          ['Точно совпало', (selectedQuality?.exactMatched || 0).toLocaleString('ru-RU')],
           ['Расхождения сумм', selected.mismatch_count.toLocaleString('ru-RU')],
           ['Только у нас / банка', `${selected.only_our_count} / ${selected.only_bank_count}`],
           ['Период', selected.period_month || '—'],
