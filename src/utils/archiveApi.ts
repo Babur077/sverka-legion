@@ -20,7 +20,16 @@ export async function saveBankRrnArchive(
   username: string,
   bankName: string,
   result: ReconciliationResult,
-  totals: { total_our: number; total_bank: number; difference: number; period_month?: string },
+  totals: {
+    total_our: number;
+    total_bank: number;
+    difference: number;
+    period_month?: string;
+    only_our_count?: number;
+    only_bank_count?: number;
+    total_commission?: number;
+    terminals_summary?: ReconciliationResult['terminal_summary'];
+  },
 ): Promise<void> {
   await apiRequest('/api/modules/bank_rrn/archive', username, {
     method: 'POST',
@@ -31,11 +40,11 @@ export async function saveBankRrnArchive(
       difference: totals.difference,
       matched_count: result.matched_count,
       mismatch_count: result.mismatch_count,
-      only_our_count: result.only_our.length,
-      only_bank_count: result.only_bank.length,
+      only_our_count: totals.only_our_count ?? result.only_our.length,
+      only_bank_count: totals.only_bank_count ?? result.only_bank.length,
       period_month: totals.period_month,
-      total_commission: result.total_commission || 0,
-      terminals_summary: result.terminal_summary || [],
+      total_commission: totals.total_commission ?? result.total_commission ?? 0,
+      terminals_summary: totals.terminals_summary ?? result.terminal_summary ?? [],
     }),
   });
 }
