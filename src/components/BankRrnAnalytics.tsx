@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { BarChart3, TrendingUp, Coins, CheckCircle2, AlertTriangle, Building2, Terminal, WalletCards } from 'lucide-react';
 import { ReconciliationArchive, TerminalSummaryItem, User } from '../types';
-import { getArchiveData } from '../utils/storage';
+import { getBankRrnArchive } from '../utils/archiveApi';
 
 interface Props { user: User; }
 
@@ -11,7 +11,10 @@ const pct = (n: number) => `${n.toFixed(2)}%`;
 type TerminalAnalyticsRow = TerminalSummaryItem & { bank: string; runs: number };
 
 export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
-  const [archive] = useState<ReconciliationArchive[]>(getArchiveData());
+  const [archive, setArchive] = useState<ReconciliationArchive[]>([]);
+  React.useEffect(() => {
+    getBankRrnArchive(user.username).then(setArchive).catch(error => console.error(error));
+  }, [user.username]);
   const [bank, setBank] = useState('(Все)');
   const [month, setMonth] = useState('(Все)');
   const [terminal, setTerminal] = useState('(Все)');
