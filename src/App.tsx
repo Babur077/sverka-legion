@@ -11,7 +11,8 @@ import { BankRrnWorkspace, BankRrnSection } from './components/BankRrnWorkspace'
 import { BankRrnOverview } from './components/BankRrnOverview';
 import { BankRrnAnalytics } from './components/BankRrnAnalytics';
 import { BankRrnArchive } from './components/BankRrnArchive';
-import { User, SystemSettings } from './types';
+import { User, SystemSettings, ReconciliationModuleManifest } from './types';
+import { hasModuleWorkspace, ModuleWorkspaceKey } from './modules/workspaceRegistry';
 import { getSettingsViaApi } from './utils/settingsApi';
 
 interface FileParseProgressDetail {
@@ -165,6 +166,7 @@ export const App: React.FC = () => {
     } catch { return null; }
   });
   const [currentTab, setCurrentTab] = useState<string>('modules');
+  const [activeModuleWorkspace, setActiveModuleWorkspace] = useState<ModuleWorkspaceKey | null>(null);
   const [bankSection, setBankSection] = useState<BankRrnSection>('overview');
   const [settings, setSettings] = useState<SystemSettings>({ amount_tolerance: 0.01, currency: 'UZS', dayfirst: true });
 
@@ -184,16 +186,17 @@ export const App: React.FC = () => {
     try { sessionStorage.setItem('reconcile_active_user', JSON.stringify(loggedInUser)); } catch {}
     setUser(loggedInUser);
     setCurrentTab('modules');
+    setActiveModuleWorkspace(null);
     setBankSection('overview');
   };
 
   if (!user) return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
 
-  const openModule = (moduleId: string) => {
-    if (moduleId === 'bank_rrn') {
-      setCurrentTab('bank_rrn');
-      setBankSection('overview');
-    }
+  const openModule = (module: ReconciliationModuleManifest) => {
+    if (!hasModuleWorkspace(module.workspace)) return;
+    setActiveModuleWorkspace(module.workspace);
+    setCurrentTab('module');
+    setBankSection('overview');
   };
 
   const renderBankSection = () => {
@@ -212,13 +215,35 @@ export const App: React.FC = () => {
     }
   };
 
+  const renderActiveModule = () => {
+    switch (activeModuleWorkspace) {
+      case 'bank_rrn':
+        return (
+          <BankRrnWorkspace
+            user={user}
+            activeSection={bankSection}
+            onNavigate={setBankSection}
+            onBack={() => {
+              setActiveModuleWorkspace(null);
+              setCurrentTab('modules');
+            }}
+            onOpenReconciliation={() => setBankSection('workspace')}
+          >
+            {renderBankSection()}
+          </BankRrnWorkspace>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
       <UploadProgressIndicator />
-      {currentTab !== 'bank_rrn' && <Navbar user={user} currentTab={currentTab} onSelectTab={setCurrentTab} onLogout={handleLogout} />}
+      {currentTab !== 'module' && <Navbar user={user} currentTab={currentTab} onSelectTab={setCurrentTab} onLogout={handleLogout} />}
       <main className="flex-1 overflow-y-auto">
         {currentTab === 'modules' && <ModuleWorkspace user={user} onOpenModule={openModule} />}
-        {currentTab === 'bank_rrn' && <BankRrnWorkspace user={user} activeSection={bankSection} onNavigate={setBankSection} onBack={() => setCurrentTab('modules')} onOpenReconciliation={() => setBankSection('workspace')}>{renderBankSection()}</BankRrnWorkspace>}
+        {currentTab === 'module' && renderActiveModule()}
         {currentTab === 'audit' && <AuditPage user={user} />}
         {currentTab === 'admin' && user.role === 'admin' && <AdminPage user={user} settings={settings} onUpdateSettings={setSettings} />}
       </main>
