@@ -10,7 +10,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
 import { RawRow, ReconciliationConfig, ReconciliationResult, UnmatchedRow, AmountMismatchRow, DateSummaryRow, SystemSettings, User, EposTerminal } from '../types';
-import { parseFile, guessCol, exportReconciliationToExcel, generateSampleData } from '../utils/fileParser';
+import { parseFile, guessCol, exportReconciliationToExcel } from '../utils/fileParser';
 import { runBankRrnViaApi } from '../utils/bankRrnApi';
 import { getStoredDraft, saveActiveDraft, clearActiveDraft } from '../utils/storage';
 import { getEposViaApi } from '../utils/eposApi';
@@ -115,6 +115,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [showAddBank, setShowAddBank] = useState<boolean>(false);
   const [newBankInput, setNewBankInput] = useState<string>('');
 
+  const filesReady = !!ourFile && !!bankFile && !!ourSourceFile && !!bankSourceFile;
+  const mappingReady = !!ourDateCol && !!ourRrnCol && !!bankDateCol && !!bankRrnCol;
+  const amountsReady = !!ourAmtCol && !!bankAmtCol;
+  const runReady = filesReady && mappingReady && amountsReady && !isProcessing;
+
   // Check stored draft on initial mount
   useEffect(() => {
     const draft = getStoredDraft();
@@ -174,6 +179,23 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     revInput, ourRev, bankRev, dupAction, unbindMismatches
   ]);
 
+  // A result is valid only for the exact files and reconciliation settings
+  // used to produce it. Changing an input invalidates the previous result so
+  // it cannot accidentally be saved under a different bank or configuration.
+  useEffect(() => {
+    if (!reconData) return;
+    setReconData(null);
+    setSaveSuccessMsg(null);
+    setSelectedDrilldownDate(null);
+    setActiveTab('summary');
+  }, [
+    ourSourceFile, bankSourceFile, selectedBank,
+    ourDateCol, ourRrnCol, ourAmtCol, ourStatusCol,
+    bankDateCol, bankRrnCol, bankAmtCol, bankStatusCol, bankTidCol,
+    revInput, ourRev, bankRev, dupAction, unbindMismatches, deductCommission,
+    settings.amount_tolerance,
+  ]);
+
   const handleRestoreDraft = () => {
     if (!savedDraft) return;
     if (savedDraft.selectedBank) setSelectedBank(savedDraft.selectedBank);
@@ -229,6 +251,18 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         setBankAmtCol('');
         setBankStatusCol('');
         setBankTidCol('');
+        setShowPreviewOur(false);
+        setShowPreviewBank(false);
+        setActiveTab('summary');
+        setSelectedDrilldownDate(null);
+        setSaveSuccessMsg(null);
+        setDraftRestored(false);
+        setFilterDateOur('(Все)');
+        setFilterStatusOur('(Все)');
+        setFilterDateBank('(Все)');
+        setFilterStatusBank('(Все)');
+        setUnmatchedPageOur(1);
+        setUnmatchedPageBank(1);
         clearActiveDraft();
         setSavedDraft(null);
         setShowDraftBanner(false);
@@ -363,47 +397,23 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     }
   };
 
-  const handleLoadDemoData = () => {
-    const demo = generateSampleData();
-    setDraftRestored(false);
-    setShowDraftBanner(false);
-    setOurSourceFile(rowsToCsvFile(demo.ourData.rows, demo.ourData.fileName));
-    setOurFile({ name: demo.ourData.fileName, rows: demo.ourData.rows, columns: demo.ourData.columns });
-    setOurDateCol('Дата');
-    setOurRrnCol('Ключ RRN');
-    setOurAmtCol('Сумма платежа');
-    setOurStatusCol('Статус');
-
-    setBankSourceFile(rowsToCsvFile(demo.bankData.rows, demo.bankData.fileName));
-    setBankFile({ name: demo.bankData.fileName, rows: demo.bankData.rows, columns: demo.bankData.columns });
-    setBankDateCol('Дата проводки');
-    setBankRrnCol('Код RRN');
-    setBankAmtCol('Сумма банка');
-    setBankStatusCol('Статус операции');
-    setBankTidCol('Терминал TID');
-  };
-
-  const rowsToCsvFile = (rows: RawRow[], filename: string): File => {
-    const columns = Array.from(new Set(rows.flatMap(row => Object.keys(row))));
-    const escapeCsv = (value: unknown) => {
-      const text = value == null ? '' : String(value);
-      return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-    };
-    const csv = [
-      columns.map(escapeCsv).join(','),
-      ...rows.map(row => columns.map(column => escapeCsv(row[column])).join(',')),
-    ].join('\n');
-    const baseName = filename.replace(/\.(xlsx|xls)$/i, '.csv');
-    return new File([csv], baseName, { type: 'text/csv;charset=utf-8' });
-  };
-
   const handleRunReconciliation = async () => {
     // Validation checks
     if (!ourFile || !bankFile) {
       setAlertState({
         isOpen: true,
         title: 'Файлы не выбраны',
-        message: 'Пожалуйста, загрузите реестр (1C / Система) и выписку банка (Excel или CSV), либо нажмите «Загрузить демо-файлы».',
+        message: 'Пожалуйста, загрузите реестр (1C / Система) и выписку банка (Excel или CSV).',
+        type: 'warning',
+      });
+      return;
+    }
+
+    if (!ourDateCol || !bankDateCol) {
+      setAlertState({
+        isOpen: true,
+        title: 'Не выбраны колонки даты',
+        message: 'Для обеих сторон обязательно выберите колонку даты операции.',
         type: 'warning',
       });
       return;
@@ -774,15 +784,6 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             </button>
           )}
 
-          <button
-            id="btn-load-demo-data"
-            type="button"
-            onClick={handleLoadDemoData}
-            className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Загрузить демо-файлы 1С & Банк</span>
-          </button>
         </div>
       </div>
 
@@ -839,6 +840,35 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         </div>
       )}
 
+      {/* ─── WORKFLOW READINESS ─── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div>
+            <div className="text-sm font-bold text-slate-900">Готовность к запуску</div>
+            <div className="text-xs text-slate-500 mt-0.5">Результат всегда относится к текущим файлам и настройкам. При их изменении предыдущий результат автоматически сбрасывается.</div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 min-w-0 lg:min-w-[430px]">
+            {[
+              { label: '1. Банк', ready: !!selectedBank },
+              { label: '2. Файлы', ready: filesReady },
+              { label: '3. Колонки', ready: mappingReady && amountsReady },
+            ].map(step => (
+              <div
+                key={step.label}
+                className={`rounded-xl border px-3 py-2 text-xs font-semibold flex items-center gap-2 ${
+                  step.ready
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-slate-50 text-slate-500'
+                }`}
+              >
+                {step.ready ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <Square className="w-3.5 h-3.5 shrink-0" />}
+                <span>{step.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* ─── ВЫБОР БАНКА-ЭКВАЙЕРА (БЫСТРЫЙ НАБОР) ─── */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -848,7 +878,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             </div>
             <div>
               <h2 className="text-sm font-bold text-slate-900">Банк-эквайер для сверки</h2>
-              <p className="text-xs text-slate-500">Быстрый выбор банка или добавление нового в систему</p>
+              <p className="text-xs text-slate-500">Выберите банк для текущей сверки; временное название можно добавить только в этот рабочий сеанс</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -886,7 +916,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/80 transition-colors flex items-center gap-1 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Добавить банк</span>
+            <span>Добавить в текущий список</span>
           </button>
         </div>
 
@@ -896,7 +926,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               type="text"
               value={newBankInput}
               onChange={(e) => setNewBankInput(e.target.value)}
-              placeholder="Название нового банка (напр. Agrobank)"
+              placeholder="Название банка для текущей сверки"
               className="flex-1 py-1.5 px-3 border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500"
               autoFocus
             />
@@ -939,7 +969,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             />
             <FileSpreadsheet className="w-8 h-8 text-slate-400 mb-1.5" />
             <span className="text-xs font-medium text-slate-700">
-              {ourFile ? ourFile.name : 'Нажмите для выбора файла или перетащите'}
+              {ourFile ? ourFile.name : 'Нажмите для выбора файла'}
             </span>
             <span className="text-[11px] text-slate-400 mt-0.5">.xlsx, .xls или .csv (до 200 МБ)</span>
           </label>
@@ -998,7 +1028,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             />
             <FileSpreadsheet className="w-8 h-8 text-slate-400 mb-1.5" />
             <span className="text-xs font-medium text-slate-700">
-              {bankFile ? bankFile.name : 'Нажмите для выбора файла или перетащите'}
+              {bankFile ? bankFile.name : 'Нажмите для выбора файла'}
             </span>
             <span className="text-[11px] text-slate-400 mt-0.5">.xlsx, .xls или .csv (до 200 МБ)</span>
           </label>
@@ -1299,15 +1329,22 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             id="btn-run-recon"
             type="button"
             onClick={handleRunReconciliation}
-            disabled={isProcessing}
-            className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-sm rounded-xl shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            disabled={!runReady}
+            title={!filesReady ? 'Загрузите оба исходных файла' : !mappingReady ? 'Выберите обязательные колонки даты и RRN' : !amountsReady ? 'Выберите колонки сумм' : 'Запустить сверку'}
+            className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-sm rounded-xl shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
           >
             {isProcessing ? (
               <RefreshCw className="w-4 h-4 animate-spin" />
             ) : (
               <Play className="w-4 h-4 fill-current" />
             )}
-            <span>{isProcessing ? 'Выполняется расчет...' : 'Запустить сверку транзакций'}</span>
+            <span>
+              {isProcessing
+                ? 'Выполняется расчет...'
+                : runReady
+                  ? 'Запустить сверку транзакций'
+                  : 'Заполните обязательные данные для запуска'}
+            </span>
           </button>
         </div>
       )}
