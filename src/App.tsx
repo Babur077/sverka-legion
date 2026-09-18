@@ -14,7 +14,8 @@ import { BankRrnArchive } from './components/BankRrnArchive';
 import { User, SystemSettings, ReconciliationModuleManifest } from './types';
 import { hasModuleWorkspace, ModuleWorkspaceKey } from './modules/workspaceRegistry';
 import { getSettingsViaApi } from './utils/settingsApi';
-import { getCurrentUserViaApi } from './utils/authApi';
+import { getCurrentUserViaApi, logoutViaApi } from './utils/authApi';
+import { clearSessionToken } from './utils/apiClient';
 import { hasPermission } from './utils/permissions';
 
 interface FileParseProgressDetail {
@@ -188,11 +189,14 @@ export const App: React.FC = () => {
         return refreshed;
       });
     }).catch(() => {
-      // Backend remains authoritative even if a permission refresh temporarily fails.
+      clearSessionToken();
+      try { sessionStorage.removeItem('reconcile_active_user'); } catch {}
+      setUser(null);
     });
   }, [user?.username, currentTab]);
 
   const handleLogout = () => {
+    void logoutViaApi();
     try { sessionStorage.removeItem('reconcile_active_user'); } catch {}
     setUser(null);
   };
