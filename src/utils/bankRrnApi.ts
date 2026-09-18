@@ -80,14 +80,32 @@ export async function runBankRrnViaApi(
     body: form,
   });
 
-  const payload = await response.json().catch(() => null);
+  const rawBody = await response.text();
+  let payload: any = null;
+  try {
+    payload = rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    payload = null;
+  }
+
   if (!response.ok) {
     const detail = payload?.detail;
+    const validationErrors = Array.isArray(detail)
+      ? detail
+          .map((item: any) => item?.msg || item?.message || String(item))
+          .filter(Boolean)
+          .join('; ')
+      : detail?.errors?.join?.('; ');
     const message = typeof detail === 'string'
       ? detail
-      : detail?.errors?.join?.('; ')
-        || 'FastAPI не смог выполнить сверку.';
+      : validationErrors
+        || (rawBody && rawBody !== 'Internal Server Error' ? rawBody : '')
+        || `FastAPI не смог выполнить сверку (HTTP ${response.status}).`;
     throw new Error(message);
+  }
+
+  if (!payload) {
+    throw new Error('FastAPI вернул пустой или некорректный ответ после сверки.');
   }
 
   const apiResult = payload as BankRrnApiResult;
