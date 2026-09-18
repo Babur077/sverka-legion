@@ -19,9 +19,10 @@ import { User, ReconciliationModuleManifest } from '../types';
 interface ModuleWorkspaceProps {
   user: User;
   onSelectRrnModule: () => void;
+  onSelectPaynetModule: () => void;
 }
 
-export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onSelectRrnModule }) => {
+export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onSelectRrnModule, onSelectPaynetModule }) => {
   const [modules, setModules] = useState<ReconciliationModuleManifest[]>([
     {
       id: 'bank_rrn',
@@ -39,9 +40,9 @@ export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onSelect
       ]
     },
     {
-      id: 'paynet_agents',
+      id: 'paynet',
       name: 'Сверка платежных систем (Paynet / Payme)',
-      version: '1.0.1',
+      version: '1.1.0',
       description: 'Сверка агентских реестров с внутренним биллингом по Transaction ID, комиссиям и статусам холда.',
       category: 'Платежные системы',
       icon: 'Receipt',
@@ -221,6 +222,15 @@ export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onSelect
                 >
                   <Play className="w-4 h-4 fill-white" />
                   Перейти в рабочее место сверки
+                </button>
+              ) : activeModule.id === 'paynet' ? (
+                <button
+                  onClick={onSelectPaynetModule}
+                  disabled={!hasAccess(activeModule)}
+                  className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 text-white text-sm font-semibold flex items-center gap-2 shadow-xs transition-colors"
+                >
+                  <Play className="w-4 h-4 fill-white" />
+                  Перейти в Paynet workspace
                 </button>
               ) : (
                 <button
