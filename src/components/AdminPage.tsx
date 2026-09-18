@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Shield, UserPlus, Users, Settings as SettingsIcon, History, Trash2, CheckCircle, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { User, AuditLog, SystemSettings } from '../types';
-import { getStoredUsers, addUser, deleteUser, getAuditLogs, saveSettings, logAction } from '../utils/storage';
+import { getAuditLogs, saveSettings, logAction } from '../utils/storage';
+import { getUsersViaApi, createUserViaApi, deleteUserViaApi } from '../utils/adminUsersApi';
 import { ConfirmModal, AlertModal } from './Modal';
 
 interface AdminPageProps {
@@ -11,7 +12,9 @@ interface AdminPageProps {
 }
 
 export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSettings }) => {
-  const [users, setUsers] = useState(getStoredUsers());
+  const [users, setUsers] = useState<User[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [usersError, setUsersError] = useState<string | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(getAuditLogs());
 
   // Add User Form
@@ -48,19 +51,33 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
     onConfirm: () => {},
   });
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const refreshUsers = async () => {
+    setUsersLoading(true);
+    setUsersError(null);
+    try {
+      setUsers(await getUsersViaApi(user.username));
+    } catch (error: any) {
+      setUsersError(error?.message || 'Не удалось загрузить пользователей.');
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshUsers();
+  }, [user.username]);
+
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setUserMsg(null);
-
-    const res = addUser(newUsername, newPassword, newRole);
-    if (res.success) {
-      setUsers(getStoredUsers());
-      setUserMsg({ type: 'success', text: res.message });
-      logAction(user.username, 'CREATE_USER', `Создан пользователь ${newUsername} (${newRole})`);
+    try {
+      await createUserViaApi(user.username, newUsername, newPassword, newRole);
+      await refreshUsers();
+      setUserMsg({ type: 'success', text: 'Пользователь успешно создан!' });
       setNewUsername('');
       setNewPassword('');
-    } else {
-      setUserMsg({ type: 'error', text: res.message });
+    } catch (error: any) {
+      setUserMsg({ type: 'error', text: error?.message || 'Не удалось создать пользователя.' });
     }
   };
 
@@ -79,10 +96,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
       isOpen: true,
       title: 'Удаление пользователя',
       message: `Вы действительно хотите безвозвратно удалить учётную запись «${username}»?`,
-      onConfirm: () => {
-        if (deleteUser(id)) {
-          setUsers(getStoredUsers());
-          logAction(user.username, 'DELETE_USER', `Удален пользователь ${username}`);
+      onConfirm: async () => {
+        try {
+          await deleteUserViaApi(user.username, id);
+          await refreshUsers();
+        } catch (error: any) {
+          setUserMsg({ type: 'error', text: error?.message || 'Не удалось удалить пользователя.' });
         }
       },
     });
@@ -239,7 +258,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ user, settings, onUpdateSe
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {sortedUsers.map(u => (
+                {usersLoading ? (
+                  <tr><td colSpan={4} className="px-3 py-8 text-center text-slate-400">Загрузка пользователей…</td></tr>
+                ) : usersError ? (
+                  <tr><td colSpan={4} className="px-3 py-8 text-center text-rose-600">{usersError}</td></tr>
+                ) : sortedUsers.map(u => (
                   <tr key={u.id} className="hover:bg-slate-50">
                     <td className="px-3 py-2.5 font-bold text-slate-900">{u.username}</td>
                     <td className="px-3 py-2.5">

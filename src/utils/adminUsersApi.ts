@@ -1,0 +1,37 @@
+import { User } from '../types';
+
+const request = async (path: string, username: string, init: RequestInit = {}) => {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+      'X-User': username,
+      'Content-Type': 'application/json',
+    },
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(typeof payload?.detail === 'string' ? payload.detail : 'Ошибка управления пользователями.');
+  }
+  return payload;
+};
+
+export async function getUsersViaApi(username: string): Promise<User[]> {
+  return request('/api/admin/users', username);
+}
+
+export async function createUserViaApi(
+  username: string,
+  newUsername: string,
+  password: string,
+  role: User['role'],
+): Promise<void> {
+  await request('/api/admin/users', username, {
+    method: 'POST',
+    body: JSON.stringify({ username: newUsername, password, role }),
+  });
+}
+
+export async function deleteUserViaApi(username: string, userId: number): Promise<void> {
+  await request('/api/admin/users/' + userId, username, { method: 'DELETE' });
+}
