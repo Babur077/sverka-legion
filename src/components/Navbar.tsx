@@ -20,7 +20,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const roleLabel: Record<string, string> = {
     admin: 'Администратор',
-    accountant: 'Бухгалтер',
+    accountant: 'Бухгалтер эквайринга',
+    accountant_acquiring: 'Бухгалтер эквайринга',
+    accountant_paynet: 'Бухгалтер Paynet',
     auditor: 'Аудитор',
     finance_manager: 'Фин. менеджер',
   };
@@ -29,6 +31,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   const roleBadgeColor: Record<string, string> = {
     admin: 'bg-indigo-50 text-indigo-700 border-indigo-200',
     accountant: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    accountant_acquiring: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    accountant_paynet: 'bg-cyan-50 text-cyan-700 border-cyan-200',
     auditor: 'bg-amber-50 text-amber-700 border-amber-200',
     finance_manager: 'bg-purple-50 text-purple-700 border-purple-200',
   };
@@ -45,10 +49,11 @@ export const Navbar: React.FC<NavbarProps> = ({
       id: 'rrn', 
       label: user.role === 'auditor' ? 'Сверка RRN (Аудит)' : 'Сверка по RRN', 
       icon: RefreshCw, 
-      adminOnly: false 
+      adminOnly: false,
+      requiredPermission: 'bank_rrn.view'
     },
-    { id: 'epos', label: 'Реестр банков', icon: Building2, adminOnly: true },
-    { id: 'analytics', label: 'Аналитика', icon: BarChart3, adminOnly: false },
+    { id: 'epos', label: 'Реестр банков', icon: Building2, adminOnly: false, requiredPermission: 'epos.view' },
+    { id: 'analytics', label: 'Аналитика', icon: BarChart3, adminOnly: false, requiredPermission: 'analytics.view_all' },
     { id: 'audit', label: 'Аудит', icon: History, adminOnly: false, requiredPermission: 'audit.view' },
     { id: 'admin', label: 'Настройки', icon: Settings, adminOnly: true },
   ].filter(item => (!item.adminOnly || user.role === 'admin') && (!item.requiredPermission || user.role === 'admin' || user.permissions?.includes(item.requiredPermission)));
