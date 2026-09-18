@@ -2,8 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Building2, Plus, Trash2, CheckCircle, AlertCircle, RotateCcw, Landmark, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { EposTerminal, User } from '../types';
 import { getEposViaApi, createEposViaApi, updateEposViaApi, deleteEposViaApi } from '../utils/eposApi';
-import { 
-  logAction, 
+import {
   getStoredBanks, 
   addStoredBank,
   DEFAULT_BANKS
@@ -84,7 +83,7 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
     setMessage({ type: 'success', text: `Банк «${clean}» добавлен в список быстрого выбора!` });
   };
 
-  const handleAddTerminal = (e: React.FormEvent) => {
+  const handleAddTerminal = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
 
@@ -111,7 +110,6 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
       await createEposViaApi(user.username, newTerm);
       await refreshTerminals();
       setMessage({ type: 'success', text: `Банк ${bankName} (TID: ${cleanTid}) успешно сохранен в реестр!` });
-      logAction(user.username, 'ADD_EPOS', `Добавлен банк/терминал ${bankName} (TID: ${cleanTid}, ${commPct}%)`);
       setTid(''); setMid('');
     } catch (error: any) {
       setMessage({ type: 'error', text: error?.message || 'Не удалось сохранить терминал.' });
@@ -123,7 +121,6 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
     try {
       await updateEposViaApi(user.username, { ...terminal, is_active: !terminal.is_active });
       await refreshTerminals();
-      logAction(user.username, 'TOGGLE_EPOS', `Изменен статус активности терминала ${terminal.terminal_id}`);
     } catch (error: any) {
       setMessage({ type: 'error', text: error?.message || 'Не удалось изменить статус терминала.' });
     } finally { setSaving(false); }
@@ -144,7 +141,6 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
       try {
         await deleteEposViaApi(user.username, terminalId);
         await refreshTerminals();
-        logAction(user.username, 'DELETE_EPOS', `Удален банк/терминал ${bankName} (${terminalId})`);
       } catch (error: any) {
         setMessage({ type: 'error', text: error?.message || 'Не удалось удалить терминал.' });
       } finally { setSaving(false); }
