@@ -145,6 +145,8 @@ export interface ReconciliationResult {
   terminal_summary?: TerminalSummaryItem[];
   total_commission?: number;
   effective_commission_rate?: number;
+  comm_only_diff_count?: number;
+  deduct_commission?: boolean;
   detected_months?: string[];
   merged_rows: Array<{
     date_str: string;
