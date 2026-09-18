@@ -28,27 +28,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
       - name: Install frontend dependencies
-        shell: bash
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            echo "::warning::package-lock.json is missing; falling back to npm install"
-            npm install --no-audit --no-fund
-          fi
-      - name: Upload generated lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-package-lock
-          path: package-lock.json
-          retention-days: 1
-      - name: Emit generated lockfile
-        shell: bash
-        run: |
-          echo "__LOCKFILE_BEGIN__"
-          cat package-lock.json
-          echo "__LOCKFILE_END__"
+        run: npm ci --no-audit --no-fund
       - name: TypeScript check
         run: npm run lint
       - name: Production build
