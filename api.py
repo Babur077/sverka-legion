@@ -223,27 +223,29 @@ async def save_module_archive(
     payload: Dict[str, Any],
     x_user: Optional[str] = Header("admin"),
 ):
-    """Сохраняет метаданные результата сверки в серверный архив."""
+    """Сохраняет метаданные результата сверки в общий серверный архив."""
     perms = get_user_permissions(x_user)
     if not has_permission(perms, f"{module_id}.run") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Нет прав на сохранение результата сверки")
-    if module_id != "bank_rrn":
-        raise HTTPException(status_code=404, detail="Серверный архив для этого модуля пока не реализован")
+    if not module_registry.get_module(module_id):
+        raise HTTPException(status_code=404, detail="Модуль не найден")
 
     try:
         ok, message = save_reconciliation(
             user=x_user,
-            bank_name=str(payload.get("bank_name") or "Не указан"),
-            tot_our=float(payload.get("total_our") or 0),
-            tot_bank=float(payload.get("total_bank") or 0),
+            bank_name=str(payload.get("label") or payload.get("bank_name") or payload.get("provider_name") or "Не указан"),
+            tot_our=float(payload.get("total_a", payload.get("total_our", 0)) or 0),
+            tot_bank=float(payload.get("total_b", payload.get("total_bank", 0)) or 0),
             diff=float(payload.get("difference") or 0),
             matched_c=int(payload.get("matched_count") or 0),
-            mismatch_c=int(payload.get("mismatch_count") or 0),
-            only_our_c=int(payload.get("only_our_count") or 0),
-            only_bank_c=int(payload.get("only_bank_count") or 0),
+            mismatch_c=int(payload.get("mismatch_count", payload.get("discrepancy_count", 0)) or 0),
+            only_our_c=int(payload.get("only_a_count", payload.get("only_our_count", 0)) or 0),
+            only_bank_c=int(payload.get("only_b_count", payload.get("only_bank_count", 0)) or 0),
             period_month=payload.get("period_month"),
             total_commission=float(payload.get("total_commission") or 0),
             terminals_data=payload.get("terminals_summary") or [],
+            module_id=module_id,
+            extra_data=payload.get("extra") or {},
         )
         if not ok:
             raise HTTPException(status_code=500, detail=message)
@@ -262,6 +264,7 @@ async def save_module_archive(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка сохранения архива: {e}")
 
+
 @app.get("/api/modules/{module_id}/archive")
 async def fetch_module_archive(
     module_id: str,
@@ -271,18 +274,24 @@ async def fetch_module_archive(
     perms = get_user_permissions(x_user)
     if not has_permission(perms, f"{module_id}.view") and not has_permission(perms, "analytics.view_all") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Доступ к архиву ограничен")
-    if module_id != "bank_rrn":
-        raise HTTPException(status_code=404, detail="Серверный архив для этого модуля пока не реализован")
+    if not module_registry.get_module(module_id):
+        raise HTTPException(status_code=404, detail="Модуль не найден")
 
-    df = get_archive_data()
+    df = get_archive_data(module_id)
     records = df.to_dict(orient="records") if hasattr(df, "to_dict") else []
     for item in records:
         try:
             item["terminals_summary"] = json.loads(item.get("terminals_json") or "[]")
         except (TypeError, json.JSONDecodeError):
             item["terminals_summary"] = []
+        try:
+            item["extra"] = json.loads(item.get("extra_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            item["extra"] = {}
         item.pop("terminals_json", None)
-    return records
+        item.pop("extra_json", None)
+    return _json_safe(records)
+
 
 @app.delete("/api/modules/{module_id}/archive/{record_id}")
 async def remove_module_archive(
@@ -294,8 +303,14 @@ async def remove_module_archive(
     perms = get_user_permissions(x_user)
     if not has_permission(perms, f"{module_id}.run") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Нет прав на удаление записи архива")
-    if module_id != "bank_rrn":
-        raise HTTPException(status_code=404, detail="Серверный архив для этого модуля пока не реализован")
+    if not module_registry.get_module(module_id):
+        raise HTTPException(status_code=404, detail="Модуль не найден")
+
+    df = get_archive_data(module_id)
+    ids = set(df["id"].tolist()) if hasattr(df, "columns") and "id" in df.columns else set()
+    if record_id not in ids:
+        raise HTTPException(status_code=404, detail="Запись архива не найдена в этом модуле")
+
     delete_archive_record(record_id)
     record_audit_event(
         user_id=x_user,
@@ -307,6 +322,7 @@ async def remove_module_archive(
         details=f"Удалена запись архива #{record_id}",
     )
     return {"success": True}
+
 
 @app.get("/api/modules/{module_id}/analytics")
 async def get_module_analytics(module_id: str, x_user: Optional[str] = Header("admin")):
