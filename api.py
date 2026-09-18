@@ -32,7 +32,6 @@ from utils.db_manager import (
     delete_archive_record,
     add_user,
     delete_user,
-    get_all_users,
 )
 from utils.permissions import (
     init_permissions_db,
