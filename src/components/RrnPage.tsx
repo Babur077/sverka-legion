@@ -697,6 +697,15 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       ? totalBankSum
       : totalBankSum - adjustedCommission;
 
+    const dataQuality = reconData.data_quality || {};
+    const sourceQualityIssueCount = ['our', 'bank'].reduce((sum, side) => {
+      const quality = dataQuality[side as 'our' | 'bank'] || {};
+      return sum
+        + Number(quality.missing_date || 0)
+        + Number(quality.invalid_date || 0)
+        + Number(quality.empty_rrn || 0);
+    }, 0);
+
     return {
       adjustedSummary,
       adjustedTerminalSummary,
@@ -710,6 +719,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       activeOnlyOurCount,
       activeOnlyBankCount,
       quality,
+      sourceQualityIssueCount,
     };
   }, [reconData]);
 
@@ -766,7 +776,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     const bankNameForArchive = selectedBank || bankFile?.name.replace(/\.[^/.]+$/, '') || 'Банк';
 
     try {
-      await saveBankRrnArchive(
+      const archiveMessage = await saveBankRrnArchive(
         user.username,
         bankNameForArchive,
         reconData,
@@ -780,12 +790,34 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           total_commission: dynamicCalculations.adjustedCommission,
           terminals_summary: dynamicCalculations.adjustedTerminalSummary,
         },
+        {
+          source_our_name: ourSourceFile?.name || ourFile?.name || '',
+          source_bank_name: bankSourceFile?.name || bankFile?.name || '',
+          config: {
+            our_date_col: ourDateCol,
+            our_rrn_col: ourRrnCol,
+            our_amt_col: ourAmtCol,
+            our_status_col: ourStatusCol,
+            bank_date_col: bankDateCol,
+            bank_rrn_col: bankRrnCol,
+            bank_amt_col: bankAmtCol,
+            bank_status_col: bankStatusCol,
+            bank_tid_col: bankTidCol,
+            rev_words: revInput.split(',').map(word => word.trim()).filter(Boolean),
+            our_rev_action: ourRev,
+            bank_rev_action: bankRev,
+            dup_action: dupAction,
+            unbind_mismatches: unbindMismatches,
+            tolerance: settings.amount_tolerance,
+            deduct_commission: deductCommission,
+          },
+        },
       );
-      setSaveSuccessMsg(`Сверка за ${selectedArchiveMonth} успешно записана в архив!`);
+      setSaveSuccessMsg(archiveMessage);
       setAlertState({
         isOpen: true,
         title: 'Успешно сохранено',
-        message: `Сверка по банку "${bankNameForArchive}" за месяц ${selectedArchiveMonth} успешно зафиксирована в серверном архиве с аналитикой по терминалам.`,
+        message: `${archiveMessage} Банк: "${bankNameForArchive}", период: ${selectedArchiveMonth}.`,
         type: 'success',
       });
     } catch (error: any) {
@@ -1422,13 +1454,37 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       {/* ─── RESULTS DISPLAY ─── */}
       {reconData && dynamicCalculations && (
         <div className="space-y-6 pt-2">
+          {/* Source data quality diagnostics */}
+          {dynamicCalculations.sourceQualityIssueCount > 0 && (
+            <div className="p-4 rounded-xl bg-orange-50 border border-orange-200 text-orange-900 text-sm">
+              <div className="font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-orange-600" />
+                Качество исходных данных требует проверки
+              </div>
+              <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                {([
+                  ['Наш реестр', reconData.data_quality?.our],
+                  ['Банк', reconData.data_quality?.bank],
+                ] as const).map(([label, quality]) => (
+                  <div key={label} className="rounded-lg border border-orange-200/70 bg-white/60 px-3 py-2">
+                    <span className="font-semibold">{label}:</span>{' '}
+                    пустая дата {quality?.missing_date || 0}, дата не распознана {quality?.invalid_date || 0}, пустой RRN {quality?.empty_rrn || 0}
+                  </div>
+                ))}
+              </div>
+              <div className="text-[11px] text-orange-700 mt-2">
+                Нераспознанная дата больше не влияет на факт совпадения RRN, но такие строки стоит исправить до окончательного закрытия периода.
+              </div>
+            </div>
+          )}
+
           {/* Status Alert Banner */}
           {dynamicCalculations.quality.rrnMatched === 0 && dynamicCalculations.quality.scope > 0 ? (
             <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-3 text-rose-800 text-sm">
               <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
               <span><strong>Ни одного совпадения по RRN!</strong> Проверьте выбранные колонки и формат RRN.</span>
             </div>
-          ) : Math.abs(dynamicCalculations.totalDiff) <= tolerance && dynamicCalculations.quality.issueCount === 0 ? (
+          ) : Math.abs(dynamicCalculations.totalDiff) <= tolerance && dynamicCalculations.quality.issueCount === 0 && dynamicCalculations.sourceQualityIssueCount === 0 ? (
             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3 text-emerald-800 text-sm">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <span>
@@ -1445,8 +1501,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
               <span>
                 <strong>Финансовый итог сходится, но сверка не закрыта.</strong>{' '}
-                Осталось проблем: {dynamicCalculations.quality.issueCount}
+                Транзакционных проблем: {dynamicCalculations.quality.issueCount}
                 {' '}({dynamicCalculations.quality.amountMismatches} расхождений сумм + {dynamicCalculations.quality.unmatched} несопоставленных).
+                {dynamicCalculations.sourceQualityIssueCount > 0 ? (
+                  <span className="ml-1">Проблем качества исходных данных: {dynamicCalculations.sourceQualityIssueCount}.</span>
+                ) : null}
               </span>
             </div>
           ) : (
