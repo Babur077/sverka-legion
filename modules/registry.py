@@ -121,7 +121,8 @@ class ModuleRegistry:
         return [
             manifest
             for manifest in manifests
-            if any(permission in user_permissions for permission in manifest.required_permissions)
+            if manifest.status == "active"
+            and any(permission in user_permissions for permission in manifest.required_permissions)
         ]
 
 
