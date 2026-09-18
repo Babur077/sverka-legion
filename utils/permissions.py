@@ -67,6 +67,8 @@ def get_user_permissions(username: str) -> List[str]:
             return []
 
         role, custom_perms_json = row
+        # Legacy role compatibility: old "accountant" means acquiring accountant.
+        role = "accountant_acquiring" if role == "accountant" else role
         # Базовые права из роли
         effective_perms = list(DEFAULT_ROLE_PERMISSIONS.get(role, []))
 
