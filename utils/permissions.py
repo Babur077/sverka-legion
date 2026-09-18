@@ -185,6 +185,8 @@ def update_user_access(
         return False, "Недопустимая роль пользователя", None
 
     normalized = normalize_permission_overrides({"allow": allow, "deny": deny})
+    if role == "admin":
+        normalized = {"allow": [], "deny": []}
 
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
