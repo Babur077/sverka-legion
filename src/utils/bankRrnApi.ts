@@ -41,6 +41,52 @@ function boolParam(value: boolean): string {
   return value ? 'true' : 'false';
 }
 
+function toNumber(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function toDateString(value: unknown): string {
+  const text = value == null ? '' : String(value);
+  if (!text) return '';
+  const datePart = text.slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : text;
+}
+
+function normalizeUnmatched(row: RawRow, side: 'our' | 'bank'): ReconciliationResult['only_our'][number] {
+  const amount = side === 'our'
+    ? row.net_amount_our ?? row.amount ?? 0
+    : row.net_amount_bank ?? row.raw_amount ?? row.amount ?? 0;
+  const status = side === 'our' ? row.status_our ?? row.status : row.status_bank ?? row.status;
+  const checkedRaw = row['✅'];
+
+  return {
+    checked: typeof checkedRaw === 'boolean' ? checkedRaw : true,
+    reason: String(row['📝 Причина'] ?? row.reason ?? ''),
+    date_str: String(row.date_str || toDateString(side === 'our' ? row.date ?? row.date_unified : row.date_bank ?? row.date_unified ?? row.date)),
+    RRN: String(row.RRN ?? ''),
+    amount: toNumber(amount),
+    status: status == null ? '' : String(status),
+    terminal_id: row.terminal_id == null ? undefined : String(row.terminal_id),
+    commission_pct: row.commission_pct == null ? undefined : toNumber(row.commission_pct),
+    raw: row,
+  };
+}
+
+function normalizeMismatch(row: RawRow): ReconciliationResult['amt_mismatches'][number] {
+  return {
+    RRN: String(row.RRN ?? ''),
+    date_our: toDateString(row.date ?? row.date_our),
+    date_bank: toDateString(row.date_bank),
+    net_amount_our: toNumber(row.net_amount_our),
+    net_amount_bank: toNumber(row.net_amount_bank),
+    'Δ сумма': toNumber(row['Δ сумма'] ?? row.delta ?? (toNumber(row.net_amount_bank) - toNumber(row.net_amount_our))),
+    status_our: row.status_our == null ? undefined : String(row.status_our),
+    status_bank: row.status_bank == null ? undefined : String(row.status_bank),
+  };
+}
+
 /**
  * Runs Bank RRN through the FastAPI module contract.
  * The backend is the source of truth for reconciliation execution;
@@ -113,9 +159,9 @@ export async function runBankRrnViaApi(
 
   return {
     summary: (apiResult.by_date || []) as ReconciliationResult['summary'],
-    only_our: (rrn.only_our || []) as ReconciliationResult['only_our'],
-    only_bank: (rrn.only_bank || []) as ReconciliationResult['only_bank'],
-    amt_mismatches: (rrn.amt_mismatches || []) as ReconciliationResult['amt_mismatches'],
+    only_our: (rrn.only_our || []).map(row => normalizeUnmatched(row, 'our')),
+    only_bank: (rrn.only_bank || []).map(row => normalizeUnmatched(row, 'bank')),
+    amt_mismatches: (rrn.amt_mismatches || []).map(normalizeMismatch),
     dups_our: (rrn.dups_our || []) as ReconciliationResult['dups_our'],
     dups_bank: (rrn.dups_bank || []) as ReconciliationResult['dups_bank'],
     dup_our_c: Number(rrn.dup_our_c || 0),
