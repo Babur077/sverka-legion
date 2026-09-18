@@ -10,7 +10,7 @@ import time
 import socket
 import subprocess
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,6 +45,8 @@ from utils.permissions import (
     update_user_access,
     has_permission,
     record_audit_event,
+    query_audit_events,
+    get_audit_filter_options,
 )
 from modules.registry import module_registry
 
@@ -683,6 +685,15 @@ async def remove_user(user_id: int, x_user: Optional[str] = Header("admin")):
     return {"success": True, "message": message}
 
 
+@app.get("/api/audit/filters")
+async def fetch_audit_filters(x_user: Optional[str] = Header("admin")):
+    """Return complete filter values for the audit workspace."""
+    perms = get_user_permissions(x_user)
+    if not has_permission(perms, "audit.view") and "*" not in perms:
+        raise HTTPException(status_code=403, detail="Нет прав на просмотр журнала аудита")
+    return get_audit_filter_options()
+
+
 @app.get("/api/audit")
 async def fetch_audit_trail(
     limit: int = 100,
@@ -692,52 +703,38 @@ async def fetch_audit_trail(
     module_id: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     x_user: Optional[str] = Header("admin"),
 ):
-    """Возвращает серверный журнал аудита с фильтрами и пагинацией."""
+    """Return the immutable server audit trail with filters and pagination."""
     perms = get_user_permissions(x_user)
     if not has_permission(perms, "audit.view") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Нет прав на просмотр журнала аудита")
 
-    limit = max(1, min(limit, 500))
-    offset = max(0, offset)
+    normalized_date_from = None
+    normalized_date_to = None
+    try:
+        if date_from:
+            normalized_date_from = datetime.strptime(date_from, "%Y-%m-%d").isoformat()
+        if date_to:
+            normalized_date_to = (
+                datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            ).isoformat()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Дата фильтра должна быть в формате YYYY-MM-DD")
 
-    import sqlite3
-    from utils.db_manager import DB_PATH
-    conditions = []
-    params = []
-
-    if user:
-        conditions.append("user_id = ?")
-        params.append(user)
-    if action:
-        conditions.append("action = ?")
-        params.append(action)
-    if module_id:
-        conditions.append("module_id = ?")
-        params.append(module_id)
-    if status:
-        conditions.append("status = ?")
-        params.append(status)
-    if search:
-        conditions.append("(user_id LIKE ? OR action LIKE ? OR object_type LIKE ? OR object_id LIKE ? OR details LIKE ?)")
-        q = f"%{search}%"
-        params.extend([q, q, q, q, q])
-
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute(f"SELECT COUNT(*) FROM audit_events {where}", params)
-        total = int(cur.fetchone()[0])
-        cur.execute(
-            f"SELECT * FROM audit_events {where} ORDER BY id DESC LIMIT ? OFFSET ?",
-            [*params, limit, offset],
-        )
-        rows = [dict(r) for r in cur.fetchall()]
-
-    return {"items": rows, "total": total, "limit": limit, "offset": offset}
+    return query_audit_events(
+        limit=limit,
+        offset=offset,
+        user=user,
+        action=action,
+        module_id=module_id,
+        status=status,
+        search=search,
+        date_from=normalized_date_from,
+        date_to=normalized_date_to,
+    )
 
 # ─── Раздача скомпилированного React Frontend ──────────────────
 
