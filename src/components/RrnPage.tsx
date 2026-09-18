@@ -698,13 +698,15 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       : totalBankSum - adjustedCommission;
 
     const dataQuality = reconData.data_quality || {};
-    const sourceQualityIssueCount = ['our', 'bank'].reduce((sum, side) => {
-      const quality = dataQuality[side as 'our' | 'bank'] || {};
-      return sum
+    const ourQuality = dataQuality.our || {};
+    const bankQuality = dataQuality.bank || {};
+    const sourceQualityIssueCount = [ourQuality, bankQuality].reduce(
+      (sum, quality) => sum
         + Number(quality.missing_date || 0)
         + Number(quality.invalid_date || 0)
-        + Number(quality.empty_rrn || 0);
-    }, 0);
+        + Number(quality.empty_rrn || 0),
+      0,
+    );
 
     return {
       adjustedSummary,
