@@ -16,6 +16,7 @@ export interface ReconciliationModuleManifest {
   icon: string;
   author: string;
   status: 'active' | 'draft' | 'deprecated';
+  workspace?: string | null;
   required_permissions: string[];
   required_files: Array<{
     key: string;

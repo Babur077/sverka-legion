@@ -35,6 +35,7 @@ class BankRrnModule(BaseReconciliationModule):
             icon="CreditCard",
             author="Отдел эквайринга и безналичных расчетов",
             status="active",
+            workspace="bank_rrn",
             required_permissions=["bank_rrn.view", "bank_rrn.run"],
             required_files=[
                 {"key": "our_file", "label": "Реестр операций 1С / Базы данных (Excel/CSV)"},
@@ -244,3 +245,7 @@ class BankRrnModule(BaseReconciliationModule):
     def export(self, run_id: str, format: str = "xlsx") -> bytes:
         # Export is currently generated client-side from the visible result set.
         return b""
+
+
+# Convention used by modules.registry auto-discovery.
+MODULE_CLASS = BankRrnModule

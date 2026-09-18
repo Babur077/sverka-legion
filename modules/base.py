@@ -4,7 +4,7 @@ ReconcileHub - Base Reconciliation Module Contract
 """
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 
@@ -17,15 +17,16 @@ class ModuleManifest(BaseModel):
     icon: str                       # Название иконки для UI: 'Building2', 'Receipt', 'CreditCard'
     author: str                     # Автор / ответственный бухгалтер
     status: str = "active"          # 'active', 'draft', 'deprecated'
-    required_permissions: List[str] # ['bank_rrn.view', 'bank_rrn.run']
-    required_files: List[Dict[str, str]] # [{'key': 'our_file', 'label': 'Выгрузка 1С / Базы'}, {'key': 'bank_file', 'label': 'Выписка Банка'}]
+    workspace: Optional[str] = None  # Ключ специализированного React workspace; None = только backend
+    required_permissions: List[str] = Field(default_factory=list)
+    required_files: List[Dict[str, str]] = Field(default_factory=list)
 
 
 class ValidationResult(BaseModel):
     is_valid: bool
-    errors: List[str] = []
-    warnings: List[str] = []
-    columns_found: Dict[str, List[str]] = {}
+    errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    columns_found: Dict[str, List[str]] = Field(default_factory=dict)
 
 
 class ReconSummary(BaseModel):
@@ -46,10 +47,10 @@ class ReconResult(BaseModel):
     timestamp: str
     status: str                    # 'COMPLETED', 'FAILED', 'WARNING'
     summary: ReconSummary
-    by_date: List[Dict[str, Any]] = []
-    by_category: List[Dict[str, Any]] = []
-    discrepancies: List[Dict[str, Any]] = []
-    custom_metrics: Dict[str, Any] = {}
+    by_date: List[Dict[str, Any]] = Field(default_factory=list)
+    by_category: List[Dict[str, Any]] = Field(default_factory=list)
+    discrepancies: List[Dict[str, Any]] = Field(default_factory=list)
+    custom_metrics: Dict[str, Any] = Field(default_factory=dict)
 
 
 class BaseReconciliationModule(ABC):
