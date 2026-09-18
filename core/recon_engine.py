@@ -3,7 +3,7 @@ import functools
 import polars as pl
 import pandas as pd
 import numpy as np
-from core.parsers import clean_amount_polars, clean_date_polars, clean_rrn_polars
+from core.parsers import clean_amount_polars, parse_amount_polars, clean_date_polars, clean_rrn_polars
 
 
 def _reversal_action_kind(action: str) -> str:
@@ -78,21 +78,57 @@ def date_summary(pl_our: pl.DataFrame, pl_bank: pl.DataFrame) -> pd.DataFrame:
     return s.sort("date", descending=True).to_pandas()
 
 
-def _source_quality(df: pl.DataFrame, date_col: str, rrn_col: str) -> dict:
-    """Count source values that cannot participate cleanly in reconciliation."""
+def _source_quality(df: pl.DataFrame, date_col: str, rrn_col: str, amount_col: str | None = None) -> dict:
+    """Count source values that require review before period close."""
+    empty = {
+        "missing_date": 0,
+        "invalid_date": 0,
+        "empty_rrn": 0,
+        "missing_amount": 0,
+        "invalid_amount": 0,
+    }
     if df is None or df.height == 0:
-        return {"missing_date": 0, "invalid_date": 0, "empty_rrn": 0}
+        return empty
 
     raw_date = pl.col(date_col).cast(pl.Utf8, strict=False).fill_null("").str.strip_chars()
     raw_rrn = pl.col(rrn_col).cast(pl.Utf8, strict=False).fill_null("").str.strip_chars().str.to_uppercase()
     parsed_date = clean_date_polars(date_col)
 
-    row = df.select([
+    exprs = [
         (raw_date == "").sum().alias("missing_date"),
         ((raw_date != "") & parsed_date.is_null()).sum().alias("invalid_date"),
         raw_rrn.is_in(["", "NAN", "NONE", "NAT"]).sum().alias("empty_rrn"),
-    ]).to_dicts()[0]
+    ]
+
+    if amount_col and amount_col in df.columns:
+        raw_amount = pl.col(amount_col).cast(pl.Utf8, strict=False).fill_null("").str.strip_chars()
+        parsed_amount = parse_amount_polars(amount_col)
+        exprs.extend([
+            (raw_amount == "").sum().alias("missing_amount"),
+            ((raw_amount != "") & parsed_amount.is_null()).sum().alias("invalid_amount"),
+        ])
+    else:
+        exprs.extend([
+            pl.lit(0).alias("missing_amount"),
+            pl.lit(0).alias("invalid_amount"),
+        ])
+
+    row = df.select(exprs).to_dicts()[0]
     return {key: int(value or 0) for key, value in row.items()}
+
+
+def _assign_duplicate_index(df: pl.DataFrame, amount_col: str, source_index_col: str) -> pl.DataFrame:
+    """Pair repeated RRN deterministically by date, amount and original order.
+
+    Sorting both sources by the same business keys prevents reordered duplicate
+    rows from creating false amount mismatches. Original row order is only the
+    final tie-breaker for truly identical duplicates.
+    """
+    sort_cols = ["RRN", "date", amount_col, source_index_col]
+    return (
+        df.sort(sort_cols, nulls_last=True)
+        .with_columns(pl.col("RRN").cum_count().over("RRN").alias("_dup_idx"))
+    )
 
 
 def terminal_summary(pl_bank: pl.DataFrame, tid_col: str = "terminal_id") -> pd.DataFrame:
@@ -147,17 +183,19 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     our_cols = list(dict.fromkeys([c for c in [cfg["our_date"], cfg["our_rrn"], cfg["our_amt"], cfg["our_status"]] if c]))
     bank_cols = list(dict.fromkeys([c for c in [cfg["bank_date"], cfg["bank_rrn"], cfg["bank_amt"], cfg["bank_tid"], cfg["bank_status"]] if c]))
     data_quality = {
-        "our": _source_quality(pl_our_raw, cfg["our_date"], cfg["our_rrn"]),
-        "bank": _source_quality(pl_bank_raw, cfg["bank_date"], cfg["bank_rrn"]),
+        "our": _source_quality(pl_our_raw, cfg["our_date"], cfg["our_rrn"], cfg.get("our_amt")),
+        "bank": _source_quality(pl_bank_raw, cfg["bank_date"], cfg["bank_rrn"], cfg.get("bank_amt")),
     }
 
     pl_our = (
         pl_our_raw.select(our_cols)
+        .with_row_index("_our_source_idx")
         .rename({cfg["our_date"]: "date", cfg["our_rrn"]: "RRN"})
         .with_columns(pl.lit(True).alias("_our_present"))
     )
     pl_bank = (
         pl_bank_raw.select(bank_cols)
+        .with_row_index("_bank_source_idx")
         .rename({cfg["bank_date"]: "date", cfg["bank_rrn"]: "RRN"})
         .with_columns(pl.lit(True).alias("_bank_present"))
     )
@@ -166,15 +204,20 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     if cfg["bank_amt"]: pl_bank = pl_bank.rename({cfg["bank_amt"]: "amount"})
     if cfg["bank_status"]: pl_bank = pl_bank.rename({cfg["bank_status"]: "status_bank"})
 
+    our_amount_expr = parse_amount_polars("amount") if cfg["our_amt"] else pl.lit(0.0)
+    bank_amount_expr = parse_amount_polars("amount") if cfg["bank_amt"] else pl.lit(0.0)
+
     pl_our = pl_our.with_columns([
         clean_date_polars("date").alias("date"),
-        (clean_amount_polars("amount") if cfg["our_amt"] else pl.lit(0.0)).alias("net_amount_our"),
-        clean_rrn_polars("RRN", "our").alias("RRN")
+        our_amount_expr.alias("net_amount_our"),
+        our_amount_expr.is_not_null().alias("_our_amount_valid"),
+        clean_rrn_polars("RRN", "our").alias("RRN"),
     ])
     pl_bank = pl_bank.with_columns([
         clean_date_polars("date").alias("date"),
-        (clean_amount_polars("amount").alias("raw_amount") if cfg["bank_amt"] else pl.lit(0.0).alias("raw_amount")),
-        clean_rrn_polars("RRN", "bank").alias("RRN")
+        bank_amount_expr.alias("raw_amount"),
+        bank_amount_expr.is_not_null().alias("_bank_amount_valid"),
+        clean_rrn_polars("RRN", "bank").alias("RRN"),
     ])
 
     if cfg["bank_tid"]:
@@ -239,8 +282,8 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         pl_our = pl_our.filter(~pl.col("RRN").is_in(dups_our_pl["RRN"]))
         pl_bank = pl_bank.filter(~pl.col("RRN").is_in(dups_bank_pl["RRN"]))
     else:
-        pl_our = pl_our.with_columns(pl.col("RRN").cum_count().over("RRN").alias("_dup_idx"))
-        pl_bank = pl_bank.with_columns(pl.col("RRN").cum_count().over("RRN").alias("_dup_idx"))
+        pl_our = _assign_duplicate_index(pl_our, "net_amount_our", "_our_source_idx")
+        pl_bank = _assign_duplicate_index(pl_bank, "net_amount_bank", "_bank_source_idx")
 
     if "_dup_idx" in pl_our.columns:
         merged_pl = pl_our.join(pl_bank, on=["RRN", "_dup_idx"], how="full", coalesce=True, suffix="_bank")
@@ -255,7 +298,19 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     ]).with_row_index("_match_row_id")
 
     tolerance = max(0.0, float(cfg["tolerance"]))
-    amt_mismatches_pl = merged_pl.filter((pl.col("_merge") == "both") & ((pl.col("net_amount_bank").fill_null(0.0) - pl.col("net_amount_our").fill_null(0.0)).abs() > tolerance))
+    both_sides = pl.col("_merge") == "both"
+    valid_amounts = (
+        pl.col("_our_amount_valid").fill_null(False)
+        & pl.col("_bank_amount_valid").fill_null(False)
+    )
+    amount_delta = pl.col("net_amount_bank") - pl.col("net_amount_our")
+    amt_mismatches_pl = merged_pl.filter(
+        both_sides
+        & (
+            ~valid_amounts
+            | (valid_amounts & (amount_delta.abs() > tolerance))
+        )
+    )
     only_our = merged_pl.filter(pl.col("_merge") == "left_only").to_pandas()
     only_bank = merged_pl.filter(pl.col("_merge") == "right_only").to_pandas()
     amt_mismatches = amt_mismatches_pl.to_pandas()
@@ -263,10 +318,40 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
 
     comm_only_diff_count = 0
     if not amt_mismatches.empty:
-        amt_mismatches["Δ сумма"] = amt_mismatches["net_amount_bank"].fillna(0.0) - amt_mismatches["net_amount_our"].fillna(0.0)
+        our_valid = amt_mismatches["_our_amount_valid"].fillna(False).astype(bool)
+        bank_valid = amt_mismatches["_bank_amount_valid"].fillna(False).astype(bool)
+        both_valid = our_valid & bank_valid
+
+        amt_mismatches["Δ сумма"] = np.where(
+            both_valid,
+            amt_mismatches["net_amount_bank"] - amt_mismatches["net_amount_our"],
+            np.nan,
+        )
+        amt_mismatches["amount_issue"] = np.select(
+            [
+                ~our_valid & ~bank_valid,
+                ~our_valid,
+                ~bank_valid,
+            ],
+            [
+                "Невалидная сумма с обеих сторон",
+                "Невалидная сумма у нас",
+                "Невалидная сумма в банке",
+            ],
+            default="Расхождение суммы",
+        )
+
         if "raw_amount" in amt_mismatches.columns:
-            amt_mismatches["raw_delta"] = amt_mismatches["raw_amount"].fillna(0.0) - amt_mismatches["net_amount_our"].fillna(0.0)
-            comm_only_diff_count = int(((amt_mismatches["raw_delta"].abs() <= tolerance) & (amt_mismatches["Δ сумма"].abs() > tolerance)).sum())
+            amt_mismatches["raw_delta"] = np.where(
+                both_valid,
+                amt_mismatches["raw_amount"] - amt_mismatches["net_amount_our"],
+                np.nan,
+            )
+            comm_only_diff_count = int((
+                both_valid
+                & (amt_mismatches["raw_delta"].abs() <= tolerance)
+                & (amt_mismatches["Δ сумма"].abs() > tolerance)
+            ).sum())
 
     unbound_count = 0
     if cfg["unbind_mismatches"] and not amt_mismatches.empty:
