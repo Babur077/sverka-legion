@@ -170,6 +170,11 @@ async def run_module_reconciliation(
     module = module_registry.get_module(module_id)
     if not module:
         raise HTTPException(status_code=404, detail=f"Модуль сверки '{module_id}' не найден")
+    if module.manifest.status != "active":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Модуль '{module_id}' имеет статус '{module.manifest.status}' и пока недоступен для запуска",
+        )
 
     form = await request.form()
     files_dict: Dict[str, bytes] = {}
