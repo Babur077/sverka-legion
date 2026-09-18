@@ -67,6 +67,10 @@ export interface ReconciliationArchive {
   period_month?: string;
   total_commission?: number;
   terminals_summary?: TerminalSummaryItem[];
+  run_id?: string;
+  source_our_name?: string;
+  source_bank_name?: string;
+  config?: Record<string, any>;
 }
 
 export interface SystemSettings {
@@ -147,6 +151,12 @@ export interface ReconciliationResult {
   effective_commission_rate?: number;
   comm_only_diff_count?: number;
   deduct_commission?: boolean;
+  data_quality?: {
+    our?: { missing_date?: number; invalid_date?: number; empty_rrn?: number };
+    bank?: { missing_date?: number; invalid_date?: number; empty_rrn?: number };
+  };
+  run_id?: string;
+  run_timestamp?: string;
   detected_months?: string[];
   merged_rows: Array<{
     date_str: string;

@@ -244,6 +244,10 @@ async def save_module_archive(
             period_month=payload.get("period_month"),
             total_commission=float(payload.get("total_commission") or 0),
             terminals_data=payload.get("terminals_summary") or [],
+            run_id=payload.get("run_id"),
+            source_our_name=payload.get("source_our_name"),
+            source_bank_name=payload.get("source_bank_name"),
+            config_data=payload.get("config") or {},
         )
         if not ok:
             raise HTTPException(status_code=500, detail=message)
@@ -281,8 +285,13 @@ async def fetch_module_archive(
             item["terminals_summary"] = json.loads(item.get("terminals_json") or "[]")
         except (TypeError, json.JSONDecodeError):
             item["terminals_summary"] = []
+        try:
+            item["config"] = json.loads(item.get("config_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            item["config"] = {}
         item.pop("terminals_json", None)
-    return records
+        item.pop("config_json", None)
+    return _json_safe(records)
 
 @app.delete("/api/modules/{module_id}/archive/{record_id}")
 async def remove_module_archive(

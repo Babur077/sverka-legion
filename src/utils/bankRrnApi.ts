@@ -34,6 +34,7 @@ interface BankRrnApiResult {
       terminal_summary?: RawRow[];
       total_commission?: number;
       effective_commission_rate?: number;
+      data_quality?: ReconciliationResult['data_quality'];
       detected_months?: string[];
       dup_action?: string;
     };
@@ -161,6 +162,8 @@ export async function runBankRrnViaApi(
   const rrn = apiResult.custom_metrics?.rrn || {};
 
   return {
+    run_id: apiResult.run_id,
+    run_timestamp: apiResult.timestamp,
     summary: (apiResult.by_date || []) as ReconciliationResult['summary'],
     only_our: (rrn.only_our || []).map(row => normalizeUnmatched(row, 'our')),
     only_bank: (rrn.only_bank || []).map(row => normalizeUnmatched(row, 'bank')),
@@ -176,6 +179,7 @@ export async function runBankRrnViaApi(
     effective_commission_rate: Number(rrn.effective_commission_rate || 0),
     comm_only_diff_count: Number(rrn.comm_only_diff_count || 0),
     deduct_commission: Boolean(rrn.deduct_commission),
+    data_quality: rrn.data_quality || {},
     detected_months: rrn.detected_months || [],
     merged_rows: [],
     dup_action: rrn.dup_action || cfg.dup_action,

@@ -20,7 +20,10 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
   const months = useMemo(() => Array.from(new Set(archive.map(a => a.period_month || a.timestamp.slice(0, 7)))).sort().reverse(), [archive]);
   const filtered = useMemo(() => archive.filter(a => {
     const q = query.trim().toLowerCase();
-    const hit = !q || a.bank_name.toLowerCase().includes(q) || a.username.toLowerCase().includes(q);
+    const hit = !q
+      || a.bank_name.toLowerCase().includes(q)
+      || a.username.toLowerCase().includes(q)
+      || String(a.run_id || '').toLowerCase().includes(q);
     const aMonth = a.period_month || a.timestamp.slice(0, 7);
     return hit && (month === '(Все)' || aMonth === month);
   }), [archive, query, month]);
@@ -66,7 +69,7 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
     </div>
 
     <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col md:flex-row gap-3">
-      <div className="relative flex-1"><Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Поиск по банку или оператору" className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400" /></div>
+      <div className="relative flex-1"><Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Поиск по банку, оператору или Run ID" className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400" /></div>
       <select value={month} onChange={e => setMonth(e.target.value)} className="md:w-44 py-2.5 px-3 rounded-lg border border-slate-200 text-sm bg-white"><option>(Все)</option>{months.map(m => <option key={m}>{m}</option>)}</select>
       <button onClick={refresh} className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50"><RefreshCw className="w-4 h-4" /> Обновить</button>
     </div>
@@ -78,7 +81,7 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
 
     {selected && <div className="fixed inset-0 z-50 bg-slate-950/40 flex items-center justify-center p-4" onClick={() => setSelected(null)}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b flex items-center justify-between"><div><h4 className="font-bold text-slate-900">Сверка #{selected.id}</h4><p className="text-xs text-slate-500">{new Date(selected.timestamp).toLocaleString('ru-RU')} · {selected.bank_name}</p></div><button onClick={() => setSelected(null)} className="p-2 rounded-lg hover:bg-slate-100"><X className="w-4 h-4" /></button></div>
+        <div className="px-5 py-4 border-b flex items-center justify-between"><div><h4 className="font-bold text-slate-900">Сверка #{selected.id}</h4><p className="text-xs text-slate-500">{new Date(selected.timestamp).toLocaleString('ru-RU')} · {selected.bank_name}{selected.run_id ? ` · Run ${selected.run_id}` : ''}</p></div><button onClick={() => setSelected(null)} className="p-2 rounded-lg hover:bg-slate-100"><X className="w-4 h-4" /></button></div>
         <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-3">{[
           ['Сумма у нас', money(selected.total_our)],
           ['Сумма банка', money(selected.total_bank)],
@@ -89,6 +92,24 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
           ['Только у нас / банка', `${selected.only_our_count} / ${selected.only_bank_count}`],
           ['Период', selected.period_month || '—'],
         ].map(([label, value]) => <div key={label} className="bg-slate-50 rounded-xl p-3"><div className="text-[11px] text-slate-500">{label}</div><div className="text-sm font-bold text-slate-900 mt-1">{value}</div></div>)}</div>
+
+        {(selected.run_id || selected.source_our_name || selected.source_bank_name || Object.keys(selected.config || {}).length > 0) && (
+          <div className="px-5 pb-5">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+              <div className="text-sm font-semibold text-slate-900">Контекст сохранённого запуска</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-3 text-xs">
+                <div><div className="text-slate-400">Run ID</div><div className="font-mono font-semibold text-slate-800 mt-0.5">{selected.run_id || '—'}</div></div>
+                <div><div className="text-slate-400">Наш файл</div><div className="font-medium text-slate-800 mt-0.5 break-all">{selected.source_our_name || '—'}</div></div>
+                <div><div className="text-slate-400">Файл банка</div><div className="font-medium text-slate-800 mt-0.5 break-all">{selected.source_bank_name || '—'}</div></div>
+                <div><div className="text-slate-400">Допуск суммы</div><div className="font-medium text-slate-800 mt-0.5">{selected.config?.tolerance ?? '—'}</div></div>
+                <div><div className="text-slate-400">Дубликаты</div><div className="font-medium text-slate-800 mt-0.5">{selected.config?.dup_action || '—'}</div></div>
+                <div><div className="text-slate-400">Возвраты — наши</div><div className="font-medium text-slate-800 mt-0.5">{selected.config?.our_rev_action || '—'}</div></div>
+                <div><div className="text-slate-400">Возвраты — банк</div><div className="font-medium text-slate-800 mt-0.5">{selected.config?.bank_rev_action || '—'}</div></div>
+                <div><div className="text-slate-400">Комиссия в сравнении</div><div className="font-medium text-slate-800 mt-0.5">{selected.config?.deduct_commission ? 'Да' : 'Нет'}</div></div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="px-5 pb-5">
           <div className="flex items-center justify-between gap-3 mb-3"><div><div className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Terminal className="w-4 h-4 text-indigo-600" /> Разбивка по терминалам</div><div className="text-xs text-slate-500 mt-0.5">Каждый TID можно рассматривать как отдельный продукт.</div></div><div className="text-xs text-slate-500">{selectedTerminals.length} терминалов</div></div>

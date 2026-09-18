@@ -201,6 +201,7 @@ class BankRrnModule(BaseReconciliationModule):
             "terminal_summary": self._records(result.get("terminal_summary")),
             "total_commission": float(result.get("total_commission", 0.0)),
             "effective_commission_rate": float(result.get("effective_commission_rate", 0.0)),
+            "data_quality": result.get("data_quality", {}),
             "detected_months": result.get("detected_months", []),
             "dup_action": result.get("dup_action", cfg["dup_action"]),
         }
