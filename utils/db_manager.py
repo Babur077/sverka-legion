@@ -3,6 +3,7 @@ import os
 import hashlib
 import secrets
 import json
+import warnings
 from datetime import datetime
 
 import pandas as pd
@@ -17,6 +18,27 @@ DB_PATH = "database/reconcile_hub.db"
 # при следующем успешном входе пароль можно перехешировать в новый формат.
 # ─────────────────────────────────────────────────────────────
 _PBKDF2_ITERATIONS = 260_000
+
+
+def _bootstrap_admin_password() -> str:
+    """Return the bootstrap admin password with a safe production default."""
+    configured = os.getenv("RECONCILEHUB_ADMIN_PASSWORD", "").strip()
+    if configured:
+        return configured
+
+    environment = os.getenv("RECONCILEHUB_ENV", "development").strip().lower()
+    if environment in {"prod", "production"}:
+        raise RuntimeError(
+            "RECONCILEHUB_ADMIN_PASSWORD must be set before creating a production database"
+        )
+
+    warnings.warn(
+        "Using development bootstrap password 'admin123'. "
+        "Set RECONCILEHUB_ADMIN_PASSWORD for non-local deployments.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    return "admin123"
 
 
 def hash_password(password: str, salt: str | None = None) -> str:
@@ -132,7 +154,7 @@ def init_db():
 
         cursor.execute("SELECT COUNT(*) FROM users")
         if cursor.fetchone()[0] == 0:
-            admin_hash = hash_password("admin123")  # Дефолтный пароль — сменить сразу после первого входа!
+            admin_hash = hash_password(_bootstrap_admin_password())
             cursor.execute(
                 "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                 ("admin", admin_hash, "admin"),
@@ -165,6 +187,12 @@ def authenticate_user(username, password):
         if result:
             db_hash, role = result
             if verify_password(password, db_hash):
+                if "$" not in db_hash:
+                    cursor.execute(
+                        "UPDATE users SET password_hash = ? WHERE username = ?",
+                        (hash_password(password), username),
+                    )
+                    conn.commit()
                 return True, role
     return False, None
 
