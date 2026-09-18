@@ -242,7 +242,7 @@ export const ModuleWorkspace: React.FC<ModuleWorkspaceProps> = ({ user, onOpenMo
                   </h3>
                   <div className="space-y-2">
                     {activeModule.required_permissions.map(permission => {
-                      const allowed = user.role === 'admin' || userPermissions.includes('*') || userPermissions.includes(permission);
+                      const allowed = userPermissions.includes('*') || userPermissions.includes(permission);
                       return (
                         <div key={permission} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs flex items-center justify-between">
                           <span className="font-mono text-slate-700">{permission}</span>

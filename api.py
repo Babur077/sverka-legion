@@ -37,8 +37,12 @@ from utils.db_manager import (
     save_settings,
 )
 from utils.permissions import (
+    DEFAULT_ROLE_PERMISSIONS,
+    VALID_ROLES,
     init_permissions_db,
     get_user_permissions,
+    get_user_access,
+    update_user_access,
     has_permission,
     record_audit_event,
 )
@@ -138,6 +142,23 @@ async def login(req: LoginRequest, request: Request):
         "role": role,
         "permissions": perms,
     }
+
+
+@app.get("/api/auth/me")
+async def current_user(x_user: Optional[str] = Header(None)):
+    """Refresh role and effective permissions for the current browser session."""
+    if not x_user:
+        raise HTTPException(status_code=401, detail="Пользователь не указан")
+    access = get_user_access(x_user)
+    if not access:
+        raise HTTPException(status_code=401, detail="Пользователь не найден")
+    return {
+        "id": access["id"],
+        "username": access["username"],
+        "role": access["role"],
+        "permissions": access["permissions"],
+    }
+
 
 # ─── Модульный API (Модули сверок) ────────────────────────────
 
@@ -278,7 +299,7 @@ async def fetch_module_archive(
 ):
     """Возвращает серверный архив конкретного модуля."""
     perms = get_user_permissions(x_user)
-    if not has_permission(perms, f"{module_id}.view") and not has_permission(perms, "analytics.view_all") and "*" not in perms:
+    if not has_permission(perms, f"{module_id}.view") and not has_permission(perms, "archive.view") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Доступ к архиву ограничен")
     if module_id != "bank_rrn":
         raise HTTPException(status_code=404, detail="Серверный архив для этого модуля пока не реализован")
@@ -442,6 +463,96 @@ async def update_settings(payload: Dict[str, Any], request: Request, x_user: Opt
 
 # ─── Аудит и Пользователи ─────────────────────────────────────
 
+PLATFORM_PERMISSION_CATALOG = [
+    {
+        "id": "epos",
+        "name": "Реестр EPOS",
+        "permissions": [
+            {"id": "epos.view", "label": "Просмотр реестра"},
+            {"id": "epos.manage", "label": "Изменение реестра"},
+        ],
+    },
+    {
+        "id": "analytics",
+        "name": "Аналитика",
+        "permissions": [
+            {"id": "analytics.view_all", "label": "Просмотр общей аналитики"},
+        ],
+    },
+    {
+        "id": "archive",
+        "name": "Архив",
+        "permissions": [
+            {"id": "archive.view", "label": "Просмотр архива"},
+        ],
+    },
+    {
+        "id": "audit",
+        "name": "Аудит",
+        "permissions": [
+            {"id": "audit.view", "label": "Просмотр журнала аудита"},
+        ],
+    },
+]
+
+
+def _permission_catalog() -> Dict[str, Any]:
+    groups = []
+    for manifest in module_registry.list_manifests():
+        declared = manifest.available_permissions or manifest.required_permissions
+        seen = set()
+        permissions = []
+        labels = {
+            "view": "Просмотр",
+            "run": "Запуск сверки",
+            "export": "Экспорт",
+        }
+        for permission in declared:
+            if permission in seen:
+                continue
+            seen.add(permission)
+            suffix = permission.split(".", 1)[1] if "." in permission else permission
+            permissions.append({
+                "id": permission,
+                "label": labels.get(suffix, permission),
+            })
+        groups.append({
+            "id": f"module:{manifest.id}",
+            "name": manifest.name,
+            "type": "module",
+            "module_id": manifest.id,
+            "status": manifest.status,
+            "permissions": permissions,
+        })
+
+    groups.extend([
+        {**group, "type": "platform"}
+        for group in PLATFORM_PERMISSION_CATALOG
+    ])
+
+    return {
+        "roles": DEFAULT_ROLE_PERMISSIONS,
+        "groups": groups,
+    }
+
+
+def _known_assignable_permissions() -> set[str]:
+    return {
+        permission["id"]
+        for group in _permission_catalog()["groups"]
+        for permission in group["permissions"]
+    }
+
+
+@app.get("/api/admin/permissions")
+async def fetch_permission_catalog(x_user: Optional[str] = Header("admin")):
+    """Permission catalog for the generic administration UI."""
+    perms = get_user_permissions(x_user)
+    if "*" not in perms:
+        raise HTTPException(status_code=403, detail="Только администратор может управлять правами")
+    return _permission_catalog()
+
+
 @app.get("/api/admin/users")
 async def fetch_users(x_user: Optional[str] = Header("admin")):
     """Возвращает учётные записи без паролей. Только администратору."""
@@ -449,7 +560,15 @@ async def fetch_users(x_user: Optional[str] = Header("admin")):
     if "*" not in perms:
         raise HTTPException(status_code=403, detail="Только администратор может управлять пользователями")
     df = get_all_users()
-    return df.to_dict(orient="records") if hasattr(df, "to_dict") else []
+    records = df.to_dict(orient="records") if hasattr(df, "to_dict") else []
+    enriched = []
+    for item in records:
+        access = get_user_access(str(item.get("username") or ""))
+        if access:
+            enriched.append(access)
+        else:
+            enriched.append(item)
+    return enriched
 
 
 @app.post("/api/admin/users")
@@ -465,7 +584,7 @@ async def create_user(payload: Dict[str, Any], x_user: Optional[str] = Header("a
 
     if not username or not password:
         raise HTTPException(status_code=400, detail="Логин и пароль обязательны")
-    if role not in {"admin", "finance_manager", "accountant_acquiring", "auditor"}:
+    if role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail="Недопустимая роль пользователя")
 
     ok, message = add_user(username, password, role)
@@ -481,6 +600,65 @@ async def create_user(payload: Dict[str, Any], x_user: Optional[str] = Header("a
         details=f"Создан пользователь {username} ({role})",
     )
     return {"success": True, "message": message}
+
+
+@app.put("/api/admin/users/{user_id}/access")
+async def update_user_permissions(
+    user_id: int,
+    payload: Dict[str, Any],
+    request: Request,
+    x_user: Optional[str] = Header("admin"),
+):
+    """Update role template and individual permission overrides."""
+    perms = get_user_permissions(x_user)
+    if "*" not in perms:
+        raise HTTPException(status_code=403, detail="Только администратор может управлять правами")
+
+    role = str(payload.get("role") or "").strip()
+    allow = payload.get("allow") or []
+    deny = payload.get("deny") or []
+
+    if role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail="Недопустимая роль пользователя")
+    if not isinstance(allow, list) or not isinstance(deny, list):
+        raise HTTPException(status_code=400, detail="allow и deny должны быть списками")
+
+    normalized_allow = [str(value).strip() for value in allow if str(value).strip()]
+    normalized_deny = [str(value).strip() for value in deny if str(value).strip()]
+    requested = set(normalized_allow) | set(normalized_deny)
+    if "*" in requested:
+        raise HTTPException(status_code=400, detail="Полный доступ задаётся только ролью admin")
+
+    unknown = sorted(requested.difference(_known_assignable_permissions()))
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail="Неизвестные права: " + ", ".join(unknown),
+        )
+
+    ok, message, access = update_user_access(
+        user_id=user_id,
+        role=role,
+        allow=normalized_allow,
+        deny=normalized_deny,
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail=message)
+
+    record_audit_event(
+        user_id=x_user,
+        action="UPDATE_USER_ACCESS",
+        object_type="User",
+        object_id=str(user_id),
+        status="SUCCESS",
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        details=(
+            f"{message}; роль={role}; "
+            f"allow={','.join(normalized_allow) or '-'}; "
+            f"deny={','.join(normalized_deny) or '-'}"
+        ),
+    )
+    return access
 
 
 @app.delete("/api/admin/users/{user_id}")
@@ -518,7 +696,7 @@ async def fetch_audit_trail(
 ):
     """Возвращает серверный журнал аудита с фильтрами и пагинацией."""
     perms = get_user_permissions(x_user)
-    if not has_permission(perms, "audit.view") and "analytics.view_all" not in perms and "*" not in perms:
+    if not has_permission(perms, "audit.view") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Нет прав на просмотр журнала аудита")
 
     limit = max(1, min(limit, 500))

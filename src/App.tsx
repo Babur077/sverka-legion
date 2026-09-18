@@ -14,6 +14,7 @@ import { BankRrnArchive } from './components/BankRrnArchive';
 import { User, SystemSettings, ReconciliationModuleManifest } from './types';
 import { hasModuleWorkspace, ModuleWorkspaceKey } from './modules/workspaceRegistry';
 import { getSettingsViaApi } from './utils/settingsApi';
+import { getCurrentUserViaApi } from './utils/authApi';
 
 interface FileParseProgressDetail {
   status: 'loading' | 'success' | 'error';
@@ -177,6 +178,19 @@ export const App: React.FC = () => {
     });
   }, [user?.username]);
 
+  useEffect(() => {
+    if (!user) return;
+    void getCurrentUserViaApi(user.username).then(refreshed => {
+      setUser(current => {
+        if (!current || current.username !== refreshed.username) return current;
+        try { sessionStorage.setItem('reconcile_active_user', JSON.stringify(refreshed)); } catch {}
+        return refreshed;
+      });
+    }).catch(() => {
+      // Backend remains authoritative even if a permission refresh temporarily fails.
+    });
+  }, [user?.username, currentTab]);
+
   const handleLogout = () => {
     try { sessionStorage.removeItem('reconcile_active_user'); } catch {}
     setUser(null);
@@ -196,7 +210,24 @@ export const App: React.FC = () => {
     if (!hasModuleWorkspace(module.workspace)) return;
     setActiveModuleWorkspace(module.workspace);
     setCurrentTab('module');
-    setBankSection('overview');
+
+    if (module.workspace === 'bank_rrn') {
+      const has = (permission: string) =>
+        user.permissions?.includes('*') || user.permissions?.includes(permission) || false;
+      setBankSection(
+        has('bank_rrn.view')
+          ? 'overview'
+          : has('bank_rrn.run')
+            ? 'workspace'
+            : has('epos.view') || has('epos.manage')
+              ? 'registry'
+              : has('analytics.view_all')
+                ? 'analytics'
+                : has('archive.view')
+                  ? 'archive'
+                  : 'overview',
+      );
+    }
   };
 
   const renderBankSection = () => {
@@ -245,7 +276,7 @@ export const App: React.FC = () => {
         {currentTab === 'modules' && <ModuleWorkspace user={user} onOpenModule={openModule} />}
         {currentTab === 'module' && renderActiveModule()}
         {currentTab === 'audit' && <AuditPage user={user} />}
-        {currentTab === 'admin' && user.role === 'admin' && <AdminPage user={user} settings={settings} onUpdateSettings={setSettings} />}
+        {currentTab === 'admin' && user.permissions?.includes('*') && <AdminPage user={user} settings={settings} onUpdateSettings={setSettings} />}
       </main>
     </div>
   );

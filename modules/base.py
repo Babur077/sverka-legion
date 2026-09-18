@@ -19,6 +19,7 @@ class ModuleManifest(BaseModel):
     status: str = "active"          # 'active', 'draft', 'deprecated'
     workspace: Optional[str] = None  # Ключ специализированного React workspace; None = только backend
     required_permissions: List[str] = Field(default_factory=list)
+    available_permissions: List[str] = Field(default_factory=list)
     required_files: List[Dict[str, str]] = Field(default_factory=list)
 
 

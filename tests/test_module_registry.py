@@ -110,6 +110,7 @@ def test_registry_auto_discovers_only_production_bank_module():
 
     assert [manifest.id for manifest in manifests] == ["bank_rrn"]
     assert manifests[0].workspace == "bank_rrn"
+    assert "bank_rrn.export" in manifests[0].available_permissions
     assert registry.discovery_errors == {}
 
 

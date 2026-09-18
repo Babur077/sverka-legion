@@ -37,6 +37,7 @@ class BankRrnModule(BaseReconciliationModule):
             status="active",
             workspace="bank_rrn",
             required_permissions=["bank_rrn.view", "bank_rrn.run"],
+            available_permissions=["bank_rrn.view", "bank_rrn.run", "bank_rrn.export"],
             required_files=[
                 {"key": "our_file", "label": "Реестр операций 1С / Базы данных (Excel/CSV)"},
                 {"key": "bank_file", "label": "Банковская выписка эквайринга (Excel/CSV)"},

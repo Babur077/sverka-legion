@@ -79,9 +79,13 @@ class ModuleRegistry:
             )
 
         permission_prefix = f"{module_id}."
+        declared_permissions = [
+            *manifest.required_permissions,
+            *manifest.available_permissions,
+        ]
         invalid_permissions = [
             permission
-            for permission in manifest.required_permissions
+            for permission in declared_permissions
             if not permission.startswith(permission_prefix)
         ]
         if invalid_permissions:
@@ -89,6 +93,9 @@ class ModuleRegistry:
                 f"Permissions for module {module_id!r} must start with {permission_prefix!r}: "
                 + ", ".join(invalid_permissions)
             )
+
+        if len(manifest.available_permissions) != len(set(manifest.available_permissions)):
+            raise ValueError(f"Module {module_id!r} has duplicate available permissions")
 
         file_keys = [str(item.get("key", "")).strip() for item in manifest.required_files]
         if any(not key for key in file_keys):

@@ -36,7 +36,9 @@ const REASON_OPTIONS = [
 ];
 
 export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
-  const isAuditor = user.role === 'auditor';
+  const canRun = user.permissions?.includes('*') || user.permissions?.includes('bank_rrn.run') || false;
+  const canExport = user.permissions?.includes('*') || user.permissions?.includes('bank_rrn.export') || false;
+  const isReadOnly = !canRun;
 
   // Modal states
   const [alertState, setAlertState] = useState<{
@@ -400,6 +402,16 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   };
 
   const handleRunReconciliation = async () => {
+    if (!canRun) {
+      setAlertState({
+        isOpen: true,
+        title: 'Нет права на запуск сверки',
+        message: 'Для запуска требуется разрешение bank_rrn.run.',
+        type: 'warning',
+      });
+      return;
+    }
+
     // Validation checks
     if (!ourFile || !bankFile) {
       setAlertState({
@@ -490,7 +502,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   // Toggle single unmatched check
   const handleToggleCheck = (index: number, isOur: boolean) => {
-    if (!reconData || isAuditor) return;
+    if (!reconData || isReadOnly) return;
     const key = isOur ? 'only_our' : 'only_bank';
     const updated = reconData[key].map((item, idx) => 
       idx === index ? { ...item, checked: !item.checked } : item
@@ -500,7 +512,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   // Change reason
   const handleChangeReason = (index: number, reason: string, isOur: boolean) => {
-    if (!reconData || isAuditor) return;
+    if (!reconData || isReadOnly) return;
     const key = isOur ? 'only_our' : 'only_bank';
     const updated = reconData[key].map((item, idx) => 
       idx === index ? { ...item, reason } : item
@@ -510,7 +522,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   // Bulk check / uncheck
   const handleBulkToggle = (checked: boolean, isOur: boolean) => {
-    if (!reconData || isAuditor) return;
+    if (!reconData || isReadOnly) return;
     const list = isOur ? [...reconData.only_our] : [...reconData.only_bank];
     const dateFilter = isOur ? filterDateOur : filterDateBank;
     const statFilter = isOur ? filterStatusOur : filterStatusBank;
@@ -532,7 +544,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   // Auto-exclude offsetting reversal pairs
   const handleExcludeOffsets = (isOur: boolean) => {
-    if (!reconData || isAuditor) return;
+    if (!reconData || isReadOnly) return;
     const list = isOur ? [...reconData.only_our] : [...reconData.only_bank];
     const revWords = revInput.split(',').map(w => w.trim().toLowerCase()).filter(Boolean);
 
@@ -766,11 +778,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   // Save to Archive
   const handleSaveToArchive = async () => {
-    if (isAuditor) {
+    if (isReadOnly) {
       setAlertState({
         isOpen: true,
         title: 'Ограничение прав доступа',
-        message: 'Пользователям с ролью «Аудитор» доступен только режим просмотра. Сохранение результатов в архив базы данных разрешено только бухгалтерам и администраторам.',
+        message: 'У текущего пользователя нет права bank_rrn.run. Сохранение и изменение результата недоступны.',
         type: 'warning',
       });
       return;
@@ -866,7 +878,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
               EPOS Core
             </span>
-            {isAuditor && (
+            {isReadOnly && (
               <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
                 <Eye className="w-3 h-3 text-amber-600" />
                 Только чтение
@@ -2374,7 +2386,13 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 id="btn-export-excel"
                 type="button"
                 onClick={handleExportExcel}
-                className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 active:bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+                disabled={!canExport}
+                title={canExport ? 'Скачать Excel-отчет' : 'Нет права bank_rrn.export'}
+                className={`px-4 py-2.5 border text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-2 ${
+                  canExport
+                    ? 'bg-white border-slate-300 hover:bg-slate-50 active:bg-slate-100 text-slate-700 cursor-pointer'
+                    : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
               >
                 <Download className="w-4 h-4 text-emerald-600" />
                 <span>Скачать Excel-отчет</span>
@@ -2384,10 +2402,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 id="btn-save-db"
                 type="button"
                 onClick={handleSaveToArchive}
-                disabled={isAuditor}
-                title={isAuditor ? 'Режим аудитора: сохранение недоступно' : 'Записать в Архив БД'}
+                disabled={isReadOnly}
+                title={isReadOnly ? 'Нет права bank_rrn.run' : 'Записать в Архив БД'}
                 className={`px-4 py-2.5 text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-2 ${
-                  isAuditor
+                  isReadOnly
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-200'
                     : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white cursor-pointer'
                 }`}

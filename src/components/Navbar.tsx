@@ -36,6 +36,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
   const currentRoleBadgeColor = roleBadgeColor[user.role] || 'bg-slate-50 text-slate-700 border-slate-200';
 
+  const hasPermission = (permission: string) =>
+    user.permissions?.includes('*') || user.permissions?.includes(permission) || false;
+
   const navItems = [
     {
       id: 'modules',
@@ -57,8 +60,8 @@ export const Navbar: React.FC<NavbarProps> = ({
       adminOnly: true,
     },
   ].filter(item =>
-    (!item.adminOnly || user.role === 'admin')
-    && (!item.requiredPermission || user.role === 'admin' || user.permissions?.includes(item.requiredPermission))
+    (!item.adminOnly || user.permissions?.includes('*'))
+    && (!item.requiredPermission || hasPermission(item.requiredPermission))
   );
 
   const handleItemClick = (tabId: string) => {
