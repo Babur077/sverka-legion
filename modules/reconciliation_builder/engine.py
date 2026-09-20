@@ -207,6 +207,168 @@ def _load_filters(raw: Any) -> list[dict[str, str]]:
     return result
 
 
+def _load_computed_fields(raw: Any) -> list[dict[str, Any]]:
+    allowed_operations = {
+        "concat",
+        "replace",
+        "substring",
+        "normalize_text",
+        "normalize_date",
+    }
+    allowed_text_modes = {"trim", "collapse_spaces", "lower", "upper", "alnum"}
+    allowed_date_formats = {"iso", "dmy", "compact"}
+
+    result: list[dict[str, Any]] = []
+    for item in _load_json_list(raw):
+        side = str(item.get("side") or "").strip().lower()
+        name = str(item.get("name") or "").strip()
+        operation = str(item.get("operation") or "").strip().lower()
+        sources_raw = item.get("sources") or []
+        if not isinstance(sources_raw, list):
+            sources_raw = [sources_raw]
+        sources = [str(value or "").strip() for value in sources_raw if str(value or "").strip()]
+
+        if side not in {"a", "b"} or not name or operation not in allowed_operations:
+            continue
+
+        try:
+            start = int(item.get("start") or 0)
+        except (TypeError, ValueError):
+            start = 0
+
+        raw_length = item.get("length")
+        try:
+            length = None if raw_length in (None, "") else max(0, int(raw_length))
+        except (TypeError, ValueError):
+            length = None
+
+        text_mode = str(item.get("text_mode") or "trim").strip().lower()
+        date_format = str(item.get("date_format") or "iso").strip().lower()
+
+        result.append({
+            "side": side,
+            "name": name,
+            "operation": operation,
+            "sources": sources,
+            "separator": str(item.get("separator") or ""),
+            "find": str(item.get("find") or ""),
+            "replace_with": str(item.get("replace_with") or ""),
+            "start": start,
+            "length": length,
+            "text_mode": text_mode if text_mode in allowed_text_modes else "trim",
+            "date_format": date_format if date_format in allowed_date_formats else "iso",
+        })
+
+    return result
+
+
+def _normalize_text_value(value: Any, mode: str) -> str:
+    text = _clean_text(value)
+    if mode == "collapse_spaces":
+        return re.sub(r"\s+", " ", text)
+    if mode == "lower":
+        return text.casefold()
+    if mode == "upper":
+        return text.upper()
+    if mode == "alnum":
+        return re.sub(r"[^0-9A-Za-zА-Яа-яЁё]+", "", text)
+    return text
+
+
+def _apply_computed_fields(
+    frame: pd.DataFrame,
+    fields: list[dict[str, Any]],
+    side: str,
+    dayfirst: bool,
+) -> pd.DataFrame:
+    result = frame.copy()
+    seen_names: set[str] = set()
+
+    for field in fields:
+        if field["side"] != side:
+            continue
+
+        name = field["name"]
+        operation = field["operation"]
+        sources = field["sources"]
+
+        if name in seen_names or name in result.columns:
+            raise ValueError(
+                f"Вычисляемое поле источника {side.upper()} «{name}» уже существует"
+            )
+
+        if not sources:
+            raise ValueError(
+                f"Вычисляемое поле источника {side.upper()} «{name}»: не выбран источник"
+            )
+
+        missing = [source for source in sources if source not in result.columns]
+        if missing:
+            raise ValueError(
+                f"Вычисляемое поле источника {side.upper()} «{name}»: "
+                f"не найдены колонки {', '.join(missing)}"
+            )
+
+        if operation == "concat":
+            separator = field.get("separator", "")
+            result[name] = result[sources].apply(
+                lambda row: separator.join(
+                    value
+                    for value in (_clean_text(item) for item in row.tolist())
+                    if value
+                ),
+                axis=1,
+            )
+
+        elif operation == "replace":
+            source = sources[0]
+            find = field.get("find", "")
+            replace_with = field.get("replace_with", "")
+            result[name] = result[source].map(
+                lambda value: _clean_text(value).replace(find, replace_with)
+            )
+
+        elif operation == "substring":
+            source = sources[0]
+            start = int(field.get("start") or 0)
+            length = field.get("length")
+            if length is None:
+                result[name] = result[source].map(
+                    lambda value: _clean_text(value)[start:]
+                )
+            else:
+                stop = start + int(length)
+                result[name] = result[source].map(
+                    lambda value: _clean_text(value)[start:stop]
+                )
+
+        elif operation == "normalize_text":
+            source = sources[0]
+            mode = field.get("text_mode", "trim")
+            result[name] = result[source].map(
+                lambda value: _normalize_text_value(value, mode)
+            )
+
+        elif operation == "normalize_date":
+            source = sources[0]
+            parsed = pd.to_datetime(
+                result[source],
+                errors="coerce",
+                dayfirst=dayfirst,
+            )
+            date_format = field.get("date_format", "iso")
+            pattern = {
+                "iso": "%Y-%m-%d",
+                "dmy": "%d.%m.%Y",
+                "compact": "%Y%m%d",
+            }.get(date_format, "%Y-%m-%d")
+            result[name] = parsed.dt.strftime(pattern).fillna("")
+
+        seen_names.add(name)
+
+    return result
+
+
 def _filter_matches(value: Any, operator: str, expected: str) -> bool:
     text = _clean_text(value)
     normalized = text.casefold()
@@ -272,10 +434,10 @@ class ReconciliationBuilderModule(BaseReconciliationModule):
         return ModuleManifest(
             id="reconciliation_builder",
             name="Конструктор сверок",
-            version="0.2.0",
+            version="0.3.0",
             description=(
                 "Универсальная детерминированная сверка двух Excel/CSV: "
-                "фильтры, преобразования, 1↔1 / 1↔N / N↔1, суммы и даты."
+                "вычисляемые поля, фильтры, преобразования, 1↔1 / 1↔N / N↔1."
             ),
             category="Универсальные",
             icon="Wrench",
@@ -337,6 +499,7 @@ class ReconciliationBuilderModule(BaseReconciliationModule):
 
         pairs = _load_pairs(params.get("key_pairs"))
         filters = _load_filters(params.get("filters"))
+        computed_fields = _load_computed_fields(params.get("computed_fields"))
         matching_mode = str(params.get("matching_mode") or "one_to_one").strip()
         amount_a = str(params.get("amount_a_col") or "").strip()
         amount_b = str(params.get("amount_b_col") or "").strip()
@@ -364,6 +527,11 @@ class ReconciliationBuilderModule(BaseReconciliationModule):
         frame_b = frame_b_pl.to_pandas()
         original_count_a = len(frame_a)
         original_count_b = len(frame_b)
+
+        # Computed fields are evaluated in configured order. A later field may
+        # therefore reference a field created earlier on the same source.
+        frame_a = _apply_computed_fields(frame_a, computed_fields, "a", dayfirst)
+        frame_b = _apply_computed_fields(frame_b, computed_fields, "b", dayfirst)
 
         required_a = [pair["left"] for pair in pairs]
         required_b = [pair["right"] for pair in pairs]
@@ -775,6 +943,7 @@ class ReconciliationBuilderModule(BaseReconciliationModule):
                 "matching_mode": matching_mode,
                 "key_pairs": pairs,
                 "filters": filters,
+                "computed_fields": computed_fields,
                 "filter_stats": {
                     "source_a_before": original_count_a,
                     "source_a_after": len(frame_a),

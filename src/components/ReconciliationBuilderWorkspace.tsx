@@ -21,6 +21,8 @@ import { getModuleArchive, saveModuleArchive } from '../utils/archiveApi';
 import { hasPermission } from '../utils/permissions';
 import {
   BuilderAmountTransform,
+  BuilderComputedField,
+  BuilderComputedOperation,
   BuilderFilterRule,
   BuilderKeyPair,
   BuilderKeyTransform,
@@ -58,6 +60,7 @@ const emptyConfig = (): ReconciliationBuilderConfig => ({
   amount_b_transform: 'as_is',
   matching_mode: 'one_to_one',
   filters: [],
+  computed_fields: [],
   date_a_col: '',
   date_b_col: '',
   date_tolerance_days: 0,
@@ -127,6 +130,35 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
   const canRun = hasPermission(user, 'reconciliation_builder.run');
   const canManage = hasPermission(user, 'reconciliation_builder.manage');
+
+  const effectiveColumnsA = useMemo(
+    () => Array.from(new Set([
+      ...columnsA,
+      ...(config.computed_fields || [])
+        .filter(field => field.side === 'a' && field.name.trim())
+        .map(field => field.name.trim()),
+    ])),
+    [columnsA, config.computed_fields],
+  );
+
+  const effectiveColumnsB = useMemo(
+    () => Array.from(new Set([
+      ...columnsB,
+      ...(config.computed_fields || [])
+        .filter(field => field.side === 'b' && field.name.trim())
+        .map(field => field.name.trim()),
+    ])),
+    [columnsB, config.computed_fields],
+  );
+
+  const computedSourceOptions = (side: 'a' | 'b', fieldIndex: number): string[] => {
+    const base = side === 'a' ? columnsA : columnsB;
+    const previous = (config.computed_fields || [])
+      .slice(0, fieldIndex)
+      .filter(field => field.side === side && field.name.trim())
+      .map(field => field.name.trim());
+    return Array.from(new Set([...base, ...previous]));
+  };
 
   const loadDefinitions = async () => {
     try {
@@ -206,6 +238,72 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
       key_pairs: current.key_pairs.length === 1
         ? current.key_pairs
         : current.key_pairs.filter((_, pairIndex) => pairIndex !== index),
+    }));
+  };
+
+  const addComputedField = () => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: [
+        ...(current.computed_fields || []),
+        {
+          side: 'a',
+          name: '',
+          operation: 'normalize_text',
+          sources: [''],
+          text_mode: 'trim',
+        },
+      ],
+    }));
+  };
+
+  const updateComputedField = (index: number, patch: Partial<BuilderComputedField>) => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: (current.computed_fields || []).map((field, fieldIndex) =>
+        fieldIndex === index ? { ...field, ...patch } : field,
+      ),
+    }));
+  };
+
+  const updateComputedSource = (fieldIndex: number, sourceIndex: number, value: string) => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: (current.computed_fields || []).map((field, index) => {
+        if (index !== fieldIndex) return field;
+        const sources = [...(field.sources || [])];
+        sources[sourceIndex] = value;
+        return { ...field, sources };
+      }),
+    }));
+  };
+
+  const addComputedSource = (fieldIndex: number) => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: (current.computed_fields || []).map((field, index) =>
+        index === fieldIndex
+          ? { ...field, sources: [...(field.sources || []), ''] }
+          : field,
+      ),
+    }));
+  };
+
+  const removeComputedSource = (fieldIndex: number, sourceIndex: number) => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: (current.computed_fields || []).map((field, index) => {
+        if (index !== fieldIndex) return field;
+        const sources = (field.sources || []).filter((_, sourceIdx) => sourceIdx !== sourceIndex);
+        return { ...field, sources: sources.length ? sources : [''] };
+      }),
+    }));
+  };
+
+  const removeComputedField = (index: number) => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: (current.computed_fields || []).filter((_, fieldIndex) => fieldIndex !== index),
     }));
   };
 
@@ -289,6 +387,24 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     if ((config.matching_mode || 'one_to_one') !== 'one_to_one' && (!config.amount_a_col || !config.amount_b_col)) {
       return 'Для групповой сверки 1↔N / N↔1 обязательно выберите сумму в обоих источниках.';
     }
+    const computedFields = config.computed_fields || [];
+    const namesBySide = new Map<string, Set<string>>();
+    for (const field of computedFields) {
+      const name = field.name.trim();
+      if (!name) return 'Укажите название каждого вычисляемого поля.';
+      const sideNames = namesBySide.get(field.side) || new Set<string>();
+      if (sideNames.has(name)) return `В источнике ${field.side.toUpperCase()} повторяется вычисляемое поле «${name}».`;
+      sideNames.add(name);
+      namesBySide.set(field.side, sideNames);
+
+      if (!field.sources?.length || field.sources.some(source => !source)) {
+        return `Выберите исходные колонки для вычисляемого поля «${name}».`;
+      }
+      if (field.operation === 'replace' && !(field.find || '').length) {
+        return `Для поля «${name}» укажите, что заменить.`;
+      }
+    }
+
     const invalidFilter = (config.filters || []).find(rule => {
       if (!rule.column) return true;
       return !['empty', 'not_empty'].includes(rule.operator) && String(rule.value || '').trim() === '';
@@ -517,7 +633,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                   <div>
                     <h2 className="font-semibold text-slate-900">2. Правила сопоставления</h2>
                     <p className="text-xs text-slate-500">
-                      Сначала выберите стратегию, затем ключи, преобразования, сумму, дату и фильтры.
+                      Сначала подготовьте вычисляемые поля, затем ключи, сумму, дату, фильтры и стратегию matching.
                     </p>
                   </div>
                 </div>
@@ -543,6 +659,226 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 </div>
               )}
 
+              <div className="mb-5 rounded-xl border border-slate-200 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Вычисляемые поля</div>
+                    <div className="text-[11px] text-slate-500">
+                      Создавайте временные колонки до сверки. Поля считаются сверху вниз и могут ссылаться на предыдущие.
+                    </div>
+                  </div>
+                  <button
+                    onClick={addComputedField}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Добавить поле
+                  </button>
+                </div>
+
+                {(config.computed_fields || []).length === 0 ? (
+                  <div className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                    Например: <span className="font-mono">Account + Document → MatchKey</span>,
+                    удалить символы из RRN или привести дату к единому формату.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {(config.computed_fields || []).map((field, fieldIndex) => {
+                      const sourceOptions = computedSourceOptions(field.side, fieldIndex);
+                      const isConcat = field.operation === 'concat';
+                      const singleSource = field.sources?.[0] || '';
+
+                      return (
+                        <div key={fieldIndex} className="rounded-xl bg-slate-50 p-3">
+                          <div className="grid grid-cols-1 gap-2 lg:grid-cols-[92px_1fr_190px_36px] lg:items-center">
+                            <select
+                              value={field.side}
+                              onChange={event => updateComputedField(fieldIndex, {
+                                side: event.target.value as BuilderComputedField['side'],
+                                sources: [''],
+                              })}
+                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                            >
+                              <option value="a">Источник A</option>
+                              <option value="b">Источник B</option>
+                            </select>
+
+                            <input
+                              value={field.name}
+                              onChange={event => updateComputedField(fieldIndex, { name: event.target.value })}
+                              placeholder="Имя нового поля, например MatchKey"
+                              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"
+                            />
+
+                            <select
+                              value={field.operation}
+                              onChange={event => {
+                                const operation = event.target.value as BuilderComputedOperation;
+                                const currentSources = field.sources || [''];
+                                updateComputedField(fieldIndex, {
+                                  operation,
+                                  sources: operation === 'concat'
+                                    ? (currentSources.length >= 2 ? currentSources : [currentSources[0] || '', ''])
+                                    : [currentSources[0] || ''],
+                                });
+                              }}
+                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                            >
+                              <option value="concat">CONCAT · объединить</option>
+                              <option value="replace">REPLACE · заменить текст</option>
+                              <option value="substring">SUBSTRING · взять часть</option>
+                              <option value="normalize_text">TEXT · нормализовать</option>
+                              <option value="normalize_date">DATE · нормализовать дату</option>
+                            </select>
+
+                            <button
+                              onClick={() => removeComputedField(fieldIndex)}
+                              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+
+                          <div className="mt-2 border-t border-slate-200 pt-2">
+                            {isConcat ? (
+                              <div className="space-y-2">
+                                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                  {(field.sources || []).map((source, sourceIndex) => (
+                                    <div key={sourceIndex} className="flex gap-1.5">
+                                      <select
+                                        value={source}
+                                        onChange={event => updateComputedSource(fieldIndex, sourceIndex, event.target.value)}
+                                        className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                                      >
+                                        <option value="">Колонка {sourceIndex + 1}…</option>
+                                        {sourceOptions.map(column => <option key={column} value={column}>{column}</option>)}
+                                      </select>
+                                      {(field.sources || []).length > 1 && (
+                                        <button
+                                          onClick={() => removeComputedSource(fieldIndex, sourceIndex)}
+                                          className="rounded-lg px-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                          title="Убрать колонку"
+                                        >
+                                          ×
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="flex flex-wrap items-end gap-2">
+                                  <button
+                                    onClick={() => addComputedSource(fieldIndex)}
+                                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
+                                  >
+                                    + колонка
+                                  </button>
+                                  <label className="text-[11px] text-slate-500">
+                                    Разделитель
+                                    <input
+                                      value={field.separator ?? ''}
+                                      onChange={event => updateComputedField(fieldIndex, { separator: event.target.value })}
+                                      placeholder="например -"
+                                      className="ml-2 w-28 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                                    />
+                                  </label>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                <select
+                                  value={singleSource}
+                                  onChange={event => updateComputedSource(fieldIndex, 0, event.target.value)}
+                                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                                >
+                                  <option value="">Исходная колонка…</option>
+                                  {sourceOptions.map(column => <option key={column} value={column}>{column}</option>)}
+                                </select>
+
+                                {field.operation === 'replace' && (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <input
+                                      value={field.find || ''}
+                                      onChange={event => updateComputedField(fieldIndex, { find: event.target.value })}
+                                      placeholder="Что заменить"
+                                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                                    />
+                                    <input
+                                      value={field.replace_with || ''}
+                                      onChange={event => updateComputedField(fieldIndex, { replace_with: event.target.value })}
+                                      placeholder="На что"
+                                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                                    />
+                                  </div>
+                                )}
+
+                                {field.operation === 'substring' && (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <label className="text-[10px] text-slate-500">
+                                      Старт
+                                      <input
+                                        type="number"
+                                        value={field.start ?? 0}
+                                        onChange={event => updateComputedField(fieldIndex, {
+                                          start: Number(event.target.value) || 0,
+                                        })}
+                                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                                      />
+                                    </label>
+                                    <label className="text-[10px] text-slate-500">
+                                      Длина
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={field.length ?? ''}
+                                        onChange={event => updateComputedField(fieldIndex, {
+                                          length: event.target.value === '' ? null : Math.max(0, Number(event.target.value) || 0),
+                                        })}
+                                        placeholder="до конца"
+                                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                                      />
+                                    </label>
+                                  </div>
+                                )}
+
+                                {field.operation === 'normalize_text' && (
+                                  <select
+                                    value={field.text_mode || 'trim'}
+                                    onChange={event => updateComputedField(fieldIndex, {
+                                      text_mode: event.target.value as BuilderComputedField['text_mode'],
+                                    })}
+                                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                                  >
+                                    <option value="trim">TRIM · убрать края</option>
+                                    <option value="collapse_spaces">Сжать повторные пробелы</option>
+                                    <option value="lower">lowercase</option>
+                                    <option value="upper">UPPERCASE</option>
+                                    <option value="alnum">Только буквы и цифры</option>
+                                  </select>
+                                )}
+
+                                {field.operation === 'normalize_date' && (
+                                  <select
+                                    value={field.date_format || 'iso'}
+                                    onChange={event => updateComputedField(fieldIndex, {
+                                      date_format: event.target.value as BuilderComputedField['date_format'],
+                                    })}
+                                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                                  >
+                                    <option value="iso">YYYY-MM-DD</option>
+                                    <option value="dmy">DD.MM.YYYY</option>
+                                    <option value="compact">YYYYMMDD</option>
+                                  </select>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Ключи сопоставления</div>
@@ -567,7 +903,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                         className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                       >
                         <option value="">Колонка A…</option>
-                        {columnsA.map(column => <option key={column} value={column}>{column}</option>)}
+                        {effectiveColumnsA.map(column => <option key={column} value={column}>{column}</option>)}
                       </select>
                       <div className="text-center text-xs font-bold text-slate-400">↔</div>
                       <select
@@ -576,7 +912,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                         className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                       >
                         <option value="">Колонка B…</option>
-                        {columnsB.map(column => <option key={column} value={column}>{column}</option>)}
+                        {effectiveColumnsB.map(column => <option key={column} value={column}>{column}</option>)}
                       </select>
                       <select
                         value={pair.mode}
@@ -641,7 +977,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
                       <option value="">Не использовать A</option>
-                      {columnsA.map(column => <option key={column} value={column}>{column}</option>)}
+                      {effectiveColumnsA.map(column => <option key={column} value={column}>{column}</option>)}
                     </select>
                     <select
                       value={config.amount_b_col || ''}
@@ -649,7 +985,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
                       <option value="">Не использовать B</option>
-                      {columnsB.map(column => <option key={column} value={column}>{column}</option>)}
+                      {effectiveColumnsB.map(column => <option key={column} value={column}>{column}</option>)}
                     </select>
                   </div>
 
@@ -701,7 +1037,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
                       <option value="">Не использовать A</option>
-                      {columnsA.map(column => <option key={column} value={column}>{column}</option>)}
+                      {effectiveColumnsA.map(column => <option key={column} value={column}>{column}</option>)}
                     </select>
                     <select
                       value={config.date_b_col || ''}
@@ -709,7 +1045,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
                       <option value="">Не использовать B</option>
-                      {columnsB.map(column => <option key={column} value={column}>{column}</option>)}
+                      {effectiveColumnsB.map(column => <option key={column} value={column}>{column}</option>)}
                     </select>
                   </div>
                   <label className="mt-3 block text-xs text-slate-500">
@@ -753,7 +1089,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 ) : (
                   <div className="space-y-2">
                     {(config.filters || []).map((rule, index) => {
-                      const sourceColumns = rule.side === 'a' ? columnsA : columnsB;
+                      const sourceColumns = rule.side === 'a' ? effectiveColumnsA : effectiveColumnsB;
                       const needsValue = !['empty', 'not_empty'].includes(rule.operator);
                       return (
                         <div key={index} className="grid grid-cols-1 gap-2 rounded-lg bg-slate-50 p-2 lg:grid-cols-[90px_1fr_170px_1fr_36px] lg:items-center">
