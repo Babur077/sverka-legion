@@ -24,9 +24,9 @@ from utils.db_manager import (
     add_epos_terminal,
     update_epos_terminal,
     delete_epos_terminal,
-    save_reconciliation,
-    get_archive_data,
-    delete_archive_record,
+    save_reconciliation_run,
+    get_reconciliation_runs,
+    delete_reconciliation_run,
     add_user,
     delete_user,
     get_settings,
@@ -307,32 +307,24 @@ async def save_module_archive(
     payload: Dict[str, Any],
     x_user: Optional[str] = Header("admin"),
 ):
-    """Сохраняет метаданные результата сверки в серверный архив."""
+    """Save one module result into the shared reconciliation journal."""
     perms = get_user_permissions(x_user)
     if not has_permission(perms, f"{module_id}.run") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Нет прав на сохранение результата сверки")
-    if module_id != "bank_rrn":
-        raise HTTPException(status_code=404, detail="Серверный архив для этого модуля пока не реализован")
+
+    module = module_registry.get_module(module_id)
+    if not module:
+        raise HTTPException(status_code=404, detail=f"Модуль сверки '{module_id}' не найден")
 
     try:
-        ok, message = save_reconciliation(
-            user=x_user,
-            bank_name=str(payload.get("bank_name") or "Не указан"),
-            tot_our=float(payload.get("total_our") or 0),
-            tot_bank=float(payload.get("total_bank") or 0),
-            diff=float(payload.get("difference") or 0),
-            matched_c=int(payload.get("matched_count") or 0),
-            mismatch_c=int(payload.get("mismatch_count") or 0),
-            only_our_c=int(payload.get("only_our_count") or 0),
-            only_bank_c=int(payload.get("only_bank_count") or 0),
-            period_month=payload.get("period_month"),
-            total_commission=float(payload.get("total_commission") or 0),
-            terminals_data=payload.get("terminals_summary") or [],
-            run_id=payload.get("run_id"),
-            source_our_name=payload.get("source_our_name"),
-            source_bank_name=payload.get("source_bank_name"),
-            config_data=payload.get("config") or {},
-            assigned_terminal_id=payload.get("assigned_terminal_id"),
+        normalized_payload = dict(payload or {})
+        if not normalized_payload.get("period_month"):
+            normalized_payload["period_month"] = datetime.now().strftime("%Y-%m")
+
+        ok, message, record_id = save_reconciliation_run(
+            module_id=module_id,
+            user=x_user or "",
+            payload=normalized_payload,
         )
         if not ok:
             raise HTTPException(status_code=500, detail=message)
@@ -341,42 +333,34 @@ async def save_module_archive(
             user_id=x_user,
             action="ARCHIVE_SAVE",
             module_id=module_id,
-            object_type="ReconciliationArchive",
+            object_type="ReconciliationRun",
+            object_id=str(record_id or ""),
             status="SUCCESS",
             details=message,
         )
-        return {"success": True, "message": message}
+        return {"success": True, "message": message, "id": record_id}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка сохранения архива: {e}")
+
 
 @app.get("/api/modules/{module_id}/archive")
 async def fetch_module_archive(
     module_id: str,
     x_user: Optional[str] = Header("admin"),
 ):
-    """Возвращает серверный архив конкретного модуля."""
+    """Return only runs that belong to the requested reconciliation module."""
     perms = get_user_permissions(x_user)
     if not has_permission(perms, f"{module_id}.view") and not has_permission(perms, "archive.view") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Доступ к архиву ограничен")
-    if module_id != "bank_rrn":
-        raise HTTPException(status_code=404, detail="Серверный архив для этого модуля пока не реализован")
 
-    df = get_archive_data()
-    records = df.to_dict(orient="records") if hasattr(df, "to_dict") else []
-    for item in records:
-        try:
-            item["terminals_summary"] = json.loads(item.get("terminals_json") or "[]")
-        except (TypeError, json.JSONDecodeError):
-            item["terminals_summary"] = []
-        try:
-            item["config"] = json.loads(item.get("config_json") or "{}")
-        except (TypeError, json.JSONDecodeError):
-            item["config"] = {}
-        item.pop("terminals_json", None)
-        item.pop("config_json", None)
-    return _json_safe(records)
+    module = module_registry.get_module(module_id)
+    if not module:
+        raise HTTPException(status_code=404, detail=f"Модуль сверки '{module_id}' не найден")
+
+    return _json_safe(get_reconciliation_runs(module_id))
+
 
 @app.delete("/api/modules/{module_id}/archive/{record_id}")
 async def remove_module_archive(
@@ -384,23 +368,30 @@ async def remove_module_archive(
     record_id: int,
     x_user: Optional[str] = Header("admin"),
 ):
-    """Удаляет запись из серверного архива."""
+    """Delete one record only from the requested module archive."""
     perms = get_user_permissions(x_user)
     if not has_permission(perms, f"{module_id}.run") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Нет прав на удаление записи архива")
-    if module_id != "bank_rrn":
-        raise HTTPException(status_code=404, detail="Серверный архив для этого модуля пока не реализован")
-    delete_archive_record(record_id)
+
+    module = module_registry.get_module(module_id)
+    if not module:
+        raise HTTPException(status_code=404, detail=f"Модуль сверки '{module_id}' не найден")
+
+    deleted = delete_reconciliation_run(module_id, record_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Запись архива не найдена")
+
     record_audit_event(
         user_id=x_user,
         action="ARCHIVE_DELETE",
         module_id=module_id,
-        object_type="ReconciliationArchive",
+        object_type="ReconciliationRun",
         object_id=str(record_id),
         status="SUCCESS",
-        details=f"Удалена запись архива #{record_id}",
+        details=f"Удалена запись журнала #{record_id}",
     )
     return {"success": True}
+
 
 @app.get("/api/modules/{module_id}/analytics")
 async def get_module_analytics(module_id: str, x_user: Optional[str] = Header("admin")):
