@@ -186,7 +186,16 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const addPair = () => {
     setConfig(current => ({
       ...current,
-      key_pairs: [...current.key_pairs, { left: '', right: '', mode: 'text' }],
+      key_pairs: [
+        ...current.key_pairs,
+        {
+          left: '',
+          right: '',
+          mode: 'text',
+          left_transform: 'none',
+          right_transform: 'none',
+        },
+      ],
     }));
   };
 
@@ -196,6 +205,32 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
       key_pairs: current.key_pairs.length === 1
         ? current.key_pairs
         : current.key_pairs.filter((_, pairIndex) => pairIndex !== index),
+    }));
+  };
+
+  const addFilter = () => {
+    setConfig(current => ({
+      ...current,
+      filters: [
+        ...(current.filters || []),
+        { side: 'a', column: '', operator: 'equals', value: '' },
+      ],
+    }));
+  };
+
+  const updateFilter = (index: number, patch: Partial<BuilderFilterRule>) => {
+    setConfig(current => ({
+      ...current,
+      filters: (current.filters || []).map((rule, ruleIndex) =>
+        ruleIndex === index ? { ...rule, ...patch } : rule,
+      ),
+    }));
+  };
+
+  const removeFilter = (index: number) => {
+    setConfig(current => ({
+      ...current,
+      filters: (current.filters || []).filter((_, ruleIndex) => ruleIndex !== index),
     }));
   };
 
@@ -249,6 +284,16 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     }
     if (!!config.date_a_col !== !!config.date_b_col) {
       return 'Для проверки даты нужно выбрать колонки с обеих сторон.';
+    }
+    if ((config.matching_mode || 'one_to_one') !== 'one_to_one' && (!config.amount_a_col || !config.amount_b_col)) {
+      return 'Для групповой сверки 1↔N / N↔1 обязательно выберите сумму в обоих источниках.';
+    }
+    const invalidFilter = (config.filters || []).find(rule => {
+      if (!rule.column) return true;
+      return !['empty', 'not_empty'].includes(rule.operator) && String(rule.value || '').trim() === '';
+    });
+    if (invalidFilter) {
+      return 'Заполните колонку и значение во всех фильтрах.';
     }
     return null;
   };
