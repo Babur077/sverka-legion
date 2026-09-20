@@ -442,7 +442,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
             <div>
               <h1 className="text-xl font-bold text-slate-900">Конструктор сверок</h1>
               <p className="text-xs text-slate-500">
-                Детерминированные правила: ключи → сумма → дата → результат.
+                V2: ключи, преобразования, фильтры, 1↔1 / 1↔N / N↔1, сумма и дата.
               </p>
             </div>
           </div>
@@ -880,6 +880,15 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                   </div>
                 </div>
 
+                {metrics?.filter_stats && (
+                  <div className="grid grid-cols-2 gap-2 border-b border-slate-100 bg-slate-50/60 px-5 py-3 text-[11px] text-slate-600 md:grid-cols-4">
+                    <div>A до фильтров: <span className="font-bold text-slate-900">{metrics.filter_stats.source_a_before}</span></div>
+                    <div>A после: <span className="font-bold text-slate-900">{metrics.filter_stats.source_a_after}</span></div>
+                    <div>B до фильтров: <span className="font-bold text-slate-900">{metrics.filter_stats.source_b_before}</span></div>
+                    <div>B после: <span className="font-bold text-slate-900">{metrics.filter_stats.source_b_after}</span></div>
+                  </div>
+                )}
+
                 <div className="flex gap-1 overflow-x-auto border-b border-slate-100 px-5 py-3">
                   {resultTabs.map(tab => (
                     <button
@@ -900,7 +909,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                   <table className="min-w-full text-sm">
                     <thead className="bg-slate-50">
                       <tr>
-                        {['Ключ', 'Строка A', 'Строка B', 'Сумма A', 'Сумма B', 'Δ суммы', 'Δ дней', 'Причина'].map(header => (
+                        {['Тип', 'Ключ', 'Строки A', 'Строки B', 'Сумма A', 'Сумма B', 'Δ суммы', 'Δ дней', 'Причина'].map(header => (
                           <th key={header} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                             {header}
                           </th>
@@ -910,9 +919,22 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                     <tbody className="divide-y divide-slate-100">
                       {resultRows.slice(0, 300).map((row, index) => (
                         <tr key={`${row.key}-${row.row_a || 'x'}-${row.row_b || 'x'}-${index}`} className="hover:bg-slate-50">
+                          <td className="px-4 py-3">
+                            <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
+                              {row.match_type || '1↔1'}
+                            </span>
+                          </td>
                           <td className="max-w-[260px] truncate px-4 py-3 font-mono text-xs" title={row.key}>{row.key || '—'}</td>
-                          <td className="px-4 py-3">{row.row_a ?? '—'}</td>
-                          <td className="px-4 py-3">{row.row_b ?? '—'}</td>
+                          <td className="px-4 py-3 text-xs">
+                            {row.grouped_rows_a?.length
+                              ? row.grouped_rows_a.join(', ')
+                              : (row.row_a ?? '—')}
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            {row.grouped_rows_b?.length
+                              ? row.grouped_rows_b.join(', ')
+                              : (row.row_b ?? '—')}
+                          </td>
                           <td className="px-4 py-3">{row.amount_a == null ? '—' : money(row.amount_a)}</td>
                           <td className="px-4 py-3">{row.amount_b == null ? '—' : money(row.amount_b)}</td>
                           <td className="px-4 py-3">{row.amount_delta == null ? '—' : money(row.amount_delta)}</td>
