@@ -8,6 +8,8 @@ from datetime import datetime
 
 import pandas as pd
 
+from backend.db.migrations.runner import run_migrations
+
 DB_PATH = "database/reconcile_hub.db"
 
 # ─────────────────────────────────────────────────────────────
@@ -67,229 +69,14 @@ def verify_password(password: str, stored: str) -> bool:
     return legacy_hash == stored
 
 
-def _migrate_legacy_reconciliation_archive(conn: sqlite3.Connection) -> None:
-    """Copy the old Bank RRN archive into the generic reconciliation run store once."""
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    marker_key = "migration.generic_reconciliation_runs.v1"
-
-    marker = cursor.execute(
-        "SELECT value FROM app_settings WHERE key = ?",
-        (marker_key,),
-    ).fetchone()
-    if marker:
-        return
-
-    rows = cursor.execute(
-        "SELECT * FROM reconciliation_archive ORDER BY id"
-    ).fetchall()
-
-    for row in rows:
-        record = dict(row)
-        try:
-            terminals = json.loads(record.get("terminals_json") or "[]")
-        except (TypeError, json.JSONDecodeError):
-            terminals = []
-        try:
-            config = json.loads(record.get("config_json") or "{}")
-        except (TypeError, json.JSONDecodeError):
-            config = {}
-
-        payload = {
-            "bank_name": record.get("bank_name") or "Не указан",
-            "total_our": float(record.get("total_our") or 0),
-            "total_bank": float(record.get("total_bank") or 0),
-            "difference": float(record.get("difference") or 0),
-            "matched_count": int(record.get("matched_count") or 0),
-            "mismatch_count": int(record.get("mismatch_count") or 0),
-            "only_our_count": int(record.get("only_our_count") or 0),
-            "only_bank_count": int(record.get("only_bank_count") or 0),
-            "period_month": record.get("period_month"),
-            "total_commission": float(record.get("total_commission") or 0),
-            "terminals_summary": terminals,
-            "run_id": record.get("run_id"),
-            "source_our_name": record.get("source_our_name") or "",
-            "source_bank_name": record.get("source_bank_name") or "",
-            "config": config,
-            "assigned_terminal_id": record.get("assigned_terminal_id"),
-        }
-
-        source_files = [
-            value
-            for value in [
-                record.get("source_our_name"),
-                record.get("source_bank_name"),
-            ]
-            if value
-        ]
-        summary = {
-            "total_our": payload["total_our"],
-            "total_bank": payload["total_bank"],
-            "difference": payload["difference"],
-            "matched_count": payload["matched_count"],
-            "mismatch_count": payload["mismatch_count"],
-            "only_our_count": payload["only_our_count"],
-            "only_bank_count": payload["only_bank_count"],
-        }
-        timestamp = record.get("timestamp") or datetime.now().isoformat()
-
-        cursor.execute(
-            """
-            INSERT OR IGNORE INTO reconciliation_runs (
-                module_id, run_id, status, period_month, created_at, updated_at,
-                created_by, source_files_json, summary_json, payload_json,
-                review_status, legacy_id
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "bank_rrn",
-                record.get("run_id"),
-                "COMPLETED",
-                record.get("period_month"),
-                timestamp,
-                timestamp,
-                record.get("username") or "",
-                json.dumps(source_files, ensure_ascii=False),
-                json.dumps(summary, ensure_ascii=False),
-                json.dumps(payload, ensure_ascii=False, default=str),
-                "OPEN",
-                record.get("id"),
-            ),
-        )
-
-    cursor.execute(
-        """
-        INSERT INTO app_settings (key, value) VALUES (?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        """,
-        (marker_key, datetime.now().isoformat()),
-    )
-    conn.commit()
-    conn.row_factory = None
-
 
 def init_db():
-    """Инициализирует локальную БД и создаёт все таблицы, если их нет.
-    Создаёт дефолтного администратора только если пользователей ещё нет."""
+    """Apply versioned schema migrations and bootstrap reference data."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    run_migrations(DB_PATH)
 
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                role TEXT DEFAULT 'user'
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS epos_registry (
-                terminal_id TEXT PRIMARY KEY,
-                merchant_id TEXT,
-                bank_acquirer TEXT,
-                legal_entity TEXT,
-                commission_pct REAL DEFAULT 0.0,
-                is_active BOOLEAN DEFAULT 1
-            )
-        ''')
-
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS reconciliation_archive (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT,
-                username TEXT,
-                bank_name TEXT,
-                total_our REAL,
-                total_bank REAL,
-                difference REAL,
-                matched_count INTEGER,
-                mismatch_count INTEGER,
-                only_our_count INTEGER,
-                only_bank_count INTEGER,
-                period_month TEXT,
-                total_commission REAL DEFAULT 0.0,
-                terminals_json TEXT,
-                run_id TEXT,
-                source_our_name TEXT,
-                source_bank_name TEXT,
-                config_json TEXT,
-                assigned_terminal_id TEXT
-            )
-        ''')
-
-        # Миграция колонок для существующих баз данных
-        for col_name, col_type in [
-            ("period_month", "TEXT"),
-            ("total_commission", "REAL DEFAULT 0.0"),
-            ("terminals_json", "TEXT"),
-            ("run_id", "TEXT"),
-            ("source_our_name", "TEXT"),
-            ("source_bank_name", "TEXT"),
-            ("config_json", "TEXT"),
-            ("assigned_terminal_id", "TEXT")
-        ]:
-            try:
-                cursor.execute(f"ALTER TABLE reconciliation_archive ADD COLUMN {col_name} {col_type}")
-            except sqlite3.OperationalError:
-                pass  # Колонка уже существует
-
-        # Общесистемные настройки (единые для ВСЕХ пользователей,
-        # а не только для сессии одного браузера, как было раньше).
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS app_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )
-        ''')
-
-        # Единый журнал всех модулей сверки. Специфические поля конкретного
-        # модуля хранятся в payload_json, а общие поля доступны платформе.
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS reconciliation_runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                module_id TEXT NOT NULL,
-                run_id TEXT,
-                status TEXT NOT NULL DEFAULT 'COMPLETED',
-                period_month TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                created_by TEXT NOT NULL,
-                source_files_json TEXT NOT NULL DEFAULT '[]',
-                summary_json TEXT NOT NULL DEFAULT '{}',
-                payload_json TEXT NOT NULL DEFAULT '{}',
-                review_status TEXT NOT NULL DEFAULT 'OPEN',
-                legacy_id INTEGER
-            )
-        ''')
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_reconciliation_runs_module_period "
-            "ON reconciliation_runs(module_id, period_month)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_reconciliation_runs_created_at "
-            "ON reconciliation_runs(created_at)"
-        )
-        cursor.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_reconciliation_runs_module_run
-            ON reconciliation_runs(module_id, run_id)
-            WHERE run_id IS NOT NULL AND run_id <> ''
-            """
-        )
-        cursor.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_reconciliation_runs_legacy
-            ON reconciliation_runs(module_id, legacy_id)
-            WHERE legacy_id IS NOT NULL
-            """
-        )
-
-        _migrate_legacy_reconciliation_archive(conn)
 
         cursor.execute("SELECT COUNT(*) FROM users")
         if cursor.fetchone()[0] == 0:
@@ -302,18 +89,25 @@ def init_db():
         cursor.execute("SELECT COUNT(*) FROM epos_registry")
         if cursor.fetchone()[0] == 0:
             default_banks = [
-                ('98234001', 'MID_ALOQA_01', 'Aloqa Bank', '', 1.2, 1),
-                ('98234002', 'MID_OPEN_01', 'Open Bank', '', 1.0, 1),
-                ('98234003', 'MID_SADERAT_01', 'Saderat Bank', '', 1.5, 1),
-                ('98234004', 'MID_DAVR_01', 'Davr Bank', '', 1.0, 1),
-                ('98234005', 'MID_HAMKOR_01', 'Hamkor Bank', '', 1.2, 1),
+                ("98234001", "MID_ALOQA_01", "Aloqa Bank", "", 1.2, 1),
+                ("98234002", "MID_OPEN_01", "Open Bank", "", 1.0, 1),
+                ("98234003", "MID_SADERAT_01", "Saderat Bank", "", 1.5, 1),
+                ("98234004", "MID_DAVR_01", "Davr Bank", "", 1.0, 1),
+                ("98234005", "MID_HAMKOR_01", "Hamkor Bank", "", 1.2, 1),
             ]
             cursor.executemany(
-                "INSERT INTO epos_registry (terminal_id, merchant_id, bank_acquirer, legal_entity, commission_pct, is_active) VALUES (?, ?, ?, ?, ?, ?)",
-                default_banks
+                """
+                INSERT INTO epos_registry (
+                    terminal_id, merchant_id, bank_acquirer, legal_entity,
+                    commission_pct, is_active
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                default_banks,
             )
 
         conn.commit()
+
 
 
 def authenticate_user(username, password):
