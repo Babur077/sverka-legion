@@ -109,3 +109,183 @@ def test_builder_pairs_duplicate_keys_deterministically_by_best_amount():
     generic = result.custom_metrics["generic"]
     assert result.summary.matched_count == 2
     assert [row["amount_delta"] for row in generic["matched"]] == [0, 0]
+
+
+
+def test_builder_filters_rows_before_matching():
+    module = ReconciliationBuilderModule()
+
+    result = module.run(
+        {
+            "source_a": _csv("ID;Amount;Status\n1;100;OK\n2;200;CANCELLED"),
+            "source_b": _csv("ID;Amount;Status\n1;100;OK\n2;200;CANCELLED"),
+        },
+        {
+            "source_a_filename": "a.csv",
+            "source_b_filename": "b.csv",
+            "key_pairs": json.dumps([
+                {"left": "ID", "right": "ID", "mode": "numeric"},
+            ]),
+            "filters": json.dumps([
+                {"side": "a", "column": "Status", "operator": "not_equals", "value": "CANCELLED"},
+                {"side": "b", "column": "Status", "operator": "not_equals", "value": "CANCELLED"},
+            ]),
+            "amount_a_col": "Amount",
+            "amount_b_col": "Amount",
+        },
+    )
+
+    generic = result.custom_metrics["generic"]
+    assert result.summary.total_records_a == 1
+    assert result.summary.total_records_b == 1
+    assert result.summary.matched_count == 1
+    assert generic["filter_stats"] == {
+        "source_a_before": 2,
+        "source_a_after": 1,
+        "source_b_before": 2,
+        "source_b_after": 1,
+    }
+
+
+def test_builder_key_transform_removes_formatting_noise():
+    module = ReconciliationBuilderModule()
+
+    result = module.run(
+        {
+            "source_a": _csv("Ref;Amount\n00 123;500"),
+            "source_b": _csv("Reference;Amount\n123;500"),
+        },
+        {
+            "source_a_filename": "a.csv",
+            "source_b_filename": "b.csv",
+            "key_pairs": json.dumps([
+                {
+                    "left": "Ref",
+                    "right": "Reference",
+                    "mode": "numeric",
+                    "left_transform": "remove_spaces",
+                    "right_transform": "none",
+                },
+            ]),
+            "amount_a_col": "Amount",
+            "amount_b_col": "Amount",
+        },
+    )
+
+    assert result.summary.matched_count == 1
+    assert result.summary.discrepancy_count == 0
+
+
+def test_builder_can_invert_amount_sign_on_one_source():
+    module = ReconciliationBuilderModule()
+
+    result = module.run(
+        {
+            "source_a": _csv("ID;Amount\nA;1000"),
+            "source_b": _csv("ID;Amount\nA;-1000"),
+        },
+        {
+            "source_a_filename": "a.csv",
+            "source_b_filename": "b.csv",
+            "key_pairs": json.dumps([
+                {"left": "ID", "right": "ID", "mode": "text"},
+            ]),
+            "amount_a_col": "Amount",
+            "amount_b_col": "Amount",
+            "amount_b_transform": "invert",
+            "amount_tolerance": "0",
+        },
+    )
+
+    assert result.summary.matched_count == 1
+    assert result.summary.total_sum_a == 1000
+    assert result.summary.total_sum_b == 1000
+
+
+def test_builder_matches_one_to_many_by_group_sum():
+    module = ReconciliationBuilderModule()
+
+    result = module.run(
+        {
+            "source_a": _csv("ID;Amount\nA;100"),
+            "source_b": _csv("ID;Amount\nA;40\nA;60"),
+        },
+        {
+            "source_a_filename": "a.csv",
+            "source_b_filename": "b.csv",
+            "key_pairs": json.dumps([
+                {"left": "ID", "right": "ID", "mode": "text"},
+            ]),
+            "matching_mode": "one_to_many",
+            "amount_a_col": "Amount",
+            "amount_b_col": "Amount",
+            "amount_tolerance": "0",
+        },
+    )
+
+    generic = result.custom_metrics["generic"]
+    assert result.summary.matched_count == 1
+    assert result.summary.discrepancy_count == 0
+    assert generic["matched"][0]["match_type"] == "1↔N"
+    assert generic["matched"][0]["grouped_rows_a"] == [2]
+    assert generic["matched"][0]["grouped_rows_b"] == [2, 3]
+    assert generic["matched"][0]["amount_a"] == 100
+    assert generic["matched"][0]["amount_b"] == 100
+
+
+def test_builder_matches_many_to_one_by_group_sum():
+    module = ReconciliationBuilderModule()
+
+    result = module.run(
+        {
+            "source_a": _csv("ID;Amount\nA;25\nA;75"),
+            "source_b": _csv("ID;Amount\nA;100"),
+        },
+        {
+            "source_a_filename": "a.csv",
+            "source_b_filename": "b.csv",
+            "key_pairs": json.dumps([
+                {"left": "ID", "right": "ID", "mode": "text"},
+            ]),
+            "matching_mode": "many_to_one",
+            "amount_a_col": "Amount",
+            "amount_b_col": "Amount",
+            "amount_tolerance": "0",
+        },
+    )
+
+    generic = result.custom_metrics["generic"]
+    assert result.summary.matched_count == 1
+    assert result.summary.discrepancy_count == 0
+    assert generic["matched"][0]["match_type"] == "N↔1"
+    assert generic["matched"][0]["grouped_rows_a"] == [2, 3]
+    assert generic["matched"][0]["grouped_rows_b"] == [2]
+
+
+def test_builder_group_mode_reports_group_amount_mismatch():
+    module = ReconciliationBuilderModule()
+
+    result = module.run(
+        {
+            "source_a": _csv("ID;Amount\nA;100"),
+            "source_b": _csv("ID;Amount\nA;40\nA;70"),
+        },
+        {
+            "source_a_filename": "a.csv",
+            "source_b_filename": "b.csv",
+            "key_pairs": json.dumps([
+                {"left": "ID", "right": "ID", "mode": "text"},
+            ]),
+            "matching_mode": "one_to_many",
+            "amount_a_col": "Amount",
+            "amount_b_col": "Amount",
+            "amount_tolerance": "0",
+        },
+    )
+
+    generic = result.custom_metrics["generic"]
+    assert result.summary.matched_count == 0
+    assert result.summary.discrepancy_count == 1
+    assert generic["mismatches"][0]["match_type"] == "1↔N"
+    assert generic["mismatches"][0]["amount_delta"] == 10
+    assert "Сумма группы вне допуска" in generic["mismatches"][0]["reason"]
