@@ -8,6 +8,7 @@ import {
   Receipt,
   RefreshCw,
   ShieldAlert,
+  Wrench,
 } from 'lucide-react';
 import { ReconciliationModuleManifest, User } from '../types';
 import { hasModuleWorkspace } from '../modules/workspaceRegistry';
@@ -21,6 +22,7 @@ interface ModuleWorkspaceProps {
 const iconFor = (name: string) => {
   if (name === 'CreditCard') return CreditCard;
   if (name === 'Receipt') return Receipt;
+  if (name === 'Wrench') return Wrench;
   return Layers;
 };
 
