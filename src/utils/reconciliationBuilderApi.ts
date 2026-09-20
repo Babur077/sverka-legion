@@ -88,11 +88,21 @@ export interface BuilderRunResult {
     generic?: {
       definition_id?: number | null;
       definition_name?: string;
+      matching_mode?: BuilderMatchingMode;
       key_pairs?: BuilderKeyPair[];
+      filters?: BuilderFilterRule[];
+      filter_stats?: {
+        source_a_before: number;
+        source_a_after: number;
+        source_b_before: number;
+        source_b_after: number;
+      };
       amount_mapping?: {
         left?: string | null;
         right?: string | null;
         tolerance?: number;
+        left_transform?: BuilderAmountTransform;
+        right_transform?: BuilderAmountTransform;
       };
       date_mapping?: {
         left?: string | null;
