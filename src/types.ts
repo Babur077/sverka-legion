@@ -74,6 +74,7 @@ export interface ReconciliationArchive {
   only_bank_count: number;
   period_month?: string;
   total_commission?: number;
+  assigned_terminal_id?: string;
   terminals_summary?: TerminalSummaryItem[];
   run_id?: string;
   source_our_name?: string;

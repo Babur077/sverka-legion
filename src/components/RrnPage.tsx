@@ -14,7 +14,7 @@ import { hasPermission } from '../utils/permissions';
 import { parseFile, guessCol, exportReconciliationToExcel } from '../utils/fileParser';
 import { runBankRrnViaApi } from '../utils/bankRrnApi';
 import { getStoredDraft, saveActiveDraft, clearActiveDraft } from '../utils/storage';
-import { getEposViaApi } from '../utils/eposApi';
+import { createEposViaApi, getEposViaApi } from '../utils/eposApi';
 import { DEFAULT_BANKS, getBanksViaApi } from '../utils/banksApi';
 import { AlertModal, ConfirmModal } from './Modal';
 import { saveBankRrnArchive } from '../utils/archiveApi';
@@ -39,6 +39,7 @@ const REASON_OPTIONS = [
 export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const canRun = hasPermission(user, 'bank_rrn.run');
   const canExport = hasPermission(user, 'bank_rrn.export');
+  const canManageEpos = hasPermission(user, 'epos.manage');
   const isReadOnly = !canRun;
 
   // Modal states
@@ -110,6 +111,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [selectedDrilldownDate, setSelectedDrilldownDate] = useState<string | null>(null);
   const [commissionPct, setCommissionPct] = useState<number>(1.2);
   const [selectedArchiveMonth, setSelectedArchiveMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [archiveTerminalChoice, setArchiveTerminalChoice] = useState<string>('');
+  const [manualArchiveTerminalId, setManualArchiveTerminalId] = useState<string>('');
+  const [isRegisteringArchiveTerminal, setIsRegisteringArchiveTerminal] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   // Bank selection state (Quick Bank Select)
@@ -261,6 +265,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         setActiveTab('summary');
         setSelectedDrilldownDate(null);
         setSaveSuccessMsg(null);
+        setArchiveTerminalChoice('');
+        setManualArchiveTerminalId('');
         setDraftRestored(false);
         setFilterDateOur('(Все)');
         setFilterStatusOur('(Все)');
@@ -278,6 +284,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
   const handleSelectBank = (bankName: string) => {
     setSelectedBank(bankName);
+    setArchiveTerminalChoice('');
+    setManualArchiveTerminalId('');
     const bankEpos = eposTerminals.find(
       t => t.bank_acquirer.toLowerCase() === bankName.toLowerCase() && t.is_active,
     );
@@ -485,6 +493,18 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
       const result = await runBankRrnViaApi(ourSourceFile, bankSourceFile, cfg, user.username);
       setReconData(result);
+      const detectedTerminalIds = Array.from(new Set(
+        (result.terminal_summary || [])
+          .map(item => String(item.terminal_id || '').trim())
+          .filter(Boolean),
+      ));
+      if (detectedTerminalIds.length === 1) {
+        setArchiveTerminalChoice(detectedTerminalIds[0]);
+        setManualArchiveTerminalId('');
+      } else {
+        setArchiveTerminalChoice('');
+        setManualArchiveTerminalId('');
+      }
       if (result.detected_months && result.detected_months.length > 0) {
         setSelectedArchiveMonth(result.detected_months[0]);
       }
@@ -777,6 +797,97 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     return list;
   }, [reconData]);
 
+  const archiveTerminalOptions = useMemo(() => {
+    const selectedBankKey = selectedBank.trim().toLowerCase();
+    const registered = eposTerminals
+      .filter(item => !selectedBankKey || item.bank_acquirer.trim().toLowerCase() === selectedBankKey)
+      .slice()
+      .sort((a, b) => {
+        if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
+        return a.terminal_id.localeCompare(b.terminal_id);
+      });
+
+    const seen = new Set(registered.map(item => item.terminal_id));
+    const options = registered.map(item => ({
+      terminal_id: item.terminal_id,
+      merchant_id: item.merchant_id || '',
+      is_active: item.is_active,
+      registered: true,
+    }));
+
+    (dynamicCalculations?.adjustedTerminalSummary || []).forEach(item => {
+      const terminalId = String(item.terminal_id || '').trim();
+      if (!terminalId || seen.has(terminalId)) return;
+      seen.add(terminalId);
+      options.push({
+        terminal_id: terminalId,
+        merchant_id: item.merchant_id || '',
+        is_active: true,
+        registered: false,
+      });
+    });
+
+    return options;
+  }, [eposTerminals, selectedBank, dynamicCalculations]);
+
+  const assignedArchiveTerminalId = (
+    archiveTerminalChoice === '__manual__'
+      ? manualArchiveTerminalId
+      : archiveTerminalChoice
+  ).trim();
+
+  const assignedArchiveTerminalRegistered = !!assignedArchiveTerminalId
+    && eposTerminals.some(item => item.terminal_id === assignedArchiveTerminalId);
+
+  const handleRegisterArchiveTerminal = async () => {
+    if (!assignedArchiveTerminalId) {
+      setAlertState({
+        isOpen: true,
+        title: 'Не указан Terminal ID',
+        message: 'Сначала выберите обнаруженный TID или введите новый Terminal ID.',
+        type: 'warning',
+      });
+      return;
+    }
+    if (!canManageEpos) {
+      setAlertState({
+        isOpen: true,
+        title: 'Нет права на изменение реестра',
+        message: 'Для добавления нового терминала требуется разрешение epos.manage. Сохранить сверку под этим TID можно, но в реестр его должен добавить пользователь с соответствующим правом.',
+        type: 'warning',
+      });
+      return;
+    }
+
+    setIsRegisteringArchiveTerminal(true);
+    try {
+      await createEposViaApi(user.username, {
+        terminal_id: assignedArchiveTerminalId,
+        merchant_id: '',
+        bank_acquirer: selectedBank,
+        commission_pct: commissionPct,
+        is_active: true,
+      });
+      const terminals = await getEposViaApi(user.username);
+      setEposTerminals(terminals);
+      setAlertState({
+        isOpen: true,
+        title: 'Терминал добавлен',
+        message: `TID ${assignedArchiveTerminalId} добавлен в реестр банка «${selectedBank}». Теперь сверку можно сохранить под этим терминалом.`,
+        type: 'success',
+      });
+    } catch (error: any) {
+      setAlertState({
+        isOpen: true,
+        title: 'Не удалось добавить терминал',
+        message: error?.message || 'Ошибка добавления терминала в реестр.',
+        type: 'error',
+      });
+    } finally {
+      setIsRegisteringArchiveTerminal(false);
+    }
+  };
+
   // Save to Archive
   const handleSaveToArchive = async () => {
     if (isReadOnly) {
@@ -790,6 +901,15 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     }
 
     if (!dynamicCalculations || !reconData) return;
+    if (!assignedArchiveTerminalId) {
+      setAlertState({
+        isOpen: true,
+        title: 'Выберите терминал для архива',
+        message: 'Перед сохранением укажите Terminal ID, к которому относится эта сверка. Можно выбрать активный или неактивный терминал из реестра либо ввести TID вручную.',
+        type: 'warning',
+      });
+      return;
+    }
     const bankNameForArchive = selectedBank || bankFile?.name.replace(/\.[^/.]+$/, '') || 'Банк';
 
     try {
@@ -805,6 +925,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           only_our_count: dynamicCalculations.activeOnlyOurCount,
           only_bank_count: dynamicCalculations.activeOnlyBankCount,
           total_commission: dynamicCalculations.adjustedCommission,
+          assigned_terminal_id: assignedArchiveTerminalId,
           terminals_summary: dynamicCalculations.adjustedTerminalSummary,
         },
         {
@@ -834,7 +955,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       setAlertState({
         isOpen: true,
         title: 'Успешно сохранено',
-        message: `${archiveMessage} Банк: "${bankNameForArchive}", период: ${selectedArchiveMonth}.`,
+        message: `${archiveMessage} Банк: "${bankNameForArchive}", TID: ${assignedArchiveTerminalId}, период: ${selectedArchiveMonth}.`,
         type: 'success',
       });
     } catch (error: any) {
@@ -2366,21 +2487,83 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             </div>
 
             <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto justify-end">
-              {/* Month Selector for Archive */}
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs">
-                <CalendarDays className="w-4 h-4 text-indigo-600 shrink-0" />
-                <span className="font-semibold text-slate-700 whitespace-nowrap">Месяц архива:</span>
-                <select
-                  value={selectedArchiveMonth}
-                  onChange={(e) => setSelectedArchiveMonth(e.target.value)}
-                  className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                >
-                  {availableMonths.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
+              {/* Archive attribution: period + terminal */}
+              <div className="flex flex-col gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs min-w-[320px]">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span className="font-semibold text-slate-700 whitespace-nowrap">Месяц:</span>
+                  <select
+                    value={selectedArchiveMonth}
+                    onChange={(e) => setSelectedArchiveMonth(e.target.value)}
+                    className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    {availableMonths.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span className="font-semibold text-slate-700 whitespace-nowrap">TID архива:</span>
+                  <select
+                    value={archiveTerminalChoice}
+                    onChange={(e) => {
+                      setArchiveTerminalChoice(e.target.value);
+                      if (e.target.value !== '__manual__') setManualArchiveTerminalId('');
+                    }}
+                    className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    <option value="">Выберите терминал…</option>
+                    {archiveTerminalOptions.map((item) => (
+                      <option key={item.terminal_id} value={item.terminal_id}>
+                        {item.terminal_id}
+                        {item.merchant_id ? ` · ${item.merchant_id}` : ''}
+                        {item.registered ? (item.is_active ? ' · активен' : ' · неактивен') : ' · обнаружен, нет в реестре'}
+                      </option>
+                    ))}
+                    <option value="__manual__">Другой TID / ввести вручную…</option>
+                  </select>
+                </div>
+
+                {archiveTerminalChoice === '__manual__' && (
+                  <div className="flex items-center gap-2 pl-6">
+                    <input
+                      value={manualArchiveTerminalId}
+                      onChange={(e) => setManualArchiveTerminalId(e.target.value.trim())}
+                      placeholder="Введите Terminal ID"
+                      className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                )}
+
+                {assignedArchiveTerminalId && !assignedArchiveTerminalRegistered && (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">
+                    <span className="text-[11px] text-amber-800">
+                      TID <span className="font-mono font-bold">{assignedArchiveTerminalId}</span> отсутствует в реестре.
+                      Сверку можно сохранить, но лучше сразу зарегистрировать терминал.
+                    </span>
+                    {canManageEpos && (
+                      <button
+                        type="button"
+                        onClick={handleRegisterArchiveTerminal}
+                        disabled={isRegisteringArchiveTerminal}
+                        className="shrink-0 rounded-lg bg-amber-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {isRegisteringArchiveTerminal ? 'Добавление…' : 'Добавить в реестр'}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {assignedArchiveTerminalId && assignedArchiveTerminalRegistered && (
+                  <div className="pl-6 text-[11px] text-emerald-700">
+                    Сверка будет сохранена за TID <span className="font-mono font-bold">{assignedArchiveTerminalId}</span>.
+                    Неактивные терминалы разрешены для исторических периодов.
+                  </div>
+                )}
               </div>
 
               <button

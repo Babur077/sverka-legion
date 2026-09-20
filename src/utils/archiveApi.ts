@@ -29,6 +29,7 @@ export async function saveBankRrnArchive(
     only_our_count?: number;
     only_bank_count?: number;
     total_commission?: number;
+    assigned_terminal_id?: string;
     terminals_summary?: ReconciliationResult['terminal_summary'];
   },
   context?: {
@@ -50,6 +51,7 @@ export async function saveBankRrnArchive(
       only_bank_count: totals.only_bank_count ?? result.only_bank.length,
       period_month: totals.period_month,
       total_commission: totals.total_commission ?? result.total_commission ?? 0,
+      assigned_terminal_id: totals.assigned_terminal_id || null,
       terminals_summary: totals.terminals_summary ?? result.terminal_summary ?? [],
       run_id: result.run_id || null,
       source_our_name: context?.source_our_name || '',

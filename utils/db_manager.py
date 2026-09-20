@@ -115,7 +115,8 @@ def init_db():
                 run_id TEXT,
                 source_our_name TEXT,
                 source_bank_name TEXT,
-                config_json TEXT
+                config_json TEXT,
+                assigned_terminal_id TEXT
             )
         ''')
 
@@ -127,7 +128,8 @@ def init_db():
             ("run_id", "TEXT"),
             ("source_our_name", "TEXT"),
             ("source_bank_name", "TEXT"),
-            ("config_json", "TEXT")
+            ("config_json", "TEXT"),
+            ("assigned_terminal_id", "TEXT")
         ]:
             try:
                 cursor.execute(f"ALTER TABLE reconciliation_archive ADD COLUMN {col_name} {col_type}")
@@ -300,6 +302,7 @@ def save_reconciliation(
     source_our_name=None,
     source_bank_name=None,
     config_data=None,
+    assigned_terminal_id=None,
 ):
     """Сохраняет или обновляет результат сверки по run_id.
 
@@ -344,7 +347,7 @@ def save_reconciliation(
                 float(tot_our), float(tot_bank), float(diff), int(matched_c), int(mismatch_c),
                 int(only_our_c), int(only_bank_c), str(period_month), float(total_commission or 0.0),
                 str(terminals_json), normalized_run_id, str(source_our_name or ""), str(source_bank_name or ""),
-                str(config_json),
+                str(config_json), str(assigned_terminal_id or "").strip() or None,
             )
 
             if existing_id:
@@ -353,7 +356,8 @@ def save_reconciliation(
                     SET timestamp = ?, username = ?, bank_name = ?, total_our = ?, total_bank = ?,
                         difference = ?, matched_count = ?, mismatch_count = ?, only_our_count = ?,
                         only_bank_count = ?, period_month = ?, total_commission = ?, terminals_json = ?,
-                        run_id = ?, source_our_name = ?, source_bank_name = ?, config_json = ?
+                        run_id = ?, source_our_name = ?, source_bank_name = ?, config_json = ?,
+                        assigned_terminal_id = ?
                     WHERE id = ?
                 ''', values + (existing_id,))
                 message = f"Сверка #{existing_id} обновлена в системном архиве."
@@ -362,8 +366,8 @@ def save_reconciliation(
                     INSERT INTO reconciliation_archive
                     (timestamp, username, bank_name, total_our, total_bank, difference, matched_count, mismatch_count,
                      only_our_count, only_bank_count, period_month, total_commission, terminals_json, run_id,
-                     source_our_name, source_bank_name, config_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     source_our_name, source_bank_name, config_json, assigned_terminal_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', values)
                 message = f"Сверка #{cursor.lastrowid} сохранена в системный архив."
 

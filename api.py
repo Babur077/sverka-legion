@@ -332,6 +332,7 @@ async def save_module_archive(
             source_our_name=payload.get("source_our_name"),
             source_bank_name=payload.get("source_bank_name"),
             config_data=payload.get("config") or {},
+            assigned_terminal_id=payload.get("assigned_terminal_id"),
         )
         if not ok:
             raise HTTPException(status_code=500, detail=message)
