@@ -265,6 +265,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         setActiveTab('summary');
         setSelectedDrilldownDate(null);
         setSaveSuccessMsg(null);
+        setArchiveTerminalChoice('');
+        setManualArchiveTerminalId('');
         setDraftRestored(false);
         setFilterDateOur('(Все)');
         setFilterStatusOur('(Все)');
