@@ -36,6 +36,25 @@ const pct = (n: number) => `${n.toFixed(2)}%`;
 
 type TerminalAnalyticsRow = TerminalSummaryItem & { bank: string; runs: number };
 
+type TerminalPeriodAnalyticsRow = TerminalSummaryItem & {
+  bank: string;
+  period: string;
+  periodLabel: string;
+  runs: number;
+};
+
+interface BankHistoryRow {
+  period: string;
+  label: string;
+  volume: number;
+  net: number;
+  commission: number;
+  tx: number;
+  terminals: number;
+  effectiveCommission: number;
+  growth: number | null;
+}
+
 interface TerminalHistoryRow {
   period: string;
   label: string;
@@ -104,10 +123,30 @@ function terminalSnapshotsForRecord(record: ReconciliationArchive): TerminalSumm
   }));
 }
 
+function latestTerminalSnapshots(
+  records: ReconciliationArchive[],
+): Array<{ record: ReconciliationArchive; terminal: TerminalSummaryItem }> {
+  const latest = new Map<string, { record: ReconciliationArchive; terminal: TerminalSummaryItem }>();
+
+  records.forEach(record => {
+    terminalSnapshotsForRecord(record).forEach(terminal => {
+      const terminalId = String(terminal.terminal_id || '(Без TID)').trim();
+      const key = `${periodOf(record)}::${record.bank_name}::${terminalId}`;
+      const current = latest.get(key);
+
+      if (!current || new Date(record.timestamp).getTime() > new Date(current.record.timestamp).getTime()) {
+        latest.set(key, { record, terminal: { ...terminal, terminal_id: terminalId } });
+      }
+    });
+  });
+
+  return Array.from(latest.values());
+}
+
 function aggregateTerminals(records: ReconciliationArchive[]): TerminalAnalyticsRow[] {
   const map = new Map<string, TerminalAnalyticsRow>();
 
-  records.forEach(record => terminalSnapshotsForRecord(record).forEach(item => {
+  latestTerminalSnapshots(records).forEach(({ record, terminal: item }) => {
     const tid = String(item.terminal_id || '(Без TID)');
     const current = map.get(tid);
 
@@ -117,7 +156,6 @@ function aggregateTerminals(records: ReconciliationArchive[]): TerminalAnalytics
         terminal_id: tid,
         bank: item.bank_acquirer || record.bank_name,
         merchant_id: item.merchant_id,
-        legal_entity: item.legal_entity,
         tx_count: item.tx_count || 0,
         total_volume: item.total_volume || 0,
         commission_pct: item.commission_pct || 0,
@@ -138,8 +176,7 @@ function aggregateTerminals(records: ReconciliationArchive[]): TerminalAnalytics
     current.runs += 1;
 
     if (!current.merchant_id && item.merchant_id) current.merchant_id = item.merchant_id;
-    if (!current.legal_entity && item.legal_entity) current.legal_entity = item.legal_entity;
-  }));
+  });
 
   return Array.from(map.values()).sort((a, b) => b.total_volume - a.total_volume);
 }
@@ -148,22 +185,9 @@ function latestSnapshotsForTerminal(
   records: ReconciliationArchive[],
   terminalId: string,
 ): Array<{ record: ReconciliationArchive; terminal: TerminalSummaryItem }> {
-  const latest = new Map<string, { record: ReconciliationArchive; terminal: TerminalSummaryItem }>();
-
-  records.forEach(record => {
-    const terminal = terminalSnapshotsForRecord(record).find(
-      item => String(item.terminal_id || '').trim() === terminalId,
-    );
-    if (!terminal) return;
-
-    const key = `${periodOf(record)}::${record.bank_name}::${terminalId}`;
-    const current = latest.get(key);
-    if (!current || new Date(record.timestamp).getTime() > new Date(current.record.timestamp).getTime()) {
-      latest.set(key, { record, terminal });
-    }
-  });
-
-  return Array.from(latest.values());
+  return latestTerminalSnapshots(records).filter(
+    ({ terminal }) => String(terminal.terminal_id || '').trim() === terminalId,
+  );
 }
 
 export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
@@ -197,6 +221,74 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
     [bankFiltered, month],
   );
 
+  const bankHistory = useMemo<BankHistoryRow[]>(() => {
+    const byPeriod = new Map<string, {
+      volume: number;
+      net: number;
+      commission: number;
+      tx: number;
+      terminals: Set<string>;
+    }>();
+
+    latestTerminalSnapshots(bankFiltered).forEach(({ record, terminal: item }) => {
+      const period = periodOf(record);
+      const current = byPeriod.get(period) || {
+        volume: 0,
+        net: 0,
+        commission: 0,
+        tx: 0,
+        terminals: new Set<string>(),
+      };
+
+      current.volume += Number(item.total_volume || 0);
+      current.net += Number(item.net_volume || 0);
+      current.commission += Number(item.commission_amount || 0);
+      current.tx += Number(item.tx_count || 0);
+      current.terminals.add(String(item.terminal_id || '(Без TID)'));
+      byPeriod.set(period, current);
+    });
+
+    const rows = Array.from(byPeriod.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([period, values]) => ({
+        period,
+        label: formatPeriodLabel(period),
+        volume: values.volume,
+        net: values.net,
+        commission: values.commission,
+        tx: values.tx,
+        terminals: values.terminals.size,
+        effectiveCommission: values.volume ? values.commission / values.volume * 100 : 0,
+        growth: null as number | null,
+      }));
+
+    return rows.map((row, index) => {
+      const previous = index > 0 ? rows[index - 1] : null;
+      return {
+        ...row,
+        growth: previous && previous.volume
+          ? (row.volume - previous.volume) / previous.volume * 100
+          : null,
+      };
+    });
+  }, [bankFiltered]);
+
+  const terminalPeriodRows = useMemo<TerminalPeriodAnalyticsRow[]>(() => {
+    return latestTerminalSnapshots(filtered)
+      .map(({ record, terminal: item }) => ({
+        ...item,
+        bank: item.bank_acquirer || record.bank_name,
+        period: periodOf(record),
+        periodLabel: formatPeriodLabel(periodOf(record)),
+        runs: 1,
+      }))
+      .sort((a, b) => {
+        const byPeriod = b.period.localeCompare(a.period);
+        if (byPeriod !== 0) return byPeriod;
+        return b.total_volume - a.total_volume;
+      });
+  }, [filtered]);
+
   const terminalCatalogRows = useMemo(
     () => aggregateTerminals(bankFiltered),
     [bankFiltered],
@@ -208,9 +300,9 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
   );
 
   const visibleTerminalRows = useMemo(() => {
-    if (terminal === '(Все)') return terminalRows;
-    return terminalRows.filter(t => t.terminal_id === terminal);
-  }, [terminalRows, terminal]);
+    if (terminal === '(Все)') return terminalPeriodRows;
+    return terminalPeriodRows.filter(t => t.terminal_id === terminal);
+  }, [terminalPeriodRows, terminal]);
 
   const totals = useMemo(() => filtered.reduce((sum, record) => {
     const quality = getReconciliationQuality(
@@ -291,11 +383,13 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
         tx: values.tx,
         avgTicket: values.tx ? values.volume / values.tx : 0,
         effectiveCommission: values.volume ? values.commission / values.volume * 100 : 0,
-        bankVolume: values.bankVolume,
-        shareOfBank: values.bankVolume ? values.volume / values.bankVolume * 100 : 0,
+        bankVolume: bankHistory.find(row => row.period === period)?.volume || values.bankVolume,
+        shareOfBank: (bankHistory.find(row => row.period === period)?.volume || values.bankVolume)
+          ? values.volume / (bankHistory.find(row => row.period === period)?.volume || values.bankVolume) * 100
+          : 0,
         runs: values.runs,
       }));
-  }, [bankFiltered, terminal]);
+  }, [bankFiltered, terminal, bankHistory]);
 
   const terminalFinancials = useMemo(() => {
     if (terminalHistory.length === 0) {
@@ -333,6 +427,24 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
         : null,
     };
   }, [terminalHistory]);
+
+  const bankTrendSummary = useMemo(() => {
+    if (bankHistory.length === 0) {
+      return {
+        latestVolume: 0,
+        latestGrowth: null as number | null,
+        latestTerminals: 0,
+        latestCommissionRate: 0,
+      };
+    }
+    const latest = bankHistory[bankHistory.length - 1];
+    return {
+      latestVolume: latest.volume,
+      latestGrowth: latest.growth,
+      latestTerminals: latest.terminals,
+      latestCommissionRate: latest.effectiveCommission,
+    };
+  }, [bankHistory]);
 
   const matchRate = totals.total ? totals.exactMatched / totals.total * 100 : 0;
   const effectiveCommission = totals.bank ? totals.comm / totals.bank * 100 : 0;
@@ -437,6 +549,102 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
         })}
       </div>
 
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 mb-5">
+          <div>
+            <div className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">
+              Динамика банка
+            </div>
+            <h4 className="text-lg font-bold text-slate-900 mt-1">
+              Оборот всех терминалов · {bank === '(Все)' ? 'Все банки' : bank}
+            </h4>
+            <p className="text-xs text-slate-500 mt-1">
+              За каждый месяц берётся последний сохранённый результат каждого TID.
+              Столбцы показывают общий оборот, линия — рост или снижение к предыдущему месяцу.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 min-w-0">
+            <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
+              <div className="text-[11px] text-slate-500">Последний оборот</div>
+              <div className="font-bold text-slate-900 mt-1">{money(bankTrendSummary.latestVolume)}</div>
+            </div>
+            <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
+              <div className="text-[11px] text-slate-500">Рост м/м</div>
+              <div className={`font-bold mt-1 ${
+                bankTrendSummary.latestGrowth === null
+                  ? 'text-slate-500'
+                  : bankTrendSummary.latestGrowth >= 0
+                    ? 'text-emerald-600'
+                    : 'text-rose-600'
+              }`}>
+                {bankTrendSummary.latestGrowth === null
+                  ? '—'
+                  : `${bankTrendSummary.latestGrowth >= 0 ? '+' : ''}${bankTrendSummary.latestGrowth.toFixed(2)}%`}
+              </div>
+            </div>
+            <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
+              <div className="text-[11px] text-slate-500">Терминалов</div>
+              <div className="font-bold text-slate-900 mt-1">{bankTrendSummary.latestTerminals}</div>
+            </div>
+            <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
+              <div className="text-[11px] text-slate-500">Эфф. комиссия</div>
+              <div className="font-bold text-slate-900 mt-1">{pct(bankTrendSummary.latestCommissionRate)}</div>
+            </div>
+          </div>
+        </div>
+
+        {bankHistory.length > 0 ? (
+          <div className="h-96">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={bankHistory}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <YAxis
+                  yAxisId="money"
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(value: number) => money(value)}
+                  width={86}
+                />
+                <YAxis
+                  yAxisId="growth"
+                  orientation="right"
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(value: number) => `${value.toFixed(1)}%`}
+                  width={58}
+                />
+                <Tooltip
+                  formatter={(value: any, name: any) => {
+                    if (name === 'growth') {
+                      const numeric = Number(value || 0);
+                      return [`${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}%`, 'Рост м/м'];
+                    }
+                    return [money(Number(value || 0)), 'Оборот'];
+                  }}
+                  labelFormatter={(label: any) => `Период: ${label}`}
+                />
+                <Legend
+                  formatter={(value: string) => value === 'volume' ? 'Оборот всех терминалов' : 'Рост м/м'}
+                />
+                <Bar yAxisId="money" dataKey="volume" radius={[5, 5, 0, 0]} />
+                <Line
+                  yAxisId="growth"
+                  type="monotone"
+                  dataKey="growth"
+                  strokeWidth={2.5}
+                  dot={{ r: 3 }}
+                  connectNulls={false}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="h-56 flex items-center justify-center text-sm text-slate-500">
+            Пока нет сохранённых периодов для построения динамики банка.
+          </div>
+        )}
+      </div>
+
       {selectedTerminal && (
         <div className="bg-slate-900 text-white rounded-xl p-5 shadow-xs">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -446,7 +654,7 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
               </div>
               <div className="text-2xl font-bold mt-1 font-mono">{selectedTerminal.terminal_id}</div>
               <div className="text-sm text-slate-300 mt-1">
-                {selectedTerminal.merchant_id || 'MID не указан'} · {selectedTerminal.legal_entity || 'Юрлицо не указано'}
+                {selectedTerminal.merchant_id ? `MID: ${selectedTerminal.merchant_id}` : 'MID не указан'} · периодов: {terminalHistory.length}
               </div>
             </div>
 
@@ -749,11 +957,11 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
               Терминальная аналитика
             </h4>
             <p className="text-xs text-slate-500 mt-0.5">
-              Все терминалы за выбранный банк и период; комиссия агрегируется из архивных сверок.
+              Последние сохранённые данные каждого терминала по месяцам; один TID может занимать несколько строк за разные периоды.
             </p>
           </div>
           <div className="text-xs text-slate-500">
-            Показано {visibleTerminalRows.length} из {terminalRows.length}
+            Показано {visibleTerminalRows.length} из {terminalPeriodRows.length} строк
           </div>
         </div>
 
@@ -766,7 +974,7 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  {['TID', 'Продукт / MID', 'Юрлицо', 'Транзакции', 'Оборот', 'Ставка', 'Комиссия', 'Нетто'].map(header => (
+                  {['TID', 'Месяц', 'Продукт / MID', 'Транзакции', 'Оборот', 'Ставка', 'Комиссия', 'Нетто'].map(header => (
                     <th
                       key={header}
                       className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400"
@@ -779,12 +987,12 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
               <tbody className="divide-y divide-slate-100">
                 {visibleTerminalRows.map(item => (
                   <tr
-                    key={item.terminal_id}
+                    key={`${item.bank}::${item.terminal_id}::${item.period}`}
                     className={`hover:bg-slate-50 ${terminal === item.terminal_id ? 'bg-indigo-50/60' : ''}`}
                   >
                     <td className="px-4 py-3.5 font-mono font-medium">{item.terminal_id}</td>
+                    <td className="px-4 py-3.5 whitespace-nowrap font-medium text-slate-700">{item.periodLabel}</td>
                     <td className="px-4 py-3.5">{item.merchant_id || '—'}</td>
-                    <td className="px-4 py-3.5 text-slate-600">{item.legal_entity || '—'}</td>
                     <td className="px-4 py-3.5">{item.tx_count.toLocaleString('ru-RU')}</td>
                     <td className="px-4 py-3.5 font-semibold">{money(item.total_volume)}</td>
                     <td className="px-4 py-3.5">{pct(item.commission_pct)}</td>
