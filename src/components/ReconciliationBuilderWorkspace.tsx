@@ -21,6 +21,8 @@ import { getModuleArchive, saveModuleArchive } from '../utils/archiveApi';
 import { hasPermission } from '../utils/permissions';
 import {
   BuilderAmountTransform,
+  BuilderComputedField,
+  BuilderComputedOperation,
   BuilderFilterRule,
   BuilderKeyPair,
   BuilderKeyTransform,
@@ -58,6 +60,7 @@ const emptyConfig = (): ReconciliationBuilderConfig => ({
   amount_b_transform: 'as_is',
   matching_mode: 'one_to_one',
   filters: [],
+  computed_fields: [],
   date_a_col: '',
   date_b_col: '',
   date_tolerance_days: 0,
@@ -127,6 +130,35 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
   const canRun = hasPermission(user, 'reconciliation_builder.run');
   const canManage = hasPermission(user, 'reconciliation_builder.manage');
+
+  const effectiveColumnsA = useMemo(
+    () => Array.from(new Set([
+      ...columnsA,
+      ...(config.computed_fields || [])
+        .filter(field => field.side === 'a' && field.name.trim())
+        .map(field => field.name.trim()),
+    ])),
+    [columnsA, config.computed_fields],
+  );
+
+  const effectiveColumnsB = useMemo(
+    () => Array.from(new Set([
+      ...columnsB,
+      ...(config.computed_fields || [])
+        .filter(field => field.side === 'b' && field.name.trim())
+        .map(field => field.name.trim()),
+    ])),
+    [columnsB, config.computed_fields],
+  );
+
+  const computedSourceOptions = (side: 'a' | 'b', fieldIndex: number): string[] => {
+    const base = side === 'a' ? columnsA : columnsB;
+    const previous = (config.computed_fields || [])
+      .slice(0, fieldIndex)
+      .filter(field => field.side === side && field.name.trim())
+      .map(field => field.name.trim());
+    return Array.from(new Set([...base, ...previous]));
+  };
 
   const loadDefinitions = async () => {
     try {
@@ -206,6 +238,72 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
       key_pairs: current.key_pairs.length === 1
         ? current.key_pairs
         : current.key_pairs.filter((_, pairIndex) => pairIndex !== index),
+    }));
+  };
+
+  const addComputedField = () => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: [
+        ...(current.computed_fields || []),
+        {
+          side: 'a',
+          name: '',
+          operation: 'normalize_text',
+          sources: [''],
+          text_mode: 'trim',
+        },
+      ],
+    }));
+  };
+
+  const updateComputedField = (index: number, patch: Partial<BuilderComputedField>) => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: (current.computed_fields || []).map((field, fieldIndex) =>
+        fieldIndex === index ? { ...field, ...patch } : field,
+      ),
+    }));
+  };
+
+  const updateComputedSource = (fieldIndex: number, sourceIndex: number, value: string) => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: (current.computed_fields || []).map((field, index) => {
+        if (index !== fieldIndex) return field;
+        const sources = [...(field.sources || [])];
+        sources[sourceIndex] = value;
+        return { ...field, sources };
+      }),
+    }));
+  };
+
+  const addComputedSource = (fieldIndex: number) => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: (current.computed_fields || []).map((field, index) =>
+        index === fieldIndex
+          ? { ...field, sources: [...(field.sources || []), ''] }
+          : field,
+      ),
+    }));
+  };
+
+  const removeComputedSource = (fieldIndex: number, sourceIndex: number) => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: (current.computed_fields || []).map((field, index) => {
+        if (index !== fieldIndex) return field;
+        const sources = (field.sources || []).filter((_, sourceIdx) => sourceIdx !== sourceIndex);
+        return { ...field, sources: sources.length ? sources : [''] };
+      }),
+    }));
+  };
+
+  const removeComputedField = (index: number) => {
+    setConfig(current => ({
+      ...current,
+      computed_fields: (current.computed_fields || []).filter((_, fieldIndex) => fieldIndex !== index),
     }));
   };
 
