@@ -297,8 +297,8 @@ def test_builder_computed_fields_can_chain_concat_and_replace():
 
     result = module.run(
         {
-            "source_a": _csv("Account;Document;Amount\n2020;001;500"),
-            "source_b": _csv("Reference;Amount\n2020001;500"),
+            "source_a": _csv("Account;Document;Amount\n2020;DOC001;500"),
+            "source_b": _csv("Reference;Amount\n2020DOC001;500"),
         },
         {
             "source_a_filename": "a.csv",
