@@ -9,6 +9,17 @@ import { getReconciliationQuality } from '../utils/reconciliationMetrics';
 interface Props { user: User; onNewReconciliation: () => void; }
 const money = (n: number) => n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 const pct = (n: number) => `${n.toFixed(2)}%`;
+const archiveMonthValue = (record: ReconciliationArchive) => record.period_month || record.timestamp.slice(0, 7);
+const archiveMonthLabel = (record: ReconciliationArchive) => {
+  const value = archiveMonthValue(record);
+  const [year, month] = value.split('-').map(Number);
+  if (!year || !month) return value || '—';
+  const label = new Date(year, month - 1, 1).toLocaleDateString('ru-RU', {
+    month: 'long',
+    year: 'numeric',
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+};
 
 export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) => {
   const canRun = hasPermission(user, 'bank_rrn.run');
@@ -19,7 +30,7 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
   const [selected, setSelected] = useState<ReconciliationArchive | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ReconciliationArchive | null>(null);
 
-  const months = useMemo(() => Array.from(new Set(archive.map(a => a.period_month || a.timestamp.slice(0, 7)))).sort().reverse(), [archive]);
+  const months = useMemo(() => Array.from(new Set(archive.map(archiveMonthValue))).sort().reverse(), [archive]);
   const filtered = useMemo(() => archive.filter(a => {
     const q = query.trim().toLowerCase();
     const hit = !q
@@ -28,7 +39,7 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
       || String(a.run_id || '').toLowerCase().includes(q)
       || String(a.assigned_terminal_id || '').toLowerCase().includes(q)
       || (a.terminals_summary || []).some(t => String(t.terminal_id || '').toLowerCase().includes(q));
-    const aMonth = a.period_month || a.timestamp.slice(0, 7);
+    const aMonth = archiveMonthValue(a);
     return hit && (month === '(Все)' || aMonth === month);
   }), [archive, query, month]);
 
@@ -82,7 +93,7 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
 
     <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900">Результаты</div><div className="text-xs text-slate-500 mt-0.5">Показано {filtered.length} из {archive.length}</div></div>
-      {filtered.length === 0 ? <div className="p-12 text-center text-slate-500 text-sm">Записи не найдены.</div> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['Дата', 'Банк', 'TID архива', 'Оператор', 'Сумма банка', 'Комиссия', 'Δ', 'Точное совпадение', 'Действия'].map(h => <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{filtered.map(a => { const quality = getReconciliationQuality(a.matched_count, a.mismatch_count, a.only_our_count, a.only_bank_count); const rate = quality.exactMatchRate; return <tr key={a.id} className="hover:bg-slate-50"><td className="px-5 py-3.5 whitespace-nowrap">{new Date(a.timestamp).toLocaleString('ru-RU')}</td><td className="px-5 py-3.5 font-medium">{a.bank_name}</td><td className="px-5 py-3.5 font-mono text-slate-700">{a.assigned_terminal_id || ((a.terminals_summary || []).length === 1 ? a.terminals_summary?.[0]?.terminal_id : '—')}</td><td className="px-5 py-3.5 text-slate-600">{a.username}</td><td className="px-5 py-3.5 text-slate-600">{money(a.total_bank)}</td><td className="px-5 py-3.5 text-violet-700 font-semibold">{money(a.total_commission || 0)}</td><td className={`px-5 py-3.5 font-medium ${a.difference === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>{money(a.difference)}</td><td className="px-5 py-3.5"><span className="font-semibold">{rate.toFixed(1)}%</span><span className="text-xs text-slate-400 ml-2">({quality.exactMatched})</span></td><td className="px-5 py-3.5"><div className="flex items-center gap-1"><button onClick={() => setSelected(a)} className="p-2 rounded-lg hover:bg-indigo-50 text-slate-500 hover:text-indigo-600" title="Просмотр"><Eye className="w-4 h-4" /></button>{canRun && <button onClick={() => setDeleteTarget(a)} className="p-2 rounded-lg hover:bg-rose-50 text-slate-500 hover:text-rose-600" title="Удалить"><Trash2 className="w-4 h-4" /></button>}</div></td></tr>; })}</tbody></table></div>}
+      {filtered.length === 0 ? <div className="p-12 text-center text-slate-500 text-sm">Записи не найдены.</div> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['Дата', 'Месяц', 'Банк', 'TID архива', 'Оператор', 'Сумма банка', 'Комиссия', 'Δ', 'Точное совпадение', 'Действия'].map(h => <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{filtered.map(a => { const quality = getReconciliationQuality(a.matched_count, a.mismatch_count, a.only_our_count, a.only_bank_count); const rate = quality.exactMatchRate; return <tr key={a.id} className="hover:bg-slate-50"><td className="px-5 py-3.5 whitespace-nowrap">{new Date(a.timestamp).toLocaleString('ru-RU')}</td><td className="px-5 py-3.5 whitespace-nowrap font-medium text-slate-700">{archiveMonthLabel(a)}</td><td className="px-5 py-3.5 font-medium">{a.bank_name}</td><td className="px-5 py-3.5 font-mono text-slate-700">{a.assigned_terminal_id || ((a.terminals_summary || []).length === 1 ? a.terminals_summary?.[0]?.terminal_id : '—')}</td><td className="px-5 py-3.5 text-slate-600">{a.username}</td><td className="px-5 py-3.5 text-slate-600">{money(a.total_bank)}</td><td className="px-5 py-3.5 text-violet-700 font-semibold">{money(a.total_commission || 0)}</td><td className={`px-5 py-3.5 font-medium ${a.difference === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>{money(a.difference)}</td><td className="px-5 py-3.5"><span className="font-semibold">{rate.toFixed(1)}%</span><span className="text-xs text-slate-400 ml-2">({quality.exactMatched})</span></td><td className="px-5 py-3.5"><div className="flex items-center gap-1"><button onClick={() => setSelected(a)} className="p-2 rounded-lg hover:bg-indigo-50 text-slate-500 hover:text-indigo-600" title="Просмотр"><Eye className="w-4 h-4" /></button>{canRun && <button onClick={() => setDeleteTarget(a)} className="p-2 rounded-lg hover:bg-rose-50 text-slate-500 hover:text-rose-600" title="Удалить"><Trash2 className="w-4 h-4" /></button>}</div></td></tr>; })}</tbody></table></div>}
     </div>
 
     {selected && <div className="fixed inset-0 z-50 bg-slate-950/40 flex items-center justify-center p-4" onClick={() => setSelected(null)}>
@@ -96,7 +107,7 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
           ['Точно совпало', (selectedQuality?.exactMatched || 0).toLocaleString('ru-RU')],
           ['Расхождения сумм', selected.mismatch_count.toLocaleString('ru-RU')],
           ['Только у нас / банка', `${selected.only_our_count} / ${selected.only_bank_count}`],
-          ['Период', selected.period_month || '—'],
+          ['Период', archiveMonthLabel(selected)],
         ].map(([label, value]) => <div key={label} className="bg-slate-50 rounded-xl p-3"><div className="text-[11px] text-slate-500">{label}</div><div className="text-sm font-bold text-slate-900 mt-1">{value}</div></div>)}</div>
 
         {(selected.run_id || selected.source_our_name || selected.source_bank_name || Object.keys(selected.config || {}).length > 0) && (
@@ -119,7 +130,7 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
 
         <div className="px-5 pb-5">
           <div className="flex items-center justify-between gap-3 mb-3"><div><div className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Terminal className="w-4 h-4 text-indigo-600" /> Разбивка по терминалам</div><div className="text-xs text-slate-500 mt-0.5">Каждый TID можно рассматривать как отдельный продукт.</div></div><div className="text-xs text-slate-500">{selectedTerminals.length} терминалов</div></div>
-          {selectedTerminals.length ? <div className="overflow-x-auto border border-slate-200 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['TID', 'Продукт / MID', 'Юрлицо', 'Транзакции', 'Оборот', 'Ставка', 'Комиссия', 'Нетто'].map(h => <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{selectedTerminals.map(t => <tr key={t.terminal_id}><td className="px-4 py-3.5 font-mono font-medium">{t.terminal_id}</td><td className="px-4 py-3.5">{t.merchant_id || '—'}</td><td className="px-4 py-3.5 text-slate-600">{t.legal_entity || '—'}</td><td className="px-4 py-3.5">{t.tx_count.toLocaleString('ru-RU')}</td><td className="px-4 py-3.5 font-semibold">{money(t.total_volume)}</td><td className="px-4 py-3.5">{pct(t.commission_pct)}</td><td className="px-4 py-3.5 text-violet-700 font-semibold">{money(t.commission_amount)}</td><td className="px-4 py-3.5 font-semibold">{money(t.net_volume)}</td></tr>)}</tbody><tfoot className="bg-slate-50 border-t border-slate-200"><tr><td className="px-4 py-3 font-semibold" colSpan={3}>ИТОГО</td><td className="px-4 py-3 font-semibold">{selectedTerminalTotals.tx.toLocaleString('ru-RU')}</td><td className="px-4 py-3 font-semibold">{money(selectedTerminalTotals.volume)}</td><td></td><td className="px-4 py-3 font-semibold text-violet-700">{money(selectedTerminalTotals.commission)}</td><td className="px-4 py-3 font-semibold">{money(selectedTerminalTotals.net)}</td></tr></tfoot></table></div> : <div className="text-sm text-slate-500 border border-slate-200 rounded-xl p-6">Детализация по терминалам отсутствует. Новые сохранённые сверки будут хранить её автоматически.</div>}
+          {selectedTerminals.length ? <div className="overflow-x-auto border border-slate-200 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['TID', 'Месяц', 'Юрлицо', 'Транзакции', 'Оборот', 'Ставка', 'Комиссия', 'Нетто'].map(h => <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{selectedTerminals.map(t => <tr key={t.terminal_id}><td className="px-4 py-3.5 font-mono font-medium">{t.terminal_id}</td><td className="px-4 py-3.5 whitespace-nowrap">{archiveMonthLabel(selected)}</td><td className="px-4 py-3.5 text-slate-600">{t.legal_entity || '—'}</td><td className="px-4 py-3.5">{t.tx_count.toLocaleString('ru-RU')}</td><td className="px-4 py-3.5 font-semibold">{money(t.total_volume)}</td><td className="px-4 py-3.5">{pct(t.commission_pct)}</td><td className="px-4 py-3.5 text-violet-700 font-semibold">{money(t.commission_amount)}</td><td className="px-4 py-3.5 font-semibold">{money(t.net_volume)}</td></tr>)}</tbody><tfoot className="bg-slate-50 border-t border-slate-200"><tr><td className="px-4 py-3 font-semibold" colSpan={3}>ИТОГО</td><td className="px-4 py-3 font-semibold">{selectedTerminalTotals.tx.toLocaleString('ru-RU')}</td><td className="px-4 py-3 font-semibold">{money(selectedTerminalTotals.volume)}</td><td></td><td className="px-4 py-3 font-semibold text-violet-700">{money(selectedTerminalTotals.commission)}</td><td className="px-4 py-3 font-semibold">{money(selectedTerminalTotals.net)}</td></tr></tfoot></table></div> : <div className="text-sm text-slate-500 border border-slate-200 rounded-xl p-6">Детализация по терминалам отсутствует. Новые сохранённые сверки будут хранить её автоматически.</div>}
         </div>
       </div>
     </div>}
