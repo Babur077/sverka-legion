@@ -15,6 +15,7 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from utils.db_manager import DB_PATH
+from backend.db.migrations.runner import run_migrations
 
 
 DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
@@ -106,36 +107,8 @@ def resolve_permissions(role: str, overrides: Any = None) -> List[str]:
 
 
 def init_permissions_db():
-    """Create audit storage and migrate the optional users.permissions column."""
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS audit_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                action TEXT NOT NULL,
-                module_id TEXT,
-                object_type TEXT,
-                object_id TEXT,
-                status TEXT DEFAULT 'SUCCESS',
-                ip_address TEXT,
-                duration_ms REAL,
-                details TEXT
-            )
-            """
-        )
-        try:
-            cursor.execute("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass
-
-        cursor.execute(
-            "UPDATE users SET role = ? WHERE role = ?",
-            ("accountant_acquiring", "accountant"),
-        )
-        conn.commit()
+    """Compatibility wrapper: schema is owned by the central migration runner."""
+    run_migrations(DB_PATH)
 
 
 def get_user_permissions(username: str) -> List[str]:
