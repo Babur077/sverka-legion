@@ -567,6 +567,22 @@ class ReconciliationBuilderModule(BaseReconciliationModule):
             if ignore_empty_keys and any(not value for value in key):
                 continue
 
+            # Explicit group modes take priority when the "many" side really
+            # contains multiple rows. Otherwise an exact 1↔1 candidate could
+            # consume one row and leave the rest unmatched.
+            if (
+                matching_mode == "one_to_many"
+                and len(left_group) == 1
+                and len(right_group) > 1
+            ):
+                continue
+            if (
+                matching_mode == "many_to_one"
+                and len(left_group) > 1
+                and len(right_group) == 1
+            ):
+                continue
+
             for a in left_group:
                 if a["index"] in used_a:
                     continue
