@@ -288,6 +288,12 @@ export const App: React.FC = () => {
       {currentTab !== 'module' && <Navbar user={user} currentTab={currentTab} onSelectTab={setCurrentTab} onLogout={handleLogout} />}
       <main className="flex-1 overflow-y-auto">
         {currentTab === 'modules' && <ModuleWorkspace user={user} onOpenModule={openModule} />}
+        {currentTab === 'constructor' && hasPermission(user, 'reconciliation_builder.view') && (
+          <ReconciliationBuilderWorkspace
+            user={user}
+            onBack={() => setCurrentTab('modules')}
+          />
+        )}
         {currentTab === 'module' && renderActiveModule()}
         {currentTab === 'audit' && <AuditPage user={user} />}
         {currentTab === 'admin' && hasPermission(user, '*') && <AdminPage user={user} settings={settings} onUpdateSettings={setSettings} />}
