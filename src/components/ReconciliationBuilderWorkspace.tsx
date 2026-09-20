@@ -20,6 +20,7 @@ import { parseFile } from '../utils/fileParser';
 import { getModuleArchive, saveModuleArchive } from '../utils/archiveApi';
 import { hasPermission } from '../utils/permissions';
 import {
+  BuilderAmountTransform,
   BuilderFilterRule,
   BuilderKeyPair,
   BuilderKeyTransform,
