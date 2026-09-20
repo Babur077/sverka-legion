@@ -1,16 +1,34 @@
 import { apiFetch } from './apiClient';
 
+export type BuilderKeyTransform = 'none' | 'remove_spaces' | 'digits_only' | 'strip_leading_zeros' | 'alnum';
+
 export interface BuilderKeyPair {
   left: string;
   right: string;
   mode: 'exact' | 'text' | 'numeric';
+  left_transform?: BuilderKeyTransform;
+  right_transform?: BuilderKeyTransform;
 }
+
+export interface BuilderFilterRule {
+  side: 'a' | 'b';
+  column: string;
+  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'empty' | 'not_empty' | 'gt' | 'gte' | 'lt' | 'lte';
+  value?: string;
+}
+
+export type BuilderAmountTransform = 'as_is' | 'invert' | 'absolute';
+export type BuilderMatchingMode = 'one_to_one' | 'one_to_many' | 'many_to_one';
 
 export interface ReconciliationBuilderConfig {
   key_pairs: BuilderKeyPair[];
   amount_a_col?: string;
   amount_b_col?: string;
   amount_tolerance: number;
+  amount_a_transform?: BuilderAmountTransform;
+  amount_b_transform?: BuilderAmountTransform;
+  matching_mode?: BuilderMatchingMode;
+  filters?: BuilderFilterRule[];
   date_a_col?: string;
   date_b_col?: string;
   date_tolerance_days: number;
@@ -51,6 +69,9 @@ export interface BuilderResultRow {
   date_a?: string | null;
   date_b?: string | null;
   date_delta_days?: number | null;
+  match_type?: '1↔1' | '1↔N' | 'N↔1';
+  grouped_rows_a?: number[];
+  grouped_rows_b?: number[];
   reason?: string;
   source_a?: Record<string, any>;
   source_b?: Record<string, any>;
@@ -162,9 +183,13 @@ export async function runReconciliationBuilder(
   form.append('source_a_filename', sourceA.name);
   form.append('source_b_filename', sourceB.name);
   form.append('key_pairs', JSON.stringify(config.key_pairs));
+  form.append('filters', JSON.stringify(config.filters || []));
+  form.append('matching_mode', config.matching_mode || 'one_to_one');
   form.append('amount_a_col', config.amount_a_col || '');
   form.append('amount_b_col', config.amount_b_col || '');
   form.append('amount_tolerance', String(config.amount_tolerance || 0));
+  form.append('amount_a_transform', config.amount_a_transform || 'as_is');
+  form.append('amount_b_transform', config.amount_b_transform || 'as_is');
   form.append('date_a_col', config.date_a_col || '');
   form.append('date_b_col', config.date_b_col || '');
   form.append('date_tolerance_days', String(config.date_tolerance_days || 0));
