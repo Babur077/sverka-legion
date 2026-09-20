@@ -63,10 +63,51 @@ function formatPeriodLabel(period: string): string {
   });
 }
 
+function terminalSnapshotsForRecord(record: ReconciliationArchive): TerminalSummaryItem[] {
+  const assignedTerminalId = String(record.assigned_terminal_id || '').trim();
+
+  if (assignedTerminalId) {
+    const matching = (record.terminals_summary || []).find(
+      item => String(item.terminal_id || '').trim() === assignedTerminalId,
+    );
+
+    if (matching) {
+      return [{
+        ...matching,
+        terminal_id: assignedTerminalId,
+        bank_acquirer: matching.bank_acquirer || record.bank_name,
+      }];
+    }
+
+    const volume = Number(record.total_bank || 0);
+    const commission = Number(record.total_commission || 0);
+    const txCount = Math.max(
+      0,
+      Number(record.matched_count || 0) + Number(record.only_bank_count || 0),
+    );
+
+    return [{
+      terminal_id: assignedTerminalId,
+      bank_acquirer: record.bank_name,
+      tx_count: txCount,
+      total_volume: volume,
+      commission_pct: volume ? commission / volume * 100 : 0,
+      commission_amount: commission,
+      net_volume: volume - commission,
+    }];
+  }
+
+  return (record.terminals_summary || []).map(item => ({
+    ...item,
+    terminal_id: String(item.terminal_id || '(Без TID)'),
+    bank_acquirer: item.bank_acquirer || record.bank_name,
+  }));
+}
+
 function aggregateTerminals(records: ReconciliationArchive[]): TerminalAnalyticsRow[] {
   const map = new Map<string, TerminalAnalyticsRow>();
 
-  records.forEach(record => (record.terminals_summary || []).forEach(item => {
+  records.forEach(record => terminalSnapshotsForRecord(record).forEach(item => {
     const tid = String(item.terminal_id || '(Без TID)');
     const current = map.get(tid);
 
@@ -103,18 +144,26 @@ function aggregateTerminals(records: ReconciliationArchive[]): TerminalAnalytics
   return Array.from(map.values()).sort((a, b) => b.total_volume - a.total_volume);
 }
 
-function latestArchivePerPeriodAndBank(records: ReconciliationArchive[]): ReconciliationArchive[] {
-  const map = new Map<string, ReconciliationArchive>();
+function latestSnapshotsForTerminal(
+  records: ReconciliationArchive[],
+  terminalId: string,
+): Array<{ record: ReconciliationArchive; terminal: TerminalSummaryItem }> {
+  const latest = new Map<string, { record: ReconciliationArchive; terminal: TerminalSummaryItem }>();
 
   records.forEach(record => {
-    const key = `${periodOf(record)}::${record.bank_name}`;
-    const current = map.get(key);
-    if (!current || new Date(record.timestamp).getTime() > new Date(current.timestamp).getTime()) {
-      map.set(key, record);
+    const terminal = terminalSnapshotsForRecord(record).find(
+      item => String(item.terminal_id || '').trim() === terminalId,
+    );
+    if (!terminal) return;
+
+    const key = `${periodOf(record)}::${record.bank_name}::${terminalId}`;
+    const current = latest.get(key);
+    if (!current || new Date(record.timestamp).getTime() > new Date(current.record.timestamp).getTime()) {
+      latest.set(key, { record, terminal });
     }
   });
 
-  return Array.from(map.values());
+  return Array.from(latest.values());
 }
 
 export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
@@ -201,7 +250,7 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
   const terminalHistory = useMemo<TerminalHistoryRow[]>(() => {
     if (terminal === '(Все)') return [];
 
-    const latestSnapshots = latestArchivePerPeriodAndBank(bankFiltered);
+    const latestSnapshots = latestSnapshotsForTerminal(bankFiltered, terminal);
     const byPeriod = new Map<string, {
       volume: number;
       net: number;
@@ -211,12 +260,7 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
       runs: number;
     }>();
 
-    latestSnapshots.forEach(record => {
-      const terminalItem = (record.terminals_summary || []).find(
-        item => String(item.terminal_id || '(Без TID)') === terminal,
-      );
-      if (!terminalItem) return;
-
+    latestSnapshots.forEach(({ record, terminal: terminalItem }) => {
       const period = periodOf(record);
       const current = byPeriod.get(period) || {
         volume: 0,
@@ -438,8 +482,7 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
                 </div>
                 <h4 className="text-lg font-bold text-slate-900 mt-1 font-mono">{terminal}</h4>
                 <p className="text-xs text-slate-500 mt-1">
-                  История строится по последнему сохранённому результату каждого отчётного периода,
-                  чтобы повторные сверки одного месяца не удваивали оборот.
+                  История строится отдельно для каждого TID: для комбинации «период + банк + терминал» берётся последний сохранённый результат. Поэтому сверки других терминалов того же банка не исчезают и повторное сохранение одного TID не удваивает оборот.
                 </p>
               </div>
               <div className="text-xs text-slate-500">
