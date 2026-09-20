@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Copy,
   FileSpreadsheet,
+  Clock3,
   History,
   LoaderCircle,
   Plus,
@@ -67,6 +68,27 @@ function formatMonth(value?: string): string {
   });
 }
 
+function formatDateTime(value?: string): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function runSourceNames(item: Record<string, any>): string {
+  const sourceFiles = Array.isArray(item.source_files) ? item.source_files : [];
+  const names = sourceFiles.length
+    ? sourceFiles
+    : [item.source_a_name, item.source_b_name].filter(Boolean);
+  return names.length ? names.join(' ↔ ') : 'Источники не указаны';
+}
+
 export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }) => {
   const [sourceA, setSourceA] = useState<File | null>(null);
   const [sourceB, setSourceB] = useState<File | null>(null);
@@ -86,6 +108,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const [loadingFile, setLoadingFile] = useState<'a' | 'b' | null>(null);
   const [running, setRunning] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [showAllRuns, setShowAllRuns] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   const canRun = hasPermission(user, 'reconciliation_builder.run');
