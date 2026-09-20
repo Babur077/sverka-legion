@@ -19,6 +19,21 @@ export interface BuilderFilterRule {
 
 export type BuilderAmountTransform = 'as_is' | 'invert' | 'absolute';
 export type BuilderMatchingMode = 'one_to_one' | 'one_to_many' | 'many_to_one';
+export type BuilderComputedOperation = 'concat' | 'replace' | 'substring' | 'normalize_text' | 'normalize_date';
+
+export interface BuilderComputedField {
+  side: 'a' | 'b';
+  name: string;
+  operation: BuilderComputedOperation;
+  sources: string[];
+  separator?: string;
+  find?: string;
+  replace_with?: string;
+  start?: number;
+  length?: number | null;
+  text_mode?: 'trim' | 'collapse_spaces' | 'lower' | 'upper' | 'alnum';
+  date_format?: 'iso' | 'dmy' | 'compact';
+}
 
 export interface ReconciliationBuilderConfig {
   key_pairs: BuilderKeyPair[];
@@ -29,6 +44,7 @@ export interface ReconciliationBuilderConfig {
   amount_b_transform?: BuilderAmountTransform;
   matching_mode?: BuilderMatchingMode;
   filters?: BuilderFilterRule[];
+  computed_fields?: BuilderComputedField[];
   date_a_col?: string;
   date_b_col?: string;
   date_tolerance_days: number;
@@ -91,6 +107,7 @@ export interface BuilderRunResult {
       matching_mode?: BuilderMatchingMode;
       key_pairs?: BuilderKeyPair[];
       filters?: BuilderFilterRule[];
+      computed_fields?: BuilderComputedField[];
       filter_stats?: {
         source_a_before: number;
         source_a_after: number;
@@ -194,6 +211,7 @@ export async function runReconciliationBuilder(
   form.append('source_b_filename', sourceB.name);
   form.append('key_pairs', JSON.stringify(config.key_pairs));
   form.append('filters', JSON.stringify(config.filters || []));
+  form.append('computed_fields', JSON.stringify(config.computed_fields || []));
   form.append('matching_mode', config.matching_mode || 'one_to_one');
   form.append('amount_a_col', config.amount_a_col || '');
   form.append('amount_b_col', config.amount_b_col || '');
