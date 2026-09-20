@@ -387,6 +387,24 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     if ((config.matching_mode || 'one_to_one') !== 'one_to_one' && (!config.amount_a_col || !config.amount_b_col)) {
       return 'Для групповой сверки 1↔N / N↔1 обязательно выберите сумму в обоих источниках.';
     }
+    const computedFields = config.computed_fields || [];
+    const namesBySide = new Map<string, Set<string>>();
+    for (const field of computedFields) {
+      const name = field.name.trim();
+      if (!name) return 'Укажите название каждого вычисляемого поля.';
+      const sideNames = namesBySide.get(field.side) || new Set<string>();
+      if (sideNames.has(name)) return `В источнике ${field.side.toUpperCase()} повторяется вычисляемое поле «${name}».`;
+      sideNames.add(name);
+      namesBySide.set(field.side, sideNames);
+
+      if (!field.sources?.length || field.sources.some(source => !source)) {
+        return `Выберите исходные колонки для вычисляемого поля «${name}».`;
+      }
+      if (field.operation === 'replace' && !(field.find || '').length) {
+        return `Для поля «${name}» укажите, что заменить.`;
+      }
+    }
+
     const invalidFilter = (config.filters || []).find(rule => {
       if (!rule.column) return true;
       return !['empty', 'not_empty'].includes(rule.operator) && String(rule.value || '').trim() === '';
@@ -665,7 +683,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                         className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                       >
                         <option value="">Колонка A…</option>
-                        {columnsA.map(column => <option key={column} value={column}>{column}</option>)}
+                        {effectiveColumnsA.map(column => <option key={column} value={column}>{column}</option>)}
                       </select>
                       <div className="text-center text-xs font-bold text-slate-400">↔</div>
                       <select
@@ -674,7 +692,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                         className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                       >
                         <option value="">Колонка B…</option>
-                        {columnsB.map(column => <option key={column} value={column}>{column}</option>)}
+                        {effectiveColumnsB.map(column => <option key={column} value={column}>{column}</option>)}
                       </select>
                       <select
                         value={pair.mode}
@@ -739,7 +757,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
                       <option value="">Не использовать A</option>
-                      {columnsA.map(column => <option key={column} value={column}>{column}</option>)}
+                      {effectiveColumnsA.map(column => <option key={column} value={column}>{column}</option>)}
                     </select>
                     <select
                       value={config.amount_b_col || ''}
@@ -747,7 +765,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
                       <option value="">Не использовать B</option>
-                      {columnsB.map(column => <option key={column} value={column}>{column}</option>)}
+                      {effectiveColumnsB.map(column => <option key={column} value={column}>{column}</option>)}
                     </select>
                   </div>
 
@@ -799,7 +817,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
                       <option value="">Не использовать A</option>
-                      {columnsA.map(column => <option key={column} value={column}>{column}</option>)}
+                      {effectiveColumnsA.map(column => <option key={column} value={column}>{column}</option>)}
                     </select>
                     <select
                       value={config.date_b_col || ''}
@@ -807,7 +825,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
                       <option value="">Не использовать B</option>
-                      {columnsB.map(column => <option key={column} value={column}>{column}</option>)}
+                      {effectiveColumnsB.map(column => <option key={column} value={column}>{column}</option>)}
                     </select>
                   </div>
                   <label className="mt-3 block text-xs text-slate-500">
@@ -851,7 +869,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 ) : (
                   <div className="space-y-2">
                     {(config.filters || []).map((rule, index) => {
-                      const sourceColumns = rule.side === 'a' ? columnsA : columnsB;
+                      const sourceColumns = rule.side === 'a' ? effectiveColumnsA : effectiveColumnsB;
                       const needsValue = !['empty', 'not_empty'].includes(rule.operator);
                       return (
                         <div key={index} className="grid grid-cols-1 gap-2 rounded-lg bg-slate-50 p-2 lg:grid-cols-[90px_1fr_170px_1fr_36px] lg:items-center">
