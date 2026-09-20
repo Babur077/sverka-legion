@@ -383,11 +383,13 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
         tx: values.tx,
         avgTicket: values.tx ? values.volume / values.tx : 0,
         effectiveCommission: values.volume ? values.commission / values.volume * 100 : 0,
-        bankVolume: values.bankVolume,
-        shareOfBank: values.bankVolume ? values.volume / values.bankVolume * 100 : 0,
+        bankVolume: bankHistory.find(row => row.period === period)?.volume || values.bankVolume,
+        shareOfBank: (bankHistory.find(row => row.period === period)?.volume || values.bankVolume)
+          ? values.volume / (bankHistory.find(row => row.period === period)?.volume || values.bankVolume) * 100
+          : 0,
         runs: values.runs,
       }));
-  }, [bankFiltered, terminal]);
+  }, [bankFiltered, terminal, bankHistory]);
 
   const terminalFinancials = useMemo(() => {
     if (terminalHistory.length === 0) {
@@ -593,7 +595,7 @@ export const BankRrnAnalytics: React.FC<Props> = ({ user }) => {
         </div>
 
         {bankHistory.length > 0 ? (
-          <div className="h-88">
+          <div className="h-96">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={bankHistory}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
