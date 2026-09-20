@@ -60,6 +60,8 @@ def test_amount_mismatch_is_reported():
     assert result["matched_count"] == 1
     assert result["mismatch_count"] == 1
     assert result["amt_mismatches"].iloc[0]["Δ сумма"] == 1.0
+    assert result["amt_mismatches"].iloc[0]["status_our"] == "OK"
+    assert result["amt_mismatches"].iloc[0]["status_bank"] == "OK"
 
 
 def test_reversal_status_can_zero_out_transaction():
@@ -156,6 +158,8 @@ def test_unbind_mismatch_only_splits_the_mismatching_duplicate_row():
     assert result["mismatch_count"] == 0
     assert len(result["only_our"]) == 1
     assert len(result["only_bank"]) == 1
+    assert result["only_our"].iloc[0]["status_our"] == "OK"
+    assert result["only_bank"].iloc[0]["status_bank"] == "OK"
     assert int((result["merged"]["_merge"] == "both").sum()) == 1
 
 
@@ -352,3 +356,24 @@ def test_duplicate_pairing_keeps_real_difference_visible_after_reordering():
     assert mismatch["net_amount_our"] == 250.0
     assert mismatch["net_amount_bank"] == 251.0
     assert mismatch["Δ сумма"] == 1.0
+
+
+
+def test_duplicate_rows_keep_transaction_statuses():
+    our = frame([
+        {"date": "2026-09-01", "rrn": "D300", "amount": "100", "status": "SUCCESS"},
+        {"date": "2026-09-02", "rrn": "D300", "amount": "200", "status": "DECLINED"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "B300", "amount": "100", "status": "SETTLED"},
+        {"date": "2026-09-02", "rrn": "B300", "amount": "200", "status": "REVERSED"},
+    ])
+
+    result = run_rrn_reconciliation(
+        our,
+        bank,
+        base_cfg(rev_words=[]),
+    )
+
+    assert set(result["dups_our"]["status_our"].tolist()) == {"SUCCESS", "DECLINED"}
+    assert set(result["dups_bank"]["status_bank"].tolist()) == {"SETTLED", "REVERSED"}
