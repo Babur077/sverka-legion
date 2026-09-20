@@ -67,6 +67,108 @@ def verify_password(password: str, stored: str) -> bool:
     return legacy_hash == stored
 
 
+def _migrate_legacy_reconciliation_archive(conn: sqlite3.Connection) -> None:
+    """Copy the old Bank RRN archive into the generic reconciliation run store once."""
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    marker_key = "migration.generic_reconciliation_runs.v1"
+
+    marker = cursor.execute(
+        "SELECT value FROM app_settings WHERE key = ?",
+        (marker_key,),
+    ).fetchone()
+    if marker:
+        return
+
+    rows = cursor.execute(
+        "SELECT * FROM reconciliation_archive ORDER BY id"
+    ).fetchall()
+
+    for row in rows:
+        record = dict(row)
+        try:
+            terminals = json.loads(record.get("terminals_json") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            terminals = []
+        try:
+            config = json.loads(record.get("config_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            config = {}
+
+        payload = {
+            "bank_name": record.get("bank_name") or "Не указан",
+            "total_our": float(record.get("total_our") or 0),
+            "total_bank": float(record.get("total_bank") or 0),
+            "difference": float(record.get("difference") or 0),
+            "matched_count": int(record.get("matched_count") or 0),
+            "mismatch_count": int(record.get("mismatch_count") or 0),
+            "only_our_count": int(record.get("only_our_count") or 0),
+            "only_bank_count": int(record.get("only_bank_count") or 0),
+            "period_month": record.get("period_month"),
+            "total_commission": float(record.get("total_commission") or 0),
+            "terminals_summary": terminals,
+            "run_id": record.get("run_id"),
+            "source_our_name": record.get("source_our_name") or "",
+            "source_bank_name": record.get("source_bank_name") or "",
+            "config": config,
+            "assigned_terminal_id": record.get("assigned_terminal_id"),
+        }
+
+        source_files = [
+            value
+            for value in [
+                record.get("source_our_name"),
+                record.get("source_bank_name"),
+            ]
+            if value
+        ]
+        summary = {
+            "total_our": payload["total_our"],
+            "total_bank": payload["total_bank"],
+            "difference": payload["difference"],
+            "matched_count": payload["matched_count"],
+            "mismatch_count": payload["mismatch_count"],
+            "only_our_count": payload["only_our_count"],
+            "only_bank_count": payload["only_bank_count"],
+        }
+        timestamp = record.get("timestamp") or datetime.now().isoformat()
+
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO reconciliation_runs (
+                module_id, run_id, status, period_month, created_at, updated_at,
+                created_by, source_files_json, summary_json, payload_json,
+                review_status, legacy_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "bank_rrn",
+                record.get("run_id"),
+                "COMPLETED",
+                record.get("period_month"),
+                timestamp,
+                timestamp,
+                record.get("username") or "",
+                json.dumps(source_files, ensure_ascii=False),
+                json.dumps(summary, ensure_ascii=False),
+                json.dumps(payload, ensure_ascii=False, default=str),
+                "OPEN",
+                record.get("id"),
+            ),
+        )
+
+    cursor.execute(
+        """
+        INSERT INTO app_settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (marker_key, datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.row_factory = None
+
+
 def init_db():
     """Инициализирует локальную БД и создаёт все таблицы, если их нет.
     Создаёт дефолтного администратора только если пользователей ещё нет."""
@@ -144,6 +246,50 @@ def init_db():
                 value TEXT
             )
         ''')
+
+        # Единый журнал всех модулей сверки. Специфические поля конкретного
+        # модуля хранятся в payload_json, а общие поля доступны платформе.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS reconciliation_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                module_id TEXT NOT NULL,
+                run_id TEXT,
+                status TEXT NOT NULL DEFAULT 'COMPLETED',
+                period_month TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                source_files_json TEXT NOT NULL DEFAULT '[]',
+                summary_json TEXT NOT NULL DEFAULT '{}',
+                payload_json TEXT NOT NULL DEFAULT '{}',
+                review_status TEXT NOT NULL DEFAULT 'OPEN',
+                legacy_id INTEGER
+            )
+        ''')
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reconciliation_runs_module_period "
+            "ON reconciliation_runs(module_id, period_month)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reconciliation_runs_created_at "
+            "ON reconciliation_runs(created_at)"
+        )
+        cursor.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_reconciliation_runs_module_run
+            ON reconciliation_runs(module_id, run_id)
+            WHERE run_id IS NOT NULL AND run_id <> ''
+            """
+        )
+        cursor.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_reconciliation_runs_legacy
+            ON reconciliation_runs(module_id, legacy_id)
+            WHERE legacy_id IS NOT NULL
+            """
+        )
+
+        _migrate_legacy_reconciliation_archive(conn)
 
         cursor.execute("SELECT COUNT(*) FROM users")
         if cursor.fetchone()[0] == 0:
@@ -285,6 +431,189 @@ def get_all_users() -> pd.DataFrame:
 
 
 
+
+def _json_text(value, fallback):
+    if value is None:
+        value = fallback
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def save_reconciliation_run(module_id: str, user: str, payload: dict):
+    """Create/update one module run in the shared reconciliation journal."""
+    normalized_module_id = str(module_id or "").strip()
+    if not normalized_module_id:
+        return False, "module_id обязателен", None
+
+    payload = dict(payload or {})
+    now = datetime.now().isoformat()
+    run_id = str(payload.get("run_id") or "").strip() or None
+    period_month = str(payload.get("period_month") or "").strip() or None
+    status = str(payload.get("status") or "COMPLETED").strip().upper() or "COMPLETED"
+    review_status = str(payload.get("review_status") or "OPEN").strip().upper() or "OPEN"
+
+    source_files = payload.get("source_files")
+    if not isinstance(source_files, list):
+        source_files = [
+            value
+            for value in [
+                payload.get("source_our_name"),
+                payload.get("source_bank_name"),
+            ]
+            if value
+        ]
+
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        summary = {
+            key: payload.get(key)
+            for key in (
+                "total_our",
+                "total_bank",
+                "difference",
+                "matched_count",
+                "mismatch_count",
+                "only_our_count",
+                "only_bank_count",
+                "total_commission",
+            )
+            if key in payload
+        }
+
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        try:
+            existing = None
+            if run_id:
+                existing = cursor.execute(
+                    """
+                    SELECT id, created_at
+                    FROM reconciliation_runs
+                    WHERE module_id = ? AND run_id = ?
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                    (normalized_module_id, run_id),
+                ).fetchone()
+
+            values = (
+                normalized_module_id,
+                run_id,
+                status,
+                period_month,
+                existing[1] if existing else now,
+                now,
+                str(user or ""),
+                _json_text(source_files, []),
+                _json_text(summary, {}),
+                _json_text(payload, {}),
+                review_status,
+            )
+
+            if existing:
+                record_id = int(existing[0])
+                cursor.execute(
+                    """
+                    UPDATE reconciliation_runs
+                    SET module_id = ?, run_id = ?, status = ?, period_month = ?,
+                        created_at = ?, updated_at = ?, created_by = ?,
+                        source_files_json = ?, summary_json = ?, payload_json = ?,
+                        review_status = ?
+                    WHERE id = ?
+                    """,
+                    values + (record_id,),
+                )
+                message = f"Сверка #{record_id} обновлена в системном журнале."
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO reconciliation_runs (
+                        module_id, run_id, status, period_month, created_at, updated_at,
+                        created_by, source_files_json, summary_json, payload_json,
+                        review_status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    values,
+                )
+                record_id = int(cursor.lastrowid)
+                message = f"Сверка #{record_id} сохранена в системный журнал."
+
+            conn.commit()
+            return True, message, record_id
+        except Exception as exc:
+            return False, f"Ошибка при сохранении: {exc}", None
+
+
+def get_reconciliation_runs(module_id: str | None = None) -> list[dict]:
+    """Return shared reconciliation runs, optionally filtered by module."""
+    query = """
+        SELECT id, module_id, run_id, status, period_month, created_at, updated_at,
+               created_by, source_files_json, summary_json, payload_json,
+               review_status
+        FROM reconciliation_runs
+    """
+    params: tuple = ()
+    if module_id:
+        query += " WHERE module_id = ?"
+        params = (str(module_id),)
+    query += " ORDER BY updated_at DESC, id DESC"
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+
+    records: list[dict] = []
+    for row in rows:
+        raw = dict(row)
+        try:
+            payload = json.loads(raw.get("payload_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            payload = {}
+        try:
+            source_files = json.loads(raw.get("source_files_json") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            source_files = []
+        try:
+            summary = json.loads(raw.get("summary_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            summary = {}
+
+        record = dict(payload) if isinstance(payload, dict) else {}
+        record.update({
+            "id": raw["id"],
+            "module_id": raw["module_id"],
+            "run_id": raw["run_id"] or record.get("run_id"),
+            "status": raw["status"],
+            "period_month": raw["period_month"] or record.get("period_month"),
+            # Compatibility with the existing Bank RRN archive UI.
+            "timestamp": raw["updated_at"],
+            "created_at": raw["created_at"],
+            "updated_at": raw["updated_at"],
+            "username": raw["created_by"],
+            "created_by": raw["created_by"],
+            "source_files": source_files,
+            "summary": summary,
+            "review_status": raw["review_status"],
+        })
+        records.append(record)
+
+    return records
+
+
+def delete_reconciliation_run(module_id: str, record_id: int) -> bool:
+    """Delete exactly one run from one module archive."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM reconciliation_runs WHERE id = ? AND module_id = ?",
+            (int(record_id), str(module_id)),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+# Compatibility wrappers for Bank RRN while the frontend keeps its existing model.
 def save_reconciliation(
     user,
     bank_name,
@@ -304,94 +633,49 @@ def save_reconciliation(
     config_data=None,
     assigned_terminal_id=None,
 ):
-    """Сохраняет или обновляет результат сверки по run_id.
-
-    Повторное сохранение того же запуска обновляет запись вместо создания
-    дубликата, что позволяет безопасно фиксировать ручные исключения повторно.
-    """
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-        try:
-            if not period_month:
-                period_month = datetime.now().strftime("%Y-%m")
-
-            terminals_json = ""
-            if terminals_data is not None:
-                if isinstance(terminals_data, pd.DataFrame):
-                    terminals_json = terminals_data.to_json(orient="records", date_format="iso")
-                elif isinstance(terminals_data, (list, dict)):
-                    terminals_json = json.dumps(terminals_data, ensure_ascii=False)
-                elif isinstance(terminals_data, str):
-                    terminals_json = terminals_data
-
-            config_json = ""
-            if config_data is not None:
-                if isinstance(config_data, str):
-                    config_json = config_data
-                else:
-                    config_json = json.dumps(config_data, ensure_ascii=False, default=str)
-
-            now = datetime.now().isoformat()
-            normalized_run_id = str(run_id or "").strip() or None
-            existing_id = None
-            if normalized_run_id:
-                cursor.execute(
-                    "SELECT id FROM reconciliation_archive WHERE run_id = ? ORDER BY id DESC LIMIT 1",
-                    (normalized_run_id,),
-                )
-                row = cursor.fetchone()
-                existing_id = int(row[0]) if row else None
-
-            values = (
-                now, user, bank_name,
-                float(tot_our), float(tot_bank), float(diff), int(matched_c), int(mismatch_c),
-                int(only_our_c), int(only_bank_c), str(period_month), float(total_commission or 0.0),
-                str(terminals_json), normalized_run_id, str(source_our_name or ""), str(source_bank_name or ""),
-                str(config_json), str(assigned_terminal_id or "").strip() or None,
-            )
-
-            if existing_id:
-                cursor.execute('''
-                    UPDATE reconciliation_archive
-                    SET timestamp = ?, username = ?, bank_name = ?, total_our = ?, total_bank = ?,
-                        difference = ?, matched_count = ?, mismatch_count = ?, only_our_count = ?,
-                        only_bank_count = ?, period_month = ?, total_commission = ?, terminals_json = ?,
-                        run_id = ?, source_our_name = ?, source_bank_name = ?, config_json = ?,
-                        assigned_terminal_id = ?
-                    WHERE id = ?
-                ''', values + (existing_id,))
-                message = f"Сверка #{existing_id} обновлена в системном архиве."
-            else:
-                cursor.execute('''
-                    INSERT INTO reconciliation_archive
-                    (timestamp, username, bank_name, total_our, total_bank, difference, matched_count, mismatch_count,
-                     only_our_count, only_bank_count, period_month, total_commission, terminals_json, run_id,
-                     source_our_name, source_bank_name, config_json, assigned_terminal_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', values)
-                message = f"Сверка #{cursor.lastrowid} сохранена в системный архив."
-
-            conn.commit()
-            return True, message
-        except Exception as e:
-            return False, f"Ошибка при сохранении: {e}"
+    payload = {
+        "bank_name": bank_name,
+        "total_our": float(tot_our),
+        "total_bank": float(tot_bank),
+        "difference": float(diff),
+        "matched_count": int(matched_c),
+        "mismatch_count": int(mismatch_c),
+        "only_our_count": int(only_our_c),
+        "only_bank_count": int(only_bank_c),
+        "period_month": period_month or datetime.now().strftime("%Y-%m"),
+        "total_commission": float(total_commission or 0),
+        "terminals_summary": terminals_data or [],
+        "run_id": run_id,
+        "source_our_name": source_our_name or "",
+        "source_bank_name": source_bank_name or "",
+        "config": config_data or {},
+        "assigned_terminal_id": assigned_terminal_id,
+    }
+    ok, message, _ = save_reconciliation_run("bank_rrn", user, payload)
+    return ok, message
 
 
 def get_archive_data() -> pd.DataFrame:
-    """Возвращает историю всех сверок из БД."""
-    with sqlite3.connect(DB_PATH) as conn:
-        return pd.read_sql_query(
-            "SELECT * FROM reconciliation_archive ORDER BY timestamp DESC",
-            conn
+    records = get_reconciliation_runs("bank_rrn")
+    compatible = []
+    for record in records:
+        item = dict(record)
+        item["terminals_json"] = json.dumps(
+            item.get("terminals_summary") or [],
+            ensure_ascii=False,
+            default=str,
         )
+        item["config_json"] = json.dumps(
+            item.get("config") or {},
+            ensure_ascii=False,
+            default=str,
+        )
+        compatible.append(item)
+    return pd.DataFrame(compatible)
 
 
 def delete_archive_record(record_id: int):
-    """Удаляет запись из архива."""
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM reconciliation_archive WHERE id = ?", (record_id,))
-        conn.commit()
+    return delete_reconciliation_run("bank_rrn", record_id)
 
 
 # ─────────────────────────────────────────────────────────────
