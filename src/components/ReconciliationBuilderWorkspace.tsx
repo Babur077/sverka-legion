@@ -1236,6 +1236,78 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 )}
               </div>
 
+              <div className="mt-5 rounded-xl border border-slate-200 p-4">
+                <div className="mb-3">
+                  <div className="text-sm font-semibold text-slate-900">Колонки в результате</div>
+                  <div className="text-[11px] text-slate-500">
+                    Вместо технических «Строка A/B» можно показать реальные поля из файлов. До 4 колонок с каждой стороны.
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  {([
+                    ['a', 'Источник A', effectiveColumnsA, visibleResultColumnsA, config.result_columns_a || []],
+                    ['b', 'Источник B', effectiveColumnsB, visibleResultColumnsB, config.result_columns_b || []],
+                  ] as const).map(([side, label, available, visible, configured]) => (
+                    <div key={side} className="rounded-xl bg-slate-50 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="text-xs font-semibold text-slate-700">{label}</div>
+                        <button
+                          type="button"
+                          onClick={() => resetResultColumns(side)}
+                          className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-700"
+                        >
+                          Авто
+                        </button>
+                      </div>
+
+                      <select
+                        value=""
+                        onChange={event => addResultColumn(side, event.target.value)}
+                        disabled={configured.length >= 4}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs disabled:bg-slate-100"
+                      >
+                        <option value="">
+                          {configured.length >= 4 ? 'Максимум 4 колонки' : 'Добавить колонку…'}
+                        </option>
+                        {available
+                          .filter(column => !configured.includes(column))
+                          .map(column => <option key={column} value={column}>{column}</option>)}
+                      </select>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {visible.map(column => (
+                          <span
+                            key={column}
+                            className="inline-flex max-w-full items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] text-slate-700"
+                            title={column}
+                          >
+                            <span className="max-w-[180px] truncate">{column}</span>
+                            {configured.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => removeResultColumn(side, column)}
+                                className="text-slate-400 hover:text-rose-600"
+                                title="Убрать колонку"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                        {visible.length === 0 && (
+                          <span className="text-[10px] text-slate-400">Колонки появятся после настройки файла.</span>
+                        )}
+                      </div>
+
+                      <div className="mt-2 text-[10px] text-slate-400">
+                        {configured.length ? 'Ручной набор' : 'Авто: сумма → дата → ключи'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="mt-4 flex flex-wrap gap-4 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
                 <label className="flex items-center gap-2">
                   <input
