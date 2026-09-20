@@ -20,7 +20,10 @@ import { parseFile } from '../utils/fileParser';
 import { getModuleArchive, saveModuleArchive } from '../utils/archiveApi';
 import { hasPermission } from '../utils/permissions';
 import {
+  BuilderFilterRule,
   BuilderKeyPair,
+  BuilderKeyTransform,
+  BuilderMatchingMode,
   BuilderResultRow,
   BuilderRunResult,
   ReconciliationBuilderConfig,
@@ -40,10 +43,20 @@ interface Props {
 type ResultTab = 'matched' | 'mismatches' | 'only_a' | 'only_b';
 
 const emptyConfig = (): ReconciliationBuilderConfig => ({
-  key_pairs: [{ left: '', right: '', mode: 'text' }],
+  key_pairs: [{
+    left: '',
+    right: '',
+    mode: 'text',
+    left_transform: 'none',
+    right_transform: 'none',
+  }],
   amount_a_col: '',
   amount_b_col: '',
   amount_tolerance: 0,
+  amount_a_transform: 'as_is',
+  amount_b_transform: 'as_is',
+  matching_mode: 'one_to_one',
+  filters: [],
   date_a_col: '',
   date_b_col: '',
   date_tolerance_days: 0,
