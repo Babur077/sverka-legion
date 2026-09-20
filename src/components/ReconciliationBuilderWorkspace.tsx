@@ -61,6 +61,8 @@ const emptyConfig = (): ReconciliationBuilderConfig => ({
   matching_mode: 'one_to_one',
   filters: [],
   computed_fields: [],
+  result_columns_a: [],
+  result_columns_b: [],
   date_a_col: '',
   date_b_col: '',
   date_tolerance_days: 0,
@@ -96,6 +98,33 @@ function formatDateTime(value?: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function formatResultCellValue(value: any): string {
+  if (value == null || value === '') return '—';
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+  }
+  return String(value);
+}
+
+function sourceRowsForResult(row: BuilderResultRow, side: 'a' | 'b'): Record<string, any>[] {
+  const source = side === 'a' ? row.source_a : row.source_b;
+  if (!source || typeof source !== 'object') return [];
+  if (Array.isArray((source as any).rows)) {
+    return (source as any).rows.filter((item: any) => item && typeof item === 'object');
+  }
+  return [source as Record<string, any>];
+}
+
+function sourceValueForResult(row: BuilderResultRow, side: 'a' | 'b', column: string): string {
+  const values = sourceRowsForResult(row, side)
+    .map(source => formatResultCellValue(source[column]))
+    .filter(value => value !== '—');
+  const unique = Array.from(new Set(values));
+  if (unique.length === 0) return '—';
+  if (unique.length <= 3) return unique.join(' | ');
+  return `${unique.slice(0, 3).join(' | ')} · +${unique.length - 3}`;
 }
 
 function runSourceNames(item: Record<string, any>): string {
@@ -149,6 +178,40 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
         .map(field => field.name.trim()),
     ])),
     [columnsB, config.computed_fields],
+  );
+
+  const automaticResultColumnsA = useMemo(() => {
+    const preferred = [
+      config.amount_a_col,
+      config.date_a_col,
+      ...config.key_pairs.map(pair => pair.left),
+    ].filter(Boolean) as string[];
+    const fallback = preferred.length ? preferred : effectiveColumnsA.slice(0, 3);
+    return Array.from(new Set(fallback)).slice(0, 4);
+  }, [config.amount_a_col, config.date_a_col, config.key_pairs, effectiveColumnsA]);
+
+  const automaticResultColumnsB = useMemo(() => {
+    const preferred = [
+      config.amount_b_col,
+      config.date_b_col,
+      ...config.key_pairs.map(pair => pair.right),
+    ].filter(Boolean) as string[];
+    const fallback = preferred.length ? preferred : effectiveColumnsB.slice(0, 3);
+    return Array.from(new Set(fallback)).slice(0, 4);
+  }, [config.amount_b_col, config.date_b_col, config.key_pairs, effectiveColumnsB]);
+
+  const visibleResultColumnsA = useMemo(
+    () => (config.result_columns_a?.length
+      ? config.result_columns_a.filter(column => effectiveColumnsA.includes(column))
+      : automaticResultColumnsA),
+    [config.result_columns_a, effectiveColumnsA, automaticResultColumnsA],
+  );
+
+  const visibleResultColumnsB = useMemo(
+    () => (config.result_columns_b?.length
+      ? config.result_columns_b.filter(column => effectiveColumnsB.includes(column))
+      : automaticResultColumnsB),
+    [config.result_columns_b, effectiveColumnsB, automaticResultColumnsB],
   );
 
   const computedSourceOptions = (side: 'a' | 'b', fieldIndex: number): string[] => {
@@ -331,6 +394,29 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
       ...current,
       filters: (current.filters || []).filter((_, ruleIndex) => ruleIndex !== index),
     }));
+  };
+
+  const addResultColumn = (side: 'a' | 'b', column: string) => {
+    if (!column) return;
+    const field = side === 'a' ? 'result_columns_a' : 'result_columns_b';
+    setConfig(current => {
+      const existing = current[field] || [];
+      if (existing.includes(column) || existing.length >= 4) return current;
+      return { ...current, [field]: [...existing, column] };
+    });
+  };
+
+  const removeResultColumn = (side: 'a' | 'b', column: string) => {
+    const field = side === 'a' ? 'result_columns_a' : 'result_columns_b';
+    setConfig(current => ({
+      ...current,
+      [field]: (current[field] || []).filter(item => item !== column),
+    }));
+  };
+
+  const resetResultColumns = (side: 'a' | 'b') => {
+    const field = side === 'a' ? 'result_columns_a' : 'result_columns_b';
+    setConfig(current => ({ ...current, [field]: [] }));
   };
 
   const loadDefinition = (definition: ReconciliationDefinition) => {
@@ -1150,6 +1236,78 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 )}
               </div>
 
+              <div className="mt-5 rounded-xl border border-slate-200 p-4">
+                <div className="mb-3">
+                  <div className="text-sm font-semibold text-slate-900">Колонки в результате</div>
+                  <div className="text-[11px] text-slate-500">
+                    Вместо технических «Строка A/B» можно показать реальные поля из файлов. До 4 колонок с каждой стороны.
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  {([
+                    ['a', 'Источник A', effectiveColumnsA, visibleResultColumnsA, config.result_columns_a || []],
+                    ['b', 'Источник B', effectiveColumnsB, visibleResultColumnsB, config.result_columns_b || []],
+                  ] as const).map(([side, label, available, visible, configured]) => (
+                    <div key={side} className="rounded-xl bg-slate-50 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="text-xs font-semibold text-slate-700">{label}</div>
+                        <button
+                          type="button"
+                          onClick={() => resetResultColumns(side)}
+                          className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-700"
+                        >
+                          Авто
+                        </button>
+                      </div>
+
+                      <select
+                        value=""
+                        onChange={event => addResultColumn(side, event.target.value)}
+                        disabled={configured.length >= 4}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs disabled:bg-slate-100"
+                      >
+                        <option value="">
+                          {configured.length >= 4 ? 'Максимум 4 колонки' : 'Добавить колонку…'}
+                        </option>
+                        {available
+                          .filter(column => !configured.includes(column))
+                          .map(column => <option key={column} value={column}>{column}</option>)}
+                      </select>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {visible.map(column => (
+                          <span
+                            key={column}
+                            className="inline-flex max-w-full items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] text-slate-700"
+                            title={column}
+                          >
+                            <span className="max-w-[180px] truncate">{column}</span>
+                            {configured.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => removeResultColumn(side, column)}
+                                className="text-slate-400 hover:text-rose-600"
+                                title="Убрать колонку"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                        {visible.length === 0 && (
+                          <span className="text-[10px] text-slate-400">Колонки появятся после настройки файла.</span>
+                        )}
+                      </div>
+
+                      <div className="mt-2 text-[10px] text-slate-400">
+                        {configured.length ? 'Ручной набор' : 'Авто: сумма → дата → ключи'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="mt-4 flex flex-wrap gap-4 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
                 <label className="flex items-center gap-2">
                   <input
@@ -1242,42 +1400,97 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
+                  <table className="min-w-max text-sm">
                     <thead className="bg-slate-50">
                       <tr>
-                        {['Тип', 'Ключ', 'Строки A', 'Строки B', 'Сумма A', 'Сумма B', 'Δ суммы', 'Δ дней', 'Причина'].map(header => (
-                          <th key={header} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                            {header}
+                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                          Тип
+                        </th>
+                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                          Ключ
+                        </th>
+                        {visibleResultColumnsA.map(column => (
+                          <th
+                            key={`a-${column}`}
+                            className="max-w-[220px] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400"
+                            title={column}
+                          >
+                            <span className="text-indigo-500">A · </span>{column}
                           </th>
                         ))}
+                        {visibleResultColumnsB.map(column => (
+                          <th
+                            key={`b-${column}`}
+                            className="max-w-[220px] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400"
+                            title={column}
+                          >
+                            <span className="text-violet-500">B · </span>{column}
+                          </th>
+                        ))}
+                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                          Δ суммы
+                        </th>
+                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                          Δ дней
+                        </th>
+                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                          Причина
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {resultRows.slice(0, 300).map((row, index) => (
-                        <tr key={`${row.key}-${row.row_a || 'x'}-${row.row_b || 'x'}-${index}`} className="hover:bg-slate-50">
-                          <td className="px-4 py-3">
-                            <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
-                              {row.match_type || '1↔1'}
-                            </span>
-                          </td>
-                          <td className="max-w-[260px] truncate px-4 py-3 font-mono text-xs" title={row.key}>{row.key || '—'}</td>
-                          <td className="px-4 py-3 text-xs">
-                            {row.grouped_rows_a?.length
-                              ? row.grouped_rows_a.join(', ')
-                              : (row.row_a ?? '—')}
-                          </td>
-                          <td className="px-4 py-3 text-xs">
-                            {row.grouped_rows_b?.length
-                              ? row.grouped_rows_b.join(', ')
-                              : (row.row_b ?? '—')}
-                          </td>
-                          <td className="px-4 py-3">{row.amount_a == null ? '—' : money(row.amount_a)}</td>
-                          <td className="px-4 py-3">{row.amount_b == null ? '—' : money(row.amount_b)}</td>
-                          <td className="px-4 py-3">{row.amount_delta == null ? '—' : money(row.amount_delta)}</td>
-                          <td className="px-4 py-3">{row.date_delta_days ?? '—'}</td>
-                          <td className="px-4 py-3 text-slate-600">{row.reason || '—'}</td>
-                        </tr>
-                      ))}
+                      {resultRows.slice(0, 300).map((row, index) => {
+                        const rowsA = row.grouped_rows_a?.length
+                          ? row.grouped_rows_a.join(', ')
+                          : (row.row_a ?? '—');
+                        const rowsB = row.grouped_rows_b?.length
+                          ? row.grouped_rows_b.join(', ')
+                          : (row.row_b ?? '—');
+
+                        return (
+                          <tr key={`${row.key}-${row.row_a || 'x'}-${row.row_b || 'x'}-${index}`} className="hover:bg-slate-50">
+                            <td className="px-4 py-3">
+                              <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
+                                {row.match_type || '1↔1'}
+                              </span>
+                            </td>
+                            <td className="max-w-[280px] px-4 py-3">
+                              <div className="truncate font-mono text-xs text-slate-800" title={row.key}>
+                                {row.key || '—'}
+                              </div>
+                              <div className="mt-1 whitespace-nowrap text-[9px] text-slate-400">
+                                строки A: {rowsA} · B: {rowsB}
+                              </div>
+                            </td>
+
+                            {visibleResultColumnsA.map(column => {
+                              const value = sourceValueForResult(row, 'a', column);
+                              return (
+                                <td key={`a-${column}`} className="max-w-[240px] px-4 py-3 text-xs text-slate-700">
+                                  <div className="truncate" title={value}>{value}</div>
+                                </td>
+                              );
+                            })}
+
+                            {visibleResultColumnsB.map(column => {
+                              const value = sourceValueForResult(row, 'b', column);
+                              return (
+                                <td key={`b-${column}`} className="max-w-[240px] px-4 py-3 text-xs text-slate-700">
+                                  <div className="truncate" title={value}>{value}</div>
+                                </td>
+                              );
+                            })}
+
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              {row.amount_delta == null ? '—' : money(row.amount_delta)}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">{row.date_delta_days ?? '—'}</td>
+                            <td className="max-w-[260px] px-4 py-3 text-slate-600">
+                              <div className="line-clamp-2" title={row.reason || ''}>{row.reason || '—'}</div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   {resultRows.length > 300 && (
@@ -1288,6 +1501,25 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 </div>
               </section>
             )}
+
+            <div className="flex flex-col items-stretch justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs sm:flex-row sm:items-center">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">
+                  {result ? 'Нужно пересчитать после изменения правил?' : 'Настройки готовы?'}
+                </div>
+                <div className="mt-0.5 text-[11px] text-slate-500">
+                  Кнопка запуска продублирована здесь, чтобы после настройки или просмотра таблицы не возвращаться наверх.
+                </div>
+              </div>
+              <button
+                onClick={handleRun}
+                disabled={!canRun || running}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {running ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-white" />}
+                {running ? 'Сверка…' : result ? 'Запустить сверку ещё раз' : 'Запустить сверку'}
+              </button>
+            </div>
           </div>
 
           <aside className="space-y-5">

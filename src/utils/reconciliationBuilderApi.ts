@@ -45,6 +45,8 @@ export interface ReconciliationBuilderConfig {
   matching_mode?: BuilderMatchingMode;
   filters?: BuilderFilterRule[];
   computed_fields?: BuilderComputedField[];
+  result_columns_a?: string[];
+  result_columns_b?: string[];
   date_a_col?: string;
   date_b_col?: string;
   date_tolerance_days: number;
