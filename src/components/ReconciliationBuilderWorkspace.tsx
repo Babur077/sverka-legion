@@ -61,6 +61,8 @@ const emptyConfig = (): ReconciliationBuilderConfig => ({
   matching_mode: 'one_to_one',
   filters: [],
   computed_fields: [],
+  result_columns_a: [],
+  result_columns_b: [],
   date_a_col: '',
   date_b_col: '',
   date_tolerance_days: 0,
@@ -96,6 +98,33 @@ function formatDateTime(value?: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function formatResultCellValue(value: any): string {
+  if (value == null || value === '') return '—';
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+  }
+  return String(value);
+}
+
+function sourceRowsForResult(row: BuilderResultRow, side: 'a' | 'b'): Record<string, any>[] {
+  const source = side === 'a' ? row.source_a : row.source_b;
+  if (!source || typeof source !== 'object') return [];
+  if (Array.isArray((source as any).rows)) {
+    return (source as any).rows.filter((item: any) => item && typeof item === 'object');
+  }
+  return [source as Record<string, any>];
+}
+
+function sourceValueForResult(row: BuilderResultRow, side: 'a' | 'b', column: string): string {
+  const values = sourceRowsForResult(row, side)
+    .map(source => formatResultCellValue(source[column]))
+    .filter(value => value !== '—');
+  const unique = Array.from(new Set(values));
+  if (unique.length === 0) return '—';
+  if (unique.length <= 3) return unique.join(' | ');
+  return `${unique.slice(0, 3).join(' | ')} · +${unique.length - 3}`;
 }
 
 function runSourceNames(item: Record<string, any>): string {
@@ -149,6 +178,40 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
         .map(field => field.name.trim()),
     ])),
     [columnsB, config.computed_fields],
+  );
+
+  const automaticResultColumnsA = useMemo(() => {
+    const preferred = [
+      config.amount_a_col,
+      config.date_a_col,
+      ...config.key_pairs.map(pair => pair.left),
+    ].filter(Boolean) as string[];
+    const fallback = preferred.length ? preferred : effectiveColumnsA.slice(0, 3);
+    return Array.from(new Set(fallback)).slice(0, 4);
+  }, [config.amount_a_col, config.date_a_col, config.key_pairs, effectiveColumnsA]);
+
+  const automaticResultColumnsB = useMemo(() => {
+    const preferred = [
+      config.amount_b_col,
+      config.date_b_col,
+      ...config.key_pairs.map(pair => pair.right),
+    ].filter(Boolean) as string[];
+    const fallback = preferred.length ? preferred : effectiveColumnsB.slice(0, 3);
+    return Array.from(new Set(fallback)).slice(0, 4);
+  }, [config.amount_b_col, config.date_b_col, config.key_pairs, effectiveColumnsB]);
+
+  const visibleResultColumnsA = useMemo(
+    () => (config.result_columns_a?.length
+      ? config.result_columns_a.filter(column => effectiveColumnsA.includes(column))
+      : automaticResultColumnsA),
+    [config.result_columns_a, effectiveColumnsA, automaticResultColumnsA],
+  );
+
+  const visibleResultColumnsB = useMemo(
+    () => (config.result_columns_b?.length
+      ? config.result_columns_b.filter(column => effectiveColumnsB.includes(column))
+      : automaticResultColumnsB),
+    [config.result_columns_b, effectiveColumnsB, automaticResultColumnsB],
   );
 
   const computedSourceOptions = (side: 'a' | 'b', fieldIndex: number): string[] => {
@@ -331,6 +394,29 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
       ...current,
       filters: (current.filters || []).filter((_, ruleIndex) => ruleIndex !== index),
     }));
+  };
+
+  const addResultColumn = (side: 'a' | 'b', column: string) => {
+    if (!column) return;
+    const field = side === 'a' ? 'result_columns_a' : 'result_columns_b';
+    setConfig(current => {
+      const existing = current[field] || [];
+      if (existing.includes(column) || existing.length >= 4) return current;
+      return { ...current, [field]: [...existing, column] };
+    });
+  };
+
+  const removeResultColumn = (side: 'a' | 'b', column: string) => {
+    const field = side === 'a' ? 'result_columns_a' : 'result_columns_b';
+    setConfig(current => ({
+      ...current,
+      [field]: (current[field] || []).filter(item => item !== column),
+    }));
+  };
+
+  const resetResultColumns = (side: 'a' | 'b') => {
+    const field = side === 'a' ? 'result_columns_a' : 'result_columns_b';
+    setConfig(current => ({ ...current, [field]: [] }));
   };
 
   const loadDefinition = (definition: ReconciliationDefinition) => {
