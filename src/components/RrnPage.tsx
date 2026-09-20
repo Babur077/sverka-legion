@@ -2157,6 +2157,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                           <th className="px-2 py-2 w-8 text-center">Вкл.</th>
                           <th className="px-2 py-2 text-left">Дата</th>
                           <th className="px-2 py-2 text-left">RRN</th>
+                          <th className="px-2 py-2 text-left">Статус</th>
                           <th className="px-2 py-2 text-right">Сумма</th>
                           <th className="px-2 py-2 text-left">Причина</th>
                         </tr>
@@ -2174,6 +2175,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                             </td>
                             <td className="px-2 py-1.5 whitespace-nowrap">{item.date_str}</td>
                             <td className="px-2 py-1.5 font-mono text-[11px] text-slate-800">{item.RRN}</td>
+                            <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap">
+                              {item.status || '—'}
+                            </td>
                             <td className="px-2 py-1.5 text-right font-semibold text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(item.amount)}</td>
                             <td className="px-2 py-1.5">
                               <select
@@ -2289,6 +2293,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                           <th className="px-2 py-2 w-8 text-center">Вкл.</th>
                           <th className="px-2 py-2 text-left">Дата</th>
                           <th className="px-2 py-2 text-left">RRN</th>
+                          <th className="px-2 py-2 text-left">Статус</th>
                           <th className="px-2 py-2 text-right">Сумма</th>
                           <th className="px-2 py-2 text-left">Причина</th>
                         </tr>
@@ -2306,6 +2311,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                             </td>
                             <td className="px-2 py-1.5 whitespace-nowrap">{item.date_str}</td>
                             <td className="px-2 py-1.5 font-mono text-[11px] text-slate-800">{item.RRN}</td>
+                            <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap">
+                              {item.status || '—'}
+                            </td>
                             <td className="px-2 py-1.5 text-right font-semibold text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(item.amount)}</td>
                             <td className="px-2 py-1.5">
                               <select
@@ -2370,6 +2378,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                         <th className="px-3 py-2 text-left">RRN</th>
                         <th className="px-3 py-2 text-left">Дата (Мы)</th>
                         <th className="px-3 py-2 text-left">Дата (Банк)</th>
+                        <th className="px-3 py-2 text-left">Статус (Мы)</th>
+                        <th className="px-3 py-2 text-left">Статус (Банк)</th>
                         <th className="px-3 py-2 text-right">Сумма (Мы)</th>
                         <th className="px-3 py-2 text-right">Сумма (Банк)</th>
                         <th className="px-3 py-2 text-right">Δ Разница</th>
@@ -2382,6 +2392,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                           <td className="px-3 py-2 font-mono text-slate-800">{m.RRN}</td>
                           <td className="px-3 py-2 text-slate-600">{m.date_our}</td>
                           <td className="px-3 py-2 text-slate-600">{m.date_bank}</td>
+                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{m.status_our || '—'}</td>
+                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{m.status_bank || '—'}</td>
                           <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_our)}</td>
                           <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_bank)}</td>
                           <td className="px-3 py-2 text-right font-bold text-rose-600">
