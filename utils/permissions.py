@@ -29,18 +29,25 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
         "analytics.view_all",
         "audit.view",
         "archive.view",
+        "reconciliation_builder.view",
+        "reconciliation_builder.run",
+        "reconciliation_builder.manage",
+        "reconciliation_builder.export",
     ],
     "accountant_acquiring": [
         "bank_rrn.view",
         "bank_rrn.run",
         "bank_rrn.export",
         "epos.view",
+        "reconciliation_builder.view",
+        "reconciliation_builder.run",
     ],
     "auditor": [
         "bank_rrn.view",
         "analytics.view_all",
         "audit.view",
         "archive.view",
+        "reconciliation_builder.view",
     ],
 }
 

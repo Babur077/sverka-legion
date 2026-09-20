@@ -103,14 +103,17 @@ class InvalidIdModule(DummyModule):
         )
 
 
-def test_registry_auto_discovers_only_production_bank_module():
+def test_registry_auto_discovers_production_modules():
     registry = ModuleRegistry()
 
     manifests = registry.list_manifests()
+    by_id = {manifest.id: manifest for manifest in manifests}
 
-    assert [manifest.id for manifest in manifests] == ["bank_rrn"]
-    assert manifests[0].workspace == "bank_rrn"
-    assert "bank_rrn.export" in manifests[0].available_permissions
+    assert set(by_id) == {"bank_rrn", "reconciliation_builder"}
+    assert by_id["bank_rrn"].workspace == "bank_rrn"
+    assert "bank_rrn.export" in by_id["bank_rrn"].available_permissions
+    assert by_id["reconciliation_builder"].workspace == "reconciliation_builder"
+    assert "reconciliation_builder.manage" in by_id["reconciliation_builder"].available_permissions
     assert registry.discovery_errors == {}
 
 
