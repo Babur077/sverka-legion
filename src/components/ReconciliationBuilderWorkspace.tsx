@@ -744,16 +744,28 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 className="mt-2 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
 
-              {canManage && (
-                <button
-                  onClick={() => void handleSaveTemplate()}
-                  disabled={savingTemplate}
-                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  {savingTemplate ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                  {selectedDefinitionId ? 'Обновить шаблон' : 'Сохранить шаблон'}
-                </button>
-              )}
+              <div className="mt-3 grid grid-cols-1 gap-2">
+                {selectedDefinitionId && (
+                  <button
+                    onClick={detachTemplateForOneOffRun}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                  >
+                    <Play className="h-3.5 w-3.5" />
+                    Использовать правила разово
+                  </button>
+                )}
+
+                {canManage && (
+                  <button
+                    onClick={() => void handleSaveTemplate()}
+                    disabled={savingTemplate}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {savingTemplate ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                    {selectedDefinitionId ? 'Обновить шаблон' : 'Сохранить как шаблон'}
+                  </button>
+                )}
+              </div>
             </section>
 
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
