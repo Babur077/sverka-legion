@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Copy,
   FileSpreadsheet,
+  Clock3,
   History,
   LoaderCircle,
   Plus,
@@ -67,6 +68,27 @@ function formatMonth(value?: string): string {
   });
 }
 
+function formatDateTime(value?: string): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function runSourceNames(item: Record<string, any>): string {
+  const sourceFiles = Array.isArray(item.source_files) ? item.source_files : [];
+  const names = sourceFiles.length
+    ? sourceFiles
+    : [item.source_a_name, item.source_b_name].filter(Boolean);
+  return names.length ? names.join(' ↔ ') : 'Источники не указаны';
+}
+
 export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }) => {
   const [sourceA, setSourceA] = useState<File | null>(null);
   const [sourceB, setSourceB] = useState<File | null>(null);
@@ -86,6 +108,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const [loadingFile, setLoadingFile] = useState<'a' | 'b' | null>(null);
   const [running, setRunning] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [showAllRuns, setShowAllRuns] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   const canRun = hasPermission(user, 'reconciliation_builder.run');
@@ -189,6 +212,20 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setResult(null);
   };
 
+  const detachTemplateForOneOffRun = () => {
+    const previousName = templateName.trim();
+    setSelectedDefinitionId(null);
+    setTemplateName('');
+    setTemplateDescription('');
+    setResult(null);
+    setMessage({
+      type: 'info',
+      text: previousName
+        ? `Правила шаблона «${previousName}» оставлены в форме, но следующий запуск будет разовым и не изменит шаблон.`
+        : 'Разовый режим включён. Шаблон сохранять не нужно — настройте правила и запускайте сверку.',
+    });
+  };
+
   const validateConfig = (): string | null => {
     if (!sourceA || !sourceB) return 'Загрузите оба источника.';
     if (!config.key_pairs.length) return 'Добавьте хотя бы один ключ.';
@@ -272,10 +309,12 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
         sourceA!,
         sourceB!,
         config,
-        {
-          id: selectedDefinitionId || undefined,
-          name: templateName.trim() || undefined,
-        },
+        selectedDefinitionId
+          ? {
+              id: selectedDefinitionId,
+              name: templateName.trim() || undefined,
+            }
+          : undefined,
       );
       setResult(runResult);
       setResultTab('matched');
@@ -285,7 +324,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
         status: runResult.status,
         period_month: periodMonth,
         definition_id: selectedDefinitionId,
-        definition_name: templateName.trim() || 'Без шаблона',
+        definition_name: selectedDefinitionId
+          ? (templateName.trim() || `Шаблон #${selectedDefinitionId}`)
+          : 'Разовая сверка',
         source_a_name: sourceA!.name,
         source_b_name: sourceB!.name,
         source_files: [sourceA!.name, sourceB!.name],
@@ -662,16 +703,27 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
           <aside className="space-y-5">
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-900">Шаблон сверки</h2>
-                  <p className="text-[11px] text-slate-500">Сохраните правила и используйте их в следующем месяце.</p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold text-slate-900">Шаблон сверки</h2>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      selectedDefinitionId
+                        ? 'bg-indigo-50 text-indigo-700'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {selectedDefinitionId ? 'Шаблон' : 'Разовая'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                    Шаблон необязателен. Можно настроить правила и сразу запустить разовую сверку.
+                  </p>
                 </div>
                 {selectedDefinitionId && (
                   <button
                     onClick={resetDefinition}
                     className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-                    title="Новый шаблон"
+                    title="Новый пустой шаблон"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
@@ -692,16 +744,28 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 className="mt-2 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
 
-              {canManage && (
-                <button
-                  onClick={() => void handleSaveTemplate()}
-                  disabled={savingTemplate}
-                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  {savingTemplate ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                  {selectedDefinitionId ? 'Обновить шаблон' : 'Сохранить шаблон'}
-                </button>
-              )}
+              <div className="mt-3 grid grid-cols-1 gap-2">
+                {selectedDefinitionId && (
+                  <button
+                    onClick={detachTemplateForOneOffRun}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                  >
+                    <Play className="h-3.5 w-3.5" />
+                    Использовать правила разово
+                  </button>
+                )}
+
+                {canManage && (
+                  <button
+                    onClick={() => void handleSaveTemplate()}
+                    disabled={savingTemplate}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {savingTemplate ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                    {selectedDefinitionId ? 'Обновить шаблон' : 'Сохранить как шаблон'}
+                  </button>
+                )}
+              </div>
             </section>
 
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
@@ -750,28 +814,85 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
             </section>
 
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-              <div className="mb-3 flex items-center gap-2">
-                <History className="h-4 w-4 text-indigo-600" />
-                <h2 className="text-sm font-bold text-slate-900">Последние запуски</h2>
-              </div>
-              <div className="space-y-2">
-                {archive.slice(0, 8).map(item => (
-                  <div key={String(item.id)} className="rounded-lg bg-slate-50 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-semibold text-slate-800">
-                        {item.definition_name || 'Без шаблона'}
-                      </span>
-                      <span className="text-[10px] text-slate-400">{formatMonth(item.period_month)}</span>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
-                      <span>{item.run_id || '—'}</span>
-                      <span>{Number(item.summary?.match_percentage || 0).toFixed(1)}%</span>
-                    </div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <History className="h-4 w-4 text-indigo-600" />
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">История запусков</h2>
+                    <p className="text-[10px] text-slate-400">Компактный архив конструктора</p>
                   </div>
-                ))}
+                </div>
+                {archive.length > 6 && (
+                  <button
+                    onClick={() => setShowAllRuns(value => !value)}
+                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700"
+                  >
+                    {showAllRuns ? 'Свернуть' : `Все · ${archive.length}`}
+                  </button>
+                )}
+              </div>
+
+              <div className={`space-y-2 ${showAllRuns ? 'max-h-[560px] overflow-y-auto pr-1' : ''}`}>
+                {(showAllRuns ? archive : archive.slice(0, 6)).map(item => {
+                  const summary = item.summary || {};
+                  const matchRate = Number(summary.match_percentage || 0);
+                  const discrepancies = Number(summary.discrepancy_count || 0);
+                  const createdBy = String(item.created_by || item.username || '—');
+                  const timestamp = String(item.updated_at || item.timestamp || item.created_at || '');
+                  const isCompleted = String(item.status || '').toUpperCase() === 'COMPLETED';
+                  const title = item.definition_id
+                    ? (item.definition_name || `Шаблон #${item.definition_id}`)
+                    : 'Разовая сверка';
+
+                  return (
+                    <div
+                      key={String(item.id)}
+                      className="rounded-xl border border-slate-200 bg-slate-50/70 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                              isCompleted ? 'bg-emerald-500' : 'bg-amber-500'
+                            }`} />
+                            <span className="truncate text-xs font-semibold text-slate-800" title={title}>
+                              {title}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+                            <Clock3 className="h-3 w-3 shrink-0" />
+                            <span>{formatDateTime(timestamp)}</span>
+                            <span>·</span>
+                            <span className="truncate" title={createdBy}>{createdBy}</span>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 text-right">
+                          <div className="text-xs font-bold text-indigo-700">{matchRate.toFixed(1)}%</div>
+                          <div className="text-[9px] uppercase text-slate-400">match</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-[10px] text-slate-500">
+                        <div className="min-w-0 truncate" title={runSourceNames(item)}>
+                          {runSourceNames(item)}
+                        </div>
+                        <div className="whitespace-nowrap">{formatMonth(item.period_month)}</div>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between border-t border-slate-200/80 pt-2 text-[10px]">
+                        <span className="font-mono text-slate-400">Run {item.run_id || '—'}</span>
+                        <span className={discrepancies ? 'font-semibold text-amber-700' : 'font-semibold text-emerald-700'}>
+                          {discrepancies ? `${discrepancies} расхожд.` : 'Без расхождений'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+
                 {archive.length === 0 && (
                   <div className="rounded-lg bg-slate-50 p-4 text-xs text-slate-500">
-                    Здесь появятся сохранённые запуски конструктора.
+                    Запускайте сверки даже без шаблона — здесь появятся период, пользователь, время, файлы и результат.
                   </div>
                 )}
               </div>
