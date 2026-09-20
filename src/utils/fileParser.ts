@@ -318,6 +318,8 @@ export function exportReconciliationToExcel(
       'RRN': r.RRN,
       'Дата (Мы)': r.date_our,
       'Дата (Банк)': r.date_bank,
+      'Статус (Мы)': r.status_our || '',
+      'Статус (Банк)': r.status_bank || '',
       'Сумма (Мы)': r.net_amount_our,
       'Сумма (Банк)': r.net_amount_bank,
       'Δ Разница': r['Δ сумма'],
