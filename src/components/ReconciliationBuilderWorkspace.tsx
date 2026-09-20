@@ -814,28 +814,85 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
             </section>
 
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-              <div className="mb-3 flex items-center gap-2">
-                <History className="h-4 w-4 text-indigo-600" />
-                <h2 className="text-sm font-bold text-slate-900">Последние запуски</h2>
-              </div>
-              <div className="space-y-2">
-                {archive.slice(0, 8).map(item => (
-                  <div key={String(item.id)} className="rounded-lg bg-slate-50 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-semibold text-slate-800">
-                        {item.definition_name || 'Без шаблона'}
-                      </span>
-                      <span className="text-[10px] text-slate-400">{formatMonth(item.period_month)}</span>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
-                      <span>{item.run_id || '—'}</span>
-                      <span>{Number(item.summary?.match_percentage || 0).toFixed(1)}%</span>
-                    </div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <History className="h-4 w-4 text-indigo-600" />
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">История запусков</h2>
+                    <p className="text-[10px] text-slate-400">Компактный архив конструктора</p>
                   </div>
-                ))}
+                </div>
+                {archive.length > 6 && (
+                  <button
+                    onClick={() => setShowAllRuns(value => !value)}
+                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700"
+                  >
+                    {showAllRuns ? 'Свернуть' : `Все · ${archive.length}`}
+                  </button>
+                )}
+              </div>
+
+              <div className={`space-y-2 ${showAllRuns ? 'max-h-[560px] overflow-y-auto pr-1' : ''}`}>
+                {(showAllRuns ? archive : archive.slice(0, 6)).map(item => {
+                  const summary = item.summary || {};
+                  const matchRate = Number(summary.match_percentage || 0);
+                  const discrepancies = Number(summary.discrepancy_count || 0);
+                  const createdBy = String(item.created_by || item.username || '—');
+                  const timestamp = String(item.updated_at || item.timestamp || item.created_at || '');
+                  const isCompleted = String(item.status || '').toUpperCase() === 'COMPLETED';
+                  const title = item.definition_id
+                    ? (item.definition_name || `Шаблон #${item.definition_id}`)
+                    : 'Разовая сверка';
+
+                  return (
+                    <div
+                      key={String(item.id)}
+                      className="rounded-xl border border-slate-200 bg-slate-50/70 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                              isCompleted ? 'bg-emerald-500' : 'bg-amber-500'
+                            }`} />
+                            <span className="truncate text-xs font-semibold text-slate-800" title={title}>
+                              {title}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+                            <Clock3 className="h-3 w-3 shrink-0" />
+                            <span>{formatDateTime(timestamp)}</span>
+                            <span>·</span>
+                            <span className="truncate" title={createdBy}>{createdBy}</span>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 text-right">
+                          <div className="text-xs font-bold text-indigo-700">{matchRate.toFixed(1)}%</div>
+                          <div className="text-[9px] uppercase text-slate-400">match</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-[10px] text-slate-500">
+                        <div className="min-w-0 truncate" title={runSourceNames(item)}>
+                          {runSourceNames(item)}
+                        </div>
+                        <div className="whitespace-nowrap">{formatMonth(item.period_month)}</div>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between border-t border-slate-200/80 pt-2 text-[10px]">
+                        <span className="font-mono text-slate-400">Run {item.run_id || '—'}</span>
+                        <span className={discrepancies ? 'font-semibold text-amber-700' : 'font-semibold text-emerald-700'}>
+                          {discrepancies ? `${discrepancies} расхожд.` : 'Без расхождений'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+
                 {archive.length === 0 && (
                   <div className="rounded-lg bg-slate-50 p-4 text-xs text-slate-500">
-                    Здесь появятся сохранённые запуски конструктора.
+                    Запускайте сверки даже без шаблона — здесь появятся период, пользователь, время, файлы и результат.
                   </div>
                 )}
               </div>
