@@ -1,4 +1,4 @@
-from backend.app.routers import admin, audit, auth, epos, health, modules, settings
+from backend.app.routers import admin, audit, auth, definitions, epos, health, modules, settings
 
 
 def _paths(router):
@@ -33,3 +33,10 @@ def test_backend_routes_keep_public_api_paths_after_split():
     assert "/api/admin/permissions" in _paths(admin.router)
     assert "/api/audit" in _paths(audit.router)
     assert "/api/audit/filters" in _paths(audit.router)
+
+
+def test_reconciliation_definition_routes_are_registered():
+    assert {
+        "/api/reconciliation-definitions",
+        "/api/reconciliation-definitions/{definition_id}",
+    }.issubset(_paths(definitions.router))
