@@ -212,6 +212,20 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setResult(null);
   };
 
+  const detachTemplateForOneOffRun = () => {
+    const previousName = templateName.trim();
+    setSelectedDefinitionId(null);
+    setTemplateName('');
+    setTemplateDescription('');
+    setResult(null);
+    setMessage({
+      type: 'info',
+      text: previousName
+        ? `Правила шаблона «${previousName}» оставлены в форме, но следующий запуск будет разовым и не изменит шаблон.`
+        : 'Разовый режим включён. Шаблон сохранять не нужно — настройте правила и запускайте сверку.',
+    });
+  };
+
   const validateConfig = (): string | null => {
     if (!sourceA || !sourceB) return 'Загрузите оба источника.';
     if (!config.key_pairs.length) return 'Добавьте хотя бы один ключ.';
@@ -295,10 +309,12 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
         sourceA!,
         sourceB!,
         config,
-        {
-          id: selectedDefinitionId || undefined,
-          name: templateName.trim() || undefined,
-        },
+        selectedDefinitionId
+          ? {
+              id: selectedDefinitionId,
+              name: templateName.trim() || undefined,
+            }
+          : undefined,
       );
       setResult(runResult);
       setResultTab('matched');
@@ -308,7 +324,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
         status: runResult.status,
         period_month: periodMonth,
         definition_id: selectedDefinitionId,
-        definition_name: templateName.trim() || 'Без шаблона',
+        definition_name: selectedDefinitionId
+          ? (templateName.trim() || `Шаблон #${selectedDefinitionId}`)
+          : 'Разовая сверка',
         source_a_name: sourceA!.name,
         source_b_name: sourceB!.name,
         source_files: [sourceA!.name, sourceB!.name],
