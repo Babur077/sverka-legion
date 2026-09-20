@@ -511,13 +511,42 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
             </section>
 
             <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-              <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="mb-5 flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
                 <div className="flex items-center gap-2">
                   <Settings2 className="h-4 w-4 text-indigo-600" />
                   <div>
                     <h2 className="font-semibold text-slate-900">2. Правила сопоставления</h2>
-                    <p className="text-xs text-slate-500">Ключи обязательны. Сумма и дата — дополнительные проверки.</p>
+                    <p className="text-xs text-slate-500">
+                      Сначала выберите стратегию, затем ключи, преобразования, сумму, дату и фильтры.
+                    </p>
                   </div>
+                </div>
+
+                <select
+                  value={config.matching_mode || 'one_to_one'}
+                  onChange={event => setConfig(current => ({
+                    ...current,
+                    matching_mode: event.target.value as BuilderMatchingMode,
+                  }))}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  <option value="one_to_one">1 ↔ 1 · построчно</option>
+                  <option value="one_to_many">1 ↔ N · одна строка A к группе B</option>
+                  <option value="many_to_one">N ↔ 1 · группа A к одной строке B</option>
+                </select>
+              </div>
+
+              {(config.matching_mode || 'one_to_one') !== 'one_to_one' && (
+                <div className="mb-5 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-xs leading-5 text-indigo-700">
+                  Групповая сверка объединяет оставшиеся строки с одинаковым ключом и сравнивает сумму группы.
+                  Поэтому для 1↔N / N↔1 колонки суммы обязательны.
+                </div>
+              )}
+
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Ключи сопоставления</div>
+                  <div className="text-[11px] text-slate-500">Можно использовать составной ключ из нескольких колонок.</div>
                 </div>
                 <button
                   onClick={addPair}
@@ -530,40 +559,74 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
               <div className="space-y-3">
                 {config.key_pairs.map((pair, index) => (
-                  <div key={index} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1fr_36px_1fr_170px_36px] lg:items-center">
-                    <select
-                      value={pair.left}
-                      onChange={event => updatePair(index, { left: event.target.value })}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                    >
-                      <option value="">Колонка A…</option>
-                      {columnsA.map(column => <option key={column} value={column}>{column}</option>)}
-                    </select>
-                    <div className="text-center text-xs font-bold text-slate-400">↔</div>
-                    <select
-                      value={pair.right}
-                      onChange={event => updatePair(index, { right: event.target.value })}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                    >
-                      <option value="">Колонка B…</option>
-                      {columnsB.map(column => <option key={column} value={column}>{column}</option>)}
-                    </select>
-                    <select
-                      value={pair.mode}
-                      onChange={event => updatePair(index, { mode: event.target.value as BuilderKeyPair['mode'] })}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                    >
-                      <option value="text">Текст нормализованный</option>
-                      <option value="exact">Точное значение</option>
-                      <option value="numeric">Числовой ключ</option>
-                    </select>
-                    <button
-                      onClick={() => removePair(index)}
-                      disabled={config.key_pairs.length === 1}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                  <div key={index} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_36px_1fr_180px_36px] lg:items-center">
+                      <select
+                        value={pair.left}
+                        onChange={event => updatePair(index, { left: event.target.value })}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="">Колонка A…</option>
+                        {columnsA.map(column => <option key={column} value={column}>{column}</option>)}
+                      </select>
+                      <div className="text-center text-xs font-bold text-slate-400">↔</div>
+                      <select
+                        value={pair.right}
+                        onChange={event => updatePair(index, { right: event.target.value })}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="">Колонка B…</option>
+                        {columnsB.map(column => <option key={column} value={column}>{column}</option>)}
+                      </select>
+                      <select
+                        value={pair.mode}
+                        onChange={event => updatePair(index, { mode: event.target.value as BuilderKeyPair['mode'] })}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="text">Текст нормализованный</option>
+                        <option value="exact">Точное значение</option>
+                        <option value="numeric">Числовой ключ</option>
+                      </select>
+                      <button
+                        onClick={() => removePair(index)}
+                        disabled={config.key_pairs.length === 1}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-200 pt-2 sm:grid-cols-2">
+                      <label className="text-[11px] text-slate-500">
+                        Преобразование ключа A
+                        <select
+                          value={pair.left_transform || 'none'}
+                          onChange={event => updatePair(index, { left_transform: event.target.value as BuilderKeyTransform })}
+                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700"
+                        >
+                          <option value="none">Без преобразования</option>
+                          <option value="remove_spaces">Убрать все пробелы</option>
+                          <option value="digits_only">Оставить только цифры</option>
+                          <option value="strip_leading_zeros">Убрать ведущие нули</option>
+                          <option value="alnum">Только буквы и цифры</option>
+                        </select>
+                      </label>
+
+                      <label className="text-[11px] text-slate-500">
+                        Преобразование ключа B
+                        <select
+                          value={pair.right_transform || 'none'}
+                          onChange={event => updatePair(index, { right_transform: event.target.value as BuilderKeyTransform })}
+                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700"
+                        >
+                          <option value="none">Без преобразования</option>
+                          <option value="remove_spaces">Убрать все пробелы</option>
+                          <option value="digits_only">Оставить только цифры</option>
+                          <option value="strip_leading_zeros">Убрать ведущие нули</option>
+                          <option value="alnum">Только буквы и цифры</option>
+                        </select>
+                      </label>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -589,6 +652,30 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                       {columnsB.map(column => <option key={column} value={column}>{column}</option>)}
                     </select>
                   </div>
+
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {[
+                      ['A', 'amount_a_transform'] as const,
+                      ['B', 'amount_b_transform'] as const,
+                    ].map(([sideLabel, field]) => (
+                      <label key={field} className="text-[11px] text-slate-500">
+                        Значение {sideLabel}
+                        <select
+                          value={config[field] || 'as_is'}
+                          onChange={event => setConfig(current => ({
+                            ...current,
+                            [field]: event.target.value as BuilderAmountTransform,
+                          }))}
+                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                        >
+                          <option value="as_is">Как в файле</option>
+                          <option value="invert">Поменять знак × -1</option>
+                          <option value="absolute">По модулю ABS()</option>
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+
                   <label className="mt-3 block text-xs text-slate-500">
                     Допуск по сумме
                     <input
@@ -640,6 +727,91 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                     />
                   </label>
                 </div>
+              </div>
+
+              <div className="mt-5 rounded-xl border border-slate-200 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Фильтры строк</div>
+                    <div className="text-[11px] text-slate-500">
+                      Отфильтруйте служебные статусы, нулевые суммы и другие строки до matching.
+                    </div>
+                  </div>
+                  <button
+                    onClick={addFilter}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Добавить фильтр
+                  </button>
+                </div>
+
+                {(config.filters || []).length === 0 ? (
+                  <div className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                    Фильтров нет — в сверку попадут все строки.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {(config.filters || []).map((rule, index) => {
+                      const sourceColumns = rule.side === 'a' ? columnsA : columnsB;
+                      const needsValue = !['empty', 'not_empty'].includes(rule.operator);
+                      return (
+                        <div key={index} className="grid grid-cols-1 gap-2 rounded-lg bg-slate-50 p-2 lg:grid-cols-[90px_1fr_170px_1fr_36px] lg:items-center">
+                          <select
+                            value={rule.side}
+                            onChange={event => updateFilter(index, {
+                              side: event.target.value as BuilderFilterRule['side'],
+                              column: '',
+                            })}
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                          >
+                            <option value="a">Источник A</option>
+                            <option value="b">Источник B</option>
+                          </select>
+                          <select
+                            value={rule.column}
+                            onChange={event => updateFilter(index, { column: event.target.value })}
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                          >
+                            <option value="">Колонка…</option>
+                            {sourceColumns.map(column => <option key={column} value={column}>{column}</option>)}
+                          </select>
+                          <select
+                            value={rule.operator}
+                            onChange={event => updateFilter(index, {
+                              operator: event.target.value as BuilderFilterRule['operator'],
+                            })}
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs"
+                          >
+                            <option value="equals">Равно</option>
+                            <option value="not_equals">Не равно</option>
+                            <option value="contains">Содержит</option>
+                            <option value="not_contains">Не содержит</option>
+                            <option value="empty">Пусто</option>
+                            <option value="not_empty">Не пусто</option>
+                            <option value="gt">&gt;</option>
+                            <option value="gte">≥</option>
+                            <option value="lt">&lt;</option>
+                            <option value="lte">≤</option>
+                          </select>
+                          <input
+                            value={rule.value || ''}
+                            onChange={event => updateFilter(index, { value: event.target.value })}
+                            disabled={!needsValue}
+                            placeholder={needsValue ? 'Значение' : 'Не требуется'}
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs disabled:bg-slate-100 disabled:text-slate-400"
+                          />
+                          <button
+                            onClick={() => removeFilter(index)}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 flex flex-wrap gap-4 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
