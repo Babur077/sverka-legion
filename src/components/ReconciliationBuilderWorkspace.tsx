@@ -703,16 +703,27 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
           <aside className="space-y-5">
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-900">Шаблон сверки</h2>
-                  <p className="text-[11px] text-slate-500">Сохраните правила и используйте их в следующем месяце.</p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold text-slate-900">Шаблон сверки</h2>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      selectedDefinitionId
+                        ? 'bg-indigo-50 text-indigo-700'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {selectedDefinitionId ? 'Шаблон' : 'Разовая'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                    Шаблон необязателен. Можно настроить правила и сразу запустить разовую сверку.
+                  </p>
                 </div>
                 {selectedDefinitionId && (
                   <button
                     onClick={resetDefinition}
                     className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-                    title="Новый шаблон"
+                    title="Новый пустой шаблон"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
