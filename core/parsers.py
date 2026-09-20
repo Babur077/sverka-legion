@@ -40,10 +40,23 @@ def load_file_polars(first_arg, second_arg=None, sheet_name=0) -> pl.DataFrame:
                     pdf = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name or 0)
                     return pl.from_pandas(pdf)
     else:
-        try:
-            return pl.read_csv(io.BytesIO(file_bytes), separator=";", ignore_errors=True)
-        except Exception:
-            return pl.read_csv(io.BytesIO(file_bytes), separator=",", ignore_errors=True)
+        # CSV exports in finance commonly arrive with semicolon, comma or tab
+        # delimiters. A wrong delimiter often parses "successfully" as one huge
+        # column, so choose the successful parse with the most columns.
+        candidates = []
+        for separator in (";", ",", "\t"):
+            try:
+                frame = pl.read_csv(
+                    io.BytesIO(file_bytes),
+                    separator=separator,
+                    ignore_errors=True,
+                )
+                candidates.append(frame)
+            except Exception:
+                continue
+        if not candidates:
+            raise ValueError(f"Не удалось распознать CSV-файл: {file_name}")
+        return max(candidates, key=lambda frame: frame.width)
 
 # Синоним для совместимости с модульным API
 parse_file_to_polars = load_file_polars
