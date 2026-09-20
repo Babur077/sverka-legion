@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X, Layers, History } from 'lucide-react';
+import { Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X, Layers, History, Wrench } from 'lucide-react';
 import { User } from '../types';
 import { hasPermission } from '../utils/permissions';
 
@@ -43,6 +43,12 @@ export const Navbar: React.FC<NavbarProps> = ({
       label: 'Модули сверок',
       icon: Layers,
       requiredPermission: null,
+    },
+    {
+      id: 'constructor',
+      label: 'Конструктор сверок',
+      icon: Wrench,
+      requiredPermission: 'reconciliation_builder.view',
     },
     {
       id: 'audit',
