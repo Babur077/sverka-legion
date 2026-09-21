@@ -19,9 +19,15 @@ import {
 import { User } from '../types';
 import { ReconciliationBuilderRunArchiveModal } from './ReconciliationBuilderRunArchiveModal';
 import { parseFile } from '../utils/fileParser';
-import { getModuleArchive, saveModuleArchive } from '../utils/archiveApi';
+import { getModuleArchive } from '../utils/archiveApi';
 import { hasPermission } from '../utils/permissions';
 import { BuilderArchiveRecord } from '../utils/reconciliationBuilderExport';
+import {
+  ReconciliationJob,
+  cancelReconciliationJob,
+  getReconciliationJob,
+  getReconciliationJobs,
+} from '../utils/jobsApi';
 import {
   BuilderAmountTransform,
   BuilderComputedField,
@@ -36,8 +42,8 @@ import {
   ReconciliationDefinition,
   createReconciliationDefinition,
   deleteReconciliationDefinition,
+  enqueueReconciliationBuilderJob,
   getReconciliationDefinitions,
-  runReconciliationBuilder,
   updateReconciliationDefinition,
 } from '../utils/reconciliationBuilderApi';
 
@@ -154,6 +160,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const [result, setResult] = useState<BuilderRunResult | null>(null);
   const [resultTab, setResultTab] = useState<ResultTab>('matched');
   const [archive, setArchive] = useState<BuilderArchiveRecord[]>([]);
+  const [jobs, setJobs] = useState<ReconciliationJob[]>([]);
+  const [activeJobId, setActiveJobId] = useState<number | null>(null);
+  const [activeJob, setActiveJob] = useState<ReconciliationJob | null>(null);
   const [selectedArchivedRun, setSelectedArchivedRun] = useState<BuilderArchiveRecord | null>(null);
   const [loadingFile, setLoadingFile] = useState<'a' | 'b' | null>(null);
   const [running, setRunning] = useState(false);
@@ -235,18 +244,116 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     }
   };
 
-  const loadArchive = async () => {
+  const loadArchive = async (): Promise<BuilderArchiveRecord[]> => {
     try {
-      setArchive(await getModuleArchive<BuilderArchiveRecord>(user.username, 'reconciliation_builder'));
+      const records = await getModuleArchive<BuilderArchiveRecord>(
+        user.username,
+        'reconciliation_builder',
+      );
+      setArchive(records);
+      return records;
     } catch {
       setArchive([]);
+      return [];
+    }
+  };
+
+  const loadJobs = async (): Promise<ReconciliationJob[]> => {
+    try {
+      const records = await getReconciliationJobs('reconciliation_builder', 12);
+      setJobs(records);
+      return records;
+    } catch {
+      setJobs([]);
+      return [];
     }
   };
 
   useEffect(() => {
     void loadDefinitions();
     void loadArchive();
+    void loadJobs().then(records => {
+      const pending = records.find(job => job.status === 'QUEUED' || job.status === 'RUNNING');
+      if (pending) {
+        setActiveJobId(pending.id);
+        setActiveJob(pending);
+        setRunning(true);
+      }
+    });
   }, [user.username]);
+
+  useEffect(() => {
+    if (!activeJobId) return;
+
+    let disposed = false;
+    let timer: number | undefined;
+
+    const poll = async () => {
+      try {
+        const job = await getReconciliationJob(activeJobId);
+        if (disposed) return;
+        setActiveJob(job);
+        setRunning(job.status === 'QUEUED' || job.status === 'RUNNING');
+
+        if (job.status === 'COMPLETED') {
+          const records = await loadArchive();
+          if (disposed) return;
+          const archived = records.find(item => item.run_id === job.run_id);
+          if (archived?.result_snapshot) {
+            setResult(archived.result_snapshot);
+            setResultTab('matched');
+          }
+          setMessage({
+            type: 'success',
+            text: `Фоновая сверка завершена. Run ID: ${job.run_id || '—'}`,
+          });
+          setActiveJobId(null);
+          setActiveJob(null);
+          setRunning(false);
+          void loadJobs();
+          return;
+        }
+
+        if (job.status === 'FAILED') {
+          setMessage({
+            type: 'error',
+            text: job.error || 'Фоновая сверка завершилась с ошибкой.',
+          });
+          setActiveJobId(null);
+          setActiveJob(null);
+          setRunning(false);
+          void loadJobs();
+          return;
+        }
+
+        if (job.status === 'CANCELLED') {
+          setMessage({ type: 'info', text: 'Фоновая сверка отменена.' });
+          setActiveJobId(null);
+          setActiveJob(null);
+          setRunning(false);
+          void loadJobs();
+          return;
+        }
+
+        timer = window.setTimeout(poll, 1200);
+      } catch (error: any) {
+        if (disposed) return;
+        setMessage({
+          type: 'error',
+          text: error?.message || 'Не удалось получить статус фоновой задачи.',
+        });
+        setActiveJobId(null);
+        setActiveJob(null);
+        setRunning(false);
+      }
+    };
+
+    void poll();
+    return () => {
+      disposed = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [activeJobId]);
 
   const handleFile = async (side: 'a' | 'b', file: File | null) => {
     if (!file) return;
