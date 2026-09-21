@@ -182,3 +182,16 @@ def test_audit_filter_options_are_global_not_page_dependent(tmp_path, monkeypatc
     ]
     assert options["modules"] == ["bank_rrn"]
     assert options["statuses"] == ["FAILED", "SUCCESS"]
+
+def test_get_audit_event_returns_exact_row(tmp_path, monkeypatch):
+    db_path = tmp_path / "audit.db"
+    monkeypatch.setattr(permissions, "DB_PATH", str(db_path))
+    _create_audit_table(db_path)
+
+    event = permissions.get_audit_event(2)
+
+    assert event is not None
+    assert event["id"] == 2
+    assert event["action"] == "UPDATE_USER_ACCESS"
+    assert permissions.get_audit_event(999) is None
+
