@@ -116,6 +116,7 @@ export const ReconciliationBuilderRunArchiveModal: React.FC<Props> = ({ record, 
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-bold text-slate-900">
                 {record.definition_name || 'Разовая сверка'}
+                {record.definition_version_number ? ' · v' + record.definition_version_number : ''}
               </h2>
               <span className="rounded-full bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-500">
                 Run {record.run_id || result?.run_id || '—'}

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import { ReconciliationBuilderRunArchiveModal } from './ReconciliationBuilderRunArchiveModal';
+import { ReconciliationDefinitionHistoryModal } from './ReconciliationDefinitionHistoryModal';
 import { parseFile } from '../utils/fileParser';
 import { getModuleArchive } from '../utils/archiveApi';
 import { hasPermission } from '../utils/permissions';
@@ -156,6 +157,8 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<number | null>(null);
   const [templateName, setTemplateName] = useState('');
   const [templateDescription, setTemplateDescription] = useState('');
+  const [templateChangeNote, setTemplateChangeNote] = useState('');
+  const [historyDefinition, setHistoryDefinition] = useState<ReconciliationDefinition | null>(null);
   const [periodMonth, setPeriodMonth] = useState(currentMonth());
   const [result, setResult] = useState<BuilderRunResult | null>(null);
   const [resultTab, setResultTab] = useState<ResultTab>('matched');
@@ -172,6 +175,22 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
   const canRun = hasPermission(user, 'reconciliation_builder.run');
   const canManage = hasPermission(user, 'reconciliation_builder.manage');
+  const selectedDefinition = definitions.find(item => item.id === selectedDefinitionId) || null;
+  const selectedTemplateDirty = useMemo(() => {
+    if (!selectedDefinition) return false;
+    const baseline = {
+      ...emptyConfig(),
+      ...selectedDefinition.config,
+      key_pairs: selectedDefinition.config.key_pairs?.length
+        ? selectedDefinition.config.key_pairs
+        : emptyConfig().key_pairs,
+    };
+    return (
+      templateName.trim() !== selectedDefinition.name
+      || templateDescription.trim() !== (selectedDefinition.description || '')
+      || JSON.stringify(config) !== JSON.stringify(baseline)
+    );
+  }, [selectedDefinition, templateName, templateDescription, config]);
 
   const effectiveColumnsA = useMemo(
     () => Array.from(new Set([
@@ -236,11 +255,14 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     return Array.from(new Set([...base, ...previous]));
   };
 
-  const loadDefinitions = async () => {
+  const loadDefinitions = async (): Promise<ReconciliationDefinition[]> => {
     try {
-      setDefinitions(await getReconciliationDefinitions());
+      const items = await getReconciliationDefinitions();
+      setDefinitions(items);
+      return items;
     } catch (error: any) {
       setMessage({ type: 'error', text: error?.message || 'Не удалось загрузить шаблоны.' });
+      return [];
     }
   };
 
@@ -534,6 +556,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setSelectedDefinitionId(definition.id);
     setTemplateName(definition.name);
     setTemplateDescription(definition.description || '');
+    setTemplateChangeNote('');
     setConfig({
       ...emptyConfig(),
       ...definition.config,
@@ -544,7 +567,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setResult(null);
     setMessage({
       type: 'info',
-      text: `Шаблон «${definition.name}» загружен. Подставьте файлы и проверьте выбранные колонки.`,
+      text: `Шаблон «${definition.name}» v${definition.current_version_number || 1} загружен. Подставьте файлы и проверьте выбранные колонки.`,
     });
   };
 
@@ -552,6 +575,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setSelectedDefinitionId(null);
     setTemplateName('');
     setTemplateDescription('');
+    setTemplateChangeNote('');
     setConfig(emptyConfig());
     setResult(null);
   };
@@ -561,6 +585,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setSelectedDefinitionId(null);
     setTemplateName('');
     setTemplateDescription('');
+    setTemplateChangeNote('');
     setResult(null);
     setMessage({
       type: 'info',
@@ -633,6 +658,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
           templateName.trim(),
           templateDescription.trim(),
           config,
+          templateChangeNote.trim(),
         );
         setMessage({ type: 'success', text: saved.message });
       } else {
@@ -640,11 +666,13 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
           templateName.trim(),
           templateDescription.trim(),
           config,
+          templateChangeNote.trim(),
         );
         setSelectedDefinitionId(saved.id);
         setMessage({ type: 'success', text: saved.message });
       }
       await loadDefinitions();
+      setTemplateChangeNote('');
     } catch (error: any) {
       setMessage({ type: 'error', text: error?.message || 'Не удалось сохранить шаблон.' });
     } finally {
@@ -667,6 +695,13 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
   const handleRun = async () => {
     if (!canRun || running) return;
+    if (selectedDefinitionId && selectedTemplateDirty) {
+      setMessage({
+        type: 'error',
+        text: 'Правила выбранного шаблона изменены. Сохраните новую версию или нажмите «Использовать правила разово» перед запуском.',
+      });
+      return;
+    }
     const validationError = validateConfig();
     if (validationError) {
       setMessage({ type: 'error', text: validationError });
@@ -694,6 +729,8 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
           definition_name: selectedDefinitionId
             ? (templateName.trim() || `Шаблон #${selectedDefinitionId}`)
             : 'Разовая сверка',
+          definition_version_id: selectedDefinition?.active_version_id || null,
+          definition_version_number: selectedDefinition?.current_version_number || null,
           source_a_name: sourceA!.name,
           source_b_name: sourceB!.name,
           source_files: [sourceA!.name, sourceB!.name],
@@ -1754,7 +1791,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                         ? 'bg-indigo-50 text-indigo-700'
                         : 'bg-slate-100 text-slate-600'
                     }`}>
-                      {selectedDefinitionId ? 'Шаблон' : 'Разовая'}
+                      {selectedDefinitionId
+                        ? `v${selectedDefinition?.current_version_number || 1}`
+                        : 'Разовая'}
                     </span>
                   </div>
                   <p className="mt-1 text-[11px] leading-4 text-slate-500">
@@ -1762,13 +1801,24 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                   </p>
                 </div>
                 {selectedDefinitionId && (
-                  <button
-                    onClick={resetDefinition}
-                    className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-                    title="Новый пустой шаблон"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {selectedDefinition && (
+                      <button
+                        onClick={() => setHistoryDefinition(selectedDefinition)}
+                        className="rounded-lg p-2 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                        title="История версий"
+                      >
+                        <History className="h-4 w-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={resetDefinition}
+                      className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+                      title="Новый пустой шаблон"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1785,6 +1835,15 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 rows={2}
                 className="mt-2 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
+
+              {selectedDefinitionId && canManage && (
+                <input
+                  value={templateChangeNote}
+                  onChange={event => setTemplateChangeNote(event.target.value)}
+                  placeholder={'Что изменилось в v' + ((selectedDefinition?.current_version_number || 0) + 1) + '? (необязательно)'}
+                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                />
+              )}
 
               <div className="mt-3 grid grid-cols-1 gap-2">
                 {selectedDefinitionId && (
@@ -1804,7 +1863,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                     className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                   >
                     {savingTemplate ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                    {selectedDefinitionId ? 'Обновить шаблон' : 'Сохранить как шаблон'}
+                    {selectedDefinitionId
+                      ? 'Сохранить как v' + ((selectedDefinition?.current_version_number || 0) + 1)
+                      : 'Сохранить как v1'}
                   </button>
                 )}
               </div>
@@ -1834,13 +1895,28 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                       onClick={() => loadDefinition(definition)}
                       className="w-full text-left"
                     >
-                      <div className="text-sm font-semibold text-slate-900">{definition.name}</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-sm font-semibold text-slate-900">{definition.name}</div>
+                        <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-700">
+                          v{definition.current_version_number || 1}
+                        </span>
+                      </div>
                       <div className="mt-1 line-clamp-2 text-[11px] text-slate-500">
                         {definition.description || `${definition.config.key_pairs?.length || 0} ключ(а)`}
                       </div>
+                      <div className="mt-1 text-[9px] text-slate-400">
+                        {definition.version_created_by || definition.created_by || '—'} · {formatDateTime(definition.version_created_at || definition.updated_at)}
+                      </div>
                     </button>
-                    {canManage && (
-                      <div className="mt-2 flex justify-end">
+                    <div className="mt-2 flex justify-end gap-1">
+                      <button
+                        onClick={() => setHistoryDefinition(definition)}
+                        className="rounded p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                        title="История версий"
+                      >
+                        <History className="h-3.5 w-3.5" />
+                      </button>
+                      {canManage && (
                         <button
                           onClick={() => void handleDeleteTemplate(definition)}
                           className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
@@ -1848,8 +1924,8 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1891,6 +1967,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                   const isCompleted = String(item.status || '').toUpperCase() === 'COMPLETED';
                   const title = item.definition_id
                     ? (item.definition_name || `Шаблон #${item.definition_id}`)
+                      + (item.definition_version_number ? ` · v${item.definition_version_number}` : '')
                     : 'Разовая сверка';
 
                   return (
@@ -1961,6 +2038,24 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
         <ReconciliationBuilderRunArchiveModal
           record={selectedArchivedRun}
           onClose={() => setSelectedArchivedRun(null)}
+        />
+      )}
+
+      {historyDefinition && (
+        <ReconciliationDefinitionHistoryModal
+          definition={historyDefinition}
+          canManage={canManage}
+          onClose={() => setHistoryDefinition(null)}
+          onRestored={(restored, restoreMessage) => {
+            setDefinitions(current => current.map(item => (
+              item.id === restored.id ? restored : item
+            )));
+            if (selectedDefinitionId === restored.id) {
+              loadDefinition(restored);
+            }
+            setHistoryDefinition(null);
+            setMessage({ type: 'success', text: restoreMessage });
+          }}
         />
       )}
     </div>

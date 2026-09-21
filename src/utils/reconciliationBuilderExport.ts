@@ -20,6 +20,8 @@ export interface BuilderArchiveRecord {
   source_files?: string[];
   definition_id?: number | null;
   definition_name?: string;
+  definition_version_id?: number | null;
+  definition_version_number?: number | null;
   summary?: BuilderRunResult['summary'];
   config?: ReconciliationBuilderConfig;
   config_snapshot?: ReconciliationBuilderConfig;
@@ -218,6 +220,7 @@ export function exportBuilderArchiveRun(record: BuilderArchiveRecord): void {
   const summaryRows = [
     { 'Параметр': 'Run ID', 'Значение': record.run_id || result.run_id || '' },
     { 'Параметр': 'Шаблон', 'Значение': record.definition_name || 'Разовая сверка' },
+    { 'Параметр': 'Версия шаблона', 'Значение': record.definition_version_number ? 'v' + record.definition_version_number : '' },
     { 'Параметр': 'Период', 'Значение': record.period_month || '' },
     { 'Параметр': 'Пользователь', 'Значение': record.created_by || record.username || '' },
     { 'Параметр': 'Создано', 'Значение': record.created_at || record.updated_at || '' },
