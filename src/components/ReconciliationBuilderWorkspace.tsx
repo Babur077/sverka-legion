@@ -779,11 +779,19 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
           source_a_name: sourceA!.name,
           source_b_name: sourceB!.name,
           source_files: [sourceA!.name, sourceB!.name],
+          source_options: {
+            a: sourceOptionsA,
+            b: sourceOptionsB,
+          },
           config,
           config_snapshot: config,
           archive_schema_version: 1,
         },
         definition,
+        {
+          a: sourceOptionsA,
+          b: sourceOptionsB,
+        },
       );
 
       setActiveJobId(job.id);
