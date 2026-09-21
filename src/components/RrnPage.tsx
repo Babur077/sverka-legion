@@ -19,6 +19,7 @@ import { DEFAULT_BANKS, getBanksViaApi } from '../utils/banksApi';
 import { AlertModal, ConfirmModal } from './Modal';
 import { saveBankRrnArchive } from '../utils/archiveApi';
 import { getReconciliationQuality } from '../utils/reconciliationMetrics';
+import { BankAiSummary, analyzeBankRrnWithAi } from '../utils/bankAiApi';
 
 interface RrnPageProps {
   user: User;
@@ -115,6 +116,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [manualArchiveTerminalId, setManualArchiveTerminalId] = useState<string>('');
   const [isRegisteringArchiveTerminal, setIsRegisteringArchiveTerminal] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [aiSummary, setAiSummary] = useState<BankAiSummary | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Bank selection state (Quick Bank Select)
   const [availableBanks, setAvailableBanks] = useState<string[]>(DEFAULT_BANKS);
@@ -194,6 +198,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     if (!reconData) return;
     setReconData(null);
     setSaveSuccessMsg(null);
+    setAiSummary(null);
+    setAiError(null);
     setSelectedDrilldownDate(null);
     setActiveTab('summary');
   }, [
@@ -464,6 +470,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
     setIsProcessing(true);
     setSaveSuccessMsg(null);
+    setAiSummary(null);
+    setAiError(null);
 
     try {
       const revWords = revInput.split(',').map(w => w.trim()).filter(Boolean);
@@ -759,6 +767,33 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       sourceQualityIssueCount,
     };
   }, [reconData]);
+
+  const handleGenerateAiSummary = async () => {
+    if (!reconData || !dynamicCalculations) return;
+
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const summary = await analyzeBankRrnWithAi({
+        bank_name: selectedBank,
+        currency: settings.currency || 'UZS',
+        result: reconData,
+        adjusted: {
+          total_our: dynamicCalculations.totalOurSum,
+          total_bank: dynamicCalculations.totalBankSum,
+          difference: dynamicCalculations.totalDiff,
+          active_only_our_count: dynamicCalculations.activeOnlyOurCount,
+          active_only_bank_count: dynamicCalculations.activeOnlyBankCount,
+          by_date: dynamicCalculations.adjustedSummary,
+        },
+      });
+      setAiSummary(summary);
+    } catch (error: any) {
+      setAiError(error?.message || 'Не удалось сформировать AI-сводку.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   // Generate selectable months (detected from file dates + last 12 calendar months)
   const availableMonths = useMemo(() => {
@@ -1699,6 +1734,126 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">RRN найдено: {dynamicCalculations.quality.rrnMatchRate.toFixed(1)}%</div>
             </div>
+          </div>
+
+          {/* Experimental AI summary */}
+          <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-indigo-50 p-5 shadow-xs">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                      <Sparkles className="h-4 w-4" />
+                    </span>
+                    AI-сводка сверки
+                  </div>
+                  <span className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+                    эксперимент
+                  </span>
+                  {aiSummary && (
+                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                      {aiSummary.provider === 'openai'
+                        ? `OpenAI · ${aiSummary.model || 'model'}`
+                        : 'локальные гипотезы'}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-600">
+                  Система ищет закономерности в расхождениях: граница месяца, концентрация unmatched по датам,
+                  возможный эффект комиссии, дубликаты и проблемы качества данных. Выводы — гипотезы для проверки,
+                  они не меняют результат сверки.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void handleGenerateAiSummary()}
+                disabled={aiLoading}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {aiLoading
+                  ? <RefreshCw className="h-4 w-4 animate-spin" />
+                  : <Sparkles className="h-4 w-4" />}
+                {aiLoading ? 'Анализируем…' : aiSummary ? 'Обновить AI-сводку' : 'Проанализировать'}
+              </button>
+            </div>
+
+            {aiError && (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+                {aiError}
+              </div>
+            )}
+
+            {aiSummary && (
+              <div className="mt-4 space-y-4">
+                <div className="rounded-xl border border-violet-100 bg-white/80 p-4">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-violet-500">
+                    Краткая сводка
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-slate-800">
+                    {aiSummary.executive_summary}
+                  </div>
+                </div>
+
+                {aiSummary.warning && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                    {aiSummary.warning}
+                  </div>
+                )}
+
+                {aiSummary.insights.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                    {aiSummary.insights.map((insight, index) => (
+                      <div
+                        key={`${insight.kind}-${index}`}
+                        className="rounded-xl border border-slate-200 bg-white p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="text-xs font-bold text-slate-900">{insight.title}</div>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ${
+                            insight.confidence === 'high'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : insight.confidence === 'medium'
+                                ? 'bg-amber-50 text-amber-700'
+                                : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            уверенность: {insight.confidence_label.toLowerCase()}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-slate-600">
+                          {insight.explanation}
+                        </p>
+                        {insight.evidence?.length > 0 && (
+                          <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                              На чём основано
+                            </div>
+                            <ul className="mt-1 space-y-1 text-[10px] leading-4 text-slate-600">
+                              {insight.evidence.map((evidence, evidenceIndex) => (
+                                <li key={evidenceIndex}>• {evidence}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
+                    Явных закономерностей по текущим агрегатам не найдено.
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-2 text-[10px] text-slate-500 lg:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 bg-white/70 px-3 py-2">
+                    {aiSummary.disclaimer}
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white/70 px-3 py-2">
+                    {aiSummary.privacy}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Commission & EPOS Analysis Banner */}
