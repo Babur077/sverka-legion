@@ -47,6 +47,7 @@ def load_file_polars(
                 io.BytesIO(file_bytes),
                 sheet_name=sheet_name if sheet_name not in (None, "") else 0,
                 header=header_row - 1,
+                dtype=object,
             )
             if isinstance(pdf, dict):
                 # Defensive fallback if a caller accidentally requested all sheets.
@@ -67,6 +68,7 @@ def load_file_polars(
                         io.BytesIO(file_bytes),
                         sheet_name=0,
                         header=0,
+                        dtype=object,
                     )
                     return pl.from_pandas(pdf)
 
