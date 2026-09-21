@@ -74,7 +74,7 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
 
   const [ravanFile, setRavanFile] = useState<File | null>(null);
   const [cFile, setCFile] = useState<File | null>(null);
-  const [sumTolerance, setSumTolerance] = useState(1);
+  const sumTolerance = 1;
   const [result, setResult] = useState<Ravan1CRunResult | null>(null);
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
@@ -180,7 +180,7 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
             </div>
             <div className="min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-600">
-                Produced by Sayfulloh Abdusalomov
+                produced by Sayfulloh Abdusalomov
               </div>
               <h1 className="truncate text-xl font-black text-slate-900">Ravan ↔ 1C</h1>
               <p className="mt-0.5 text-xs text-slate-500">
@@ -264,20 +264,15 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
           </div>
 
           <div className="mt-4 flex flex-col gap-3 rounded-xl bg-slate-50 p-4 sm:flex-row sm:items-end sm:justify-between">
-            <label className="text-xs font-semibold text-slate-700">
+            <div className="text-xs font-semibold text-slate-700">
               Допустимая разница по сумме
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={sumTolerance}
-                onChange={event => setSumTolerance(Math.max(0, Number(event.target.value) || 0))}
-                className="mt-1 block w-40 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800"
-              />
+              <div className="mt-1 w-40 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800">
+                1
+              </div>
               <span className="mt-1 block text-[10px] font-normal text-slate-400">
-                Исходное правило Sayfulloh: 1.
+                Фиксированное правило исходного алгоритма.
               </span>
-            </label>
+            </div>
 
             <button
               type="button"
