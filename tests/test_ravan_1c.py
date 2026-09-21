@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 
 import pandas as pd
+import pytest
 
 from modules.ravan_1c.engine import Ravan1CModule, clean_company_name
 
@@ -72,6 +73,56 @@ def test_ravan_1c_module_preserves_formula_and_status_logic():
     assert result.summary.match_percentage == 25.0
     assert result.status == "WARNING"
     assert result.custom_metrics["ravan_1c"]["producer"] == "Sayfulloh Abdusalomov"
+
+
+@pytest.mark.parametrize("separator", [",", ";", "\t"])
+@pytest.mark.parametrize("encoding", ["utf-8-sig", "cp1251"])
+def test_csv_sources_support_delimiters_quotes_and_encodings(separator, encoding):
+    partner = 'ООО Альфа, "Бета"; Гамма'
+    ravan = pd.DataFrame([{"Partner": partner, "NDS": 12, "Kolvo": 5, "Summ": 1120}])
+    one_c = pd.DataFrame([[partner, 5, 1000]])
+    result = Ravan1CModule().run(
+        {
+            "ravan_file": ravan.to_csv(index=False, sep=separator).encode(encoding),
+            "c_file": one_c.to_csv(index=False, header=False, sep=separator).encode(encoding),
+        },
+        {"ravan_file_filename": "Ravan.csv", "c_file_filename": "1C.csv"},
+    )
+    assert result.summary.matched_count == 1
+    assert result.summary.total_sum_a == 1000
+    assert result.custom_metrics["ravan_1c"]["rows"][0]["Partner_C"] == partner
+
+
+def test_duplicate_company_rows_do_not_inflate_source_totals():
+    ravan = pd.DataFrame([
+        {"Partner": "Alpha MCHJ", "NDS": 12, "Kolvo": 1, "Summ": 112},
+        {"Partner": "Alpha LLC", "NDS": 12, "Kolvo": 2, "Summ": 224},
+    ])
+    one_c = pd.DataFrame([["Alpha", 1, 100], ["Alpha", 2, 210]])
+    result = Ravan1CModule().run(
+        {"ravan_file": _excel_bytes(ravan), "c_file": _excel_bytes(one_c, header=False)},
+        {},
+    )
+    # Keep the original comparison rows, but count each source amount once.
+    assert len(result.custom_metrics["ravan_1c"]["rows"]) == 4
+    assert result.summary.total_sum_a == 300
+    assert result.summary.total_sum_b == 310
+    assert result.summary.diff_sum == 10
+
+
+@pytest.mark.parametrize(
+    "quantity,amount,status",
+    [(5, 1000, "OK"), (5, 1001, "OK"), (5, 1001.01, "Ошибка Summ"),
+     (4, 1000, "Ошибка Kolvo"), (4, 1002, "Ошибка Kolvo + Summ")],
+)
+def test_statuses_and_inclusive_tolerance_boundary(quantity, amount, status):
+    ravan = pd.DataFrame([{"Partner": "Alpha", "NDS": 12, "Kolvo": 5, "Summ": 1120}])
+    one_c = pd.DataFrame([["Alpha", quantity, amount]])
+    result = Ravan1CModule().run(
+        {"ravan_file": _excel_bytes(ravan), "c_file": _excel_bytes(one_c, header=False)},
+        {},
+    )
+    assert result.custom_metrics["ravan_1c"]["rows"][0]["Status"] == status
 
 
 def test_ravan_1c_sum_tolerance_matches_original_default_rule():

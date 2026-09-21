@@ -134,6 +134,7 @@ export function exportRavan1CToExcel(result: Ravan1CRunResult): void {
   const rows = result.custom_metrics?.ravan_1c?.rows || [];
 
   const summaryRows = [
+    { Показатель: 'Модуль', Значение: 'Сверка погашений' },
     { Показатель: 'Produced by', Значение: 'Sayfulloh Abdusalomov' },
     { Показатель: 'Run ID', Значение: result.run_id },
     { Показатель: 'Статус', Значение: result.status },
@@ -177,5 +178,5 @@ export function exportRavan1CToExcel(result: Ravan1CRunResult): void {
   );
 
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-  XLSX.writeFile(workbook, `Ravan_1C_${stamp}.xlsx`);
+  XLSX.writeFile(workbook, `Сверка_погашений_${stamp}.xlsx`);
 }
