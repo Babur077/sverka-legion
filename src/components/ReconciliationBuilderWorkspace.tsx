@@ -19,9 +19,15 @@ import {
 import { User } from '../types';
 import { ReconciliationBuilderRunArchiveModal } from './ReconciliationBuilderRunArchiveModal';
 import { parseFile } from '../utils/fileParser';
-import { getModuleArchive, saveModuleArchive } from '../utils/archiveApi';
+import { getModuleArchive } from '../utils/archiveApi';
 import { hasPermission } from '../utils/permissions';
 import { BuilderArchiveRecord } from '../utils/reconciliationBuilderExport';
+import {
+  ReconciliationJob,
+  cancelReconciliationJob,
+  getReconciliationJob,
+  getReconciliationJobs,
+} from '../utils/jobsApi';
 import {
   BuilderAmountTransform,
   BuilderComputedField,
@@ -36,8 +42,8 @@ import {
   ReconciliationDefinition,
   createReconciliationDefinition,
   deleteReconciliationDefinition,
+  enqueueReconciliationBuilderJob,
   getReconciliationDefinitions,
-  runReconciliationBuilder,
   updateReconciliationDefinition,
 } from '../utils/reconciliationBuilderApi';
 
@@ -154,6 +160,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const [result, setResult] = useState<BuilderRunResult | null>(null);
   const [resultTab, setResultTab] = useState<ResultTab>('matched');
   const [archive, setArchive] = useState<BuilderArchiveRecord[]>([]);
+  const [jobs, setJobs] = useState<ReconciliationJob[]>([]);
+  const [activeJobId, setActiveJobId] = useState<number | null>(null);
+  const [activeJob, setActiveJob] = useState<ReconciliationJob | null>(null);
   const [selectedArchivedRun, setSelectedArchivedRun] = useState<BuilderArchiveRecord | null>(null);
   const [loadingFile, setLoadingFile] = useState<'a' | 'b' | null>(null);
   const [running, setRunning] = useState(false);
@@ -235,18 +244,116 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     }
   };
 
-  const loadArchive = async () => {
+  const loadArchive = async (): Promise<BuilderArchiveRecord[]> => {
     try {
-      setArchive(await getModuleArchive<BuilderArchiveRecord>(user.username, 'reconciliation_builder'));
+      const records = await getModuleArchive<BuilderArchiveRecord>(
+        user.username,
+        'reconciliation_builder',
+      );
+      setArchive(records);
+      return records;
     } catch {
       setArchive([]);
+      return [];
+    }
+  };
+
+  const loadJobs = async (): Promise<ReconciliationJob[]> => {
+    try {
+      const records = await getReconciliationJobs('reconciliation_builder', 12);
+      setJobs(records);
+      return records;
+    } catch {
+      setJobs([]);
+      return [];
     }
   };
 
   useEffect(() => {
     void loadDefinitions();
     void loadArchive();
+    void loadJobs().then(records => {
+      const pending = records.find(job => job.status === 'QUEUED' || job.status === 'RUNNING');
+      if (pending) {
+        setActiveJobId(pending.id);
+        setActiveJob(pending);
+        setRunning(true);
+      }
+    });
   }, [user.username]);
+
+  useEffect(() => {
+    if (!activeJobId) return;
+
+    let disposed = false;
+    let timer: number | undefined;
+
+    const poll = async () => {
+      try {
+        const job = await getReconciliationJob(activeJobId);
+        if (disposed) return;
+        setActiveJob(job);
+        setRunning(job.status === 'QUEUED' || job.status === 'RUNNING');
+
+        if (job.status === 'COMPLETED') {
+          const records = await loadArchive();
+          if (disposed) return;
+          const archived = records.find(item => item.run_id === job.run_id);
+          if (archived?.result_snapshot) {
+            setResult(archived.result_snapshot);
+            setResultTab('matched');
+          }
+          setMessage({
+            type: 'success',
+            text: `Фоновая сверка завершена. Run ID: ${job.run_id || '—'}`,
+          });
+          setActiveJobId(null);
+          setActiveJob(null);
+          setRunning(false);
+          void loadJobs();
+          return;
+        }
+
+        if (job.status === 'FAILED') {
+          setMessage({
+            type: 'error',
+            text: job.error || 'Фоновая сверка завершилась с ошибкой.',
+          });
+          setActiveJobId(null);
+          setActiveJob(null);
+          setRunning(false);
+          void loadJobs();
+          return;
+        }
+
+        if (job.status === 'CANCELLED') {
+          setMessage({ type: 'info', text: 'Фоновая сверка отменена.' });
+          setActiveJobId(null);
+          setActiveJob(null);
+          setRunning(false);
+          void loadJobs();
+          return;
+        }
+
+        timer = window.setTimeout(poll, 1200);
+      } catch (error: any) {
+        if (disposed) return;
+        setMessage({
+          type: 'error',
+          text: error?.message || 'Не удалось получить статус фоновой задачи.',
+        });
+        setActiveJobId(null);
+        setActiveJob(null);
+        setRunning(false);
+      }
+    };
+
+    void poll();
+    return () => {
+      disposed = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [activeJobId]);
 
   const handleFile = async (side: 'a' | 'b', file: File | null) => {
     if (!file) return;
@@ -559,7 +666,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   };
 
   const handleRun = async () => {
-    if (!canRun) return;
+    if (!canRun || running) return;
     const validationError = validateConfig();
     if (validationError) {
       setMessage({ type: 'error', text: validationError });
@@ -570,50 +677,74 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setMessage(null);
     setResult(null);
     try {
-      const runResult = await runReconciliationBuilder(
+      const definition = selectedDefinitionId
+        ? {
+            id: selectedDefinitionId,
+            name: templateName.trim() || undefined,
+          }
+        : undefined;
+
+      const job = await enqueueReconciliationBuilderJob(
         sourceA!,
         sourceB!,
         config,
-        selectedDefinitionId
-          ? {
-              id: selectedDefinitionId,
-              name: templateName.trim() || undefined,
-            }
-          : undefined,
+        {
+          period_month: periodMonth,
+          definition_id: selectedDefinitionId,
+          definition_name: selectedDefinitionId
+            ? (templateName.trim() || `Шаблон #${selectedDefinitionId}`)
+            : 'Разовая сверка',
+          source_a_name: sourceA!.name,
+          source_b_name: sourceB!.name,
+          source_files: [sourceA!.name, sourceB!.name],
+          config,
+          config_snapshot: config,
+          archive_schema_version: 1,
+        },
+        definition,
       );
-      setResult(runResult);
-      setResultTab('matched');
 
-      await saveModuleArchive(user.username, 'reconciliation_builder', {
-        run_id: runResult.run_id,
-        status: runResult.status,
-        period_month: periodMonth,
-        definition_id: selectedDefinitionId,
-        definition_name: selectedDefinitionId
-          ? (templateName.trim() || `Шаблон #${selectedDefinitionId}`)
-          : 'Разовая сверка',
-        source_a_name: sourceA!.name,
-        source_b_name: sourceB!.name,
-        source_files: [sourceA!.name, sourceB!.name],
-        summary: runResult.summary,
-        config,
-        config_snapshot: config,
-        result_snapshot: runResult,
-        archive_schema_version: 1,
-      });
-
-      await loadArchive();
+      setActiveJobId(job.id);
+      setActiveJob(job);
+      setJobs(current => [
+        job,
+        ...current.filter(item => item.id !== job.id),
+      ].slice(0, 12));
       setMessage({
-        type: 'success',
-        text: `Сверка выполнена и сохранена в журнал. Run ID: ${runResult.run_id}`,
+        type: 'info',
+        text: `Сверка поставлена в очередь как задача #${job.id}. Можно уйти со страницы — сервер продолжит работу.`,
       });
     } catch (error: any) {
       setMessage({
         type: 'error',
-        text: error?.message || 'Не удалось выполнить универсальную сверку.',
+        text: error?.message || 'Не удалось поставить сверку в очередь.',
       });
-    } finally {
       setRunning(false);
+    }
+  };
+
+  const handleCancelActiveJob = async () => {
+    if (!activeJobId) return;
+    try {
+      const updated = await cancelReconciliationJob(activeJobId);
+      setActiveJob(updated);
+      setJobs(current => current.map(job => job.id === updated.id ? updated : job));
+      if (updated.status === 'CANCELLED') {
+        setRunning(false);
+        setActiveJobId(null);
+        setActiveJob(null);
+        setMessage({ type: 'info', text: `Задача #${updated.id} отменена.` });
+      } else {
+        setMessage({
+          type: 'info',
+          text: 'Запрос на отмену принят. Текущий этап будет завершён безопасно.',
+        });
+      }
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: error?.message || 'Не удалось отменить задачу.',
+      });
     }
   };
 
@@ -662,7 +793,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
             className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {running ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-white" />}
-            {running ? 'Сверка…' : 'Запустить сверку'}
+            {running
+              ? (activeJob?.status === 'QUEUED' ? 'В очереди…' : 'Сверка…')
+              : 'Запустить сверку'}
           </button>
         </div>
       </div>
@@ -1524,12 +1657,93 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {running ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-white" />}
-                {running ? 'Сверка…' : result ? 'Запустить сверку ещё раз' : 'Запустить сверку'}
+                {running
+                  ? (activeJob?.status === 'QUEUED' ? 'В очереди…' : 'Сверка…')
+                  : result ? 'Запустить сверку ещё раз' : 'Запустить сверку'}
               </button>
             </div>
           </div>
 
           <aside className="space-y-5">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Фоновые задачи</h2>
+                  <p className="text-[10px] text-slate-400">Очередь продолжает работать даже после ухода со страницы</p>
+                </div>
+                {activeJob && (
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+                    activeJob.status === 'RUNNING'
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'bg-amber-50 text-amber-700'
+                  }`}>
+                    #{activeJob.id}
+                  </span>
+                )}
+              </div>
+
+              {activeJob ? (
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-slate-800">
+                        {activeJob.status === 'QUEUED' ? 'Ожидает в очереди' : activeJob.stage || 'Выполняется'}
+                      </div>
+                      <div className="mt-1 text-[10px] text-slate-500">
+                        {activeJob.status} · {Math.max(0, Math.min(100, activeJob.progress || 0))}%
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => void handleCancelActiveJob()}
+                      className="shrink-0 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-rose-600 hover:bg-rose-50"
+                    >
+                      Отменить
+                    </button>
+                  </div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white">
+                    <div
+                      className="h-full rounded-full bg-indigo-600 transition-[width] duration-300"
+                      style={{ width: `${Math.max(3, Math.min(100, activeJob.progress || 0))}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                  Активных задач нет.
+                </div>
+              )}
+
+              {jobs.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {jobs.slice(0, 5).map(job => (
+                    <div key={job.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-2.5 py-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-[10px] font-semibold text-slate-700">
+                          #{job.id} · {job.stage || job.status}
+                        </div>
+                        <div className="mt-0.5 text-[9px] text-slate-400">
+                          {formatDateTime(job.created_at)}
+                        </div>
+                      </div>
+                      <div className={`shrink-0 text-[9px] font-bold ${
+                        job.status === 'COMPLETED'
+                          ? 'text-emerald-600'
+                          : job.status === 'FAILED'
+                            ? 'text-rose-600'
+                            : job.status === 'CANCELLED'
+                              ? 'text-slate-400'
+                              : 'text-indigo-600'
+                      }`}>
+                        {job.status === 'RUNNING' || job.status === 'QUEUED'
+                          ? `${job.progress}%`
+                          : job.status}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>

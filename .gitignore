@@ -9,6 +9,7 @@ venv/
 env/
 
 # Local databases / runtime files
+database/job_files/
 *.db
 *.sqlite
 *.sqlite3
