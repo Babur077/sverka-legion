@@ -2018,6 +2018,24 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
           onClose={() => setSelectedArchivedRun(null)}
         />
       )}
+
+      {historyDefinition && (
+        <ReconciliationDefinitionHistoryModal
+          definition={historyDefinition}
+          canManage={canManage}
+          onClose={() => setHistoryDefinition(null)}
+          onRestored={(restored, restoreMessage) => {
+            setDefinitions(current => current.map(item => (
+              item.id === restored.id ? restored : item
+            )));
+            if (selectedDefinitionId === restored.id) {
+              loadDefinition(restored);
+            }
+            setHistoryDefinition(null);
+            setMessage({ type: 'success', text: restoreMessage });
+          }}
+        />
+      )}
     </div>
   );
 };
