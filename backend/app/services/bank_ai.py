@@ -197,11 +197,29 @@ def build_bank_ai_context(payload: dict[str, Any]) -> dict[str, Any]:
     if "difference" not in adjusted:
         total_diff = _safe_float(summary.get("diff_sum"))
 
-    matched_count = _safe_int(summary.get("matched_count"))
-    discrepancy_count = _safe_int(summary.get("discrepancy_count"))
-    match_percentage = _safe_float(summary.get("match_percentage"))
+    matched_count = _safe_int(
+        summary.get("matched_count")
+        if summary
+        else rrn.get("matched_count") or result.get("matched_count")
+    )
+    mismatch_count = len(mismatches)
+    discrepancy_count = _safe_int(summary.get("discrepancy_count")) if summary else (
+        len(only_our) + len(only_bank) + mismatch_count
+    )
+    if summary and summary.get("match_percentage") is not None:
+        match_percentage = _safe_float(summary.get("match_percentage"))
+    else:
+        exact_matched = max(0, matched_count - mismatch_count)
+        scope = matched_count + len(only_our) + len(only_bank)
+        match_percentage = (exact_matched / scope * 100) if scope else 0.0
 
-    date_rows = result.get("by_date") if isinstance(result.get("by_date"), list) else []
+    if isinstance(result.get("by_date"), list):
+        date_rows = result.get("by_date") or []
+    elif isinstance(result.get("summary"), list):
+        # Frontend Bank RRN adapter exposes the date table as result.summary.
+        date_rows = result.get("summary") or []
+    else:
+        date_rows = []
     daily = []
     for row in date_rows:
         if not isinstance(row, dict):
