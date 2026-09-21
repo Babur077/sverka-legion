@@ -33,6 +33,27 @@ def test_job_queue_claims_only_one_running_job(tmp_path, monkeypatch):
     assert second["status"] == "RUNNING"
 
 
+
+
+def test_staging_job_is_not_claimed_until_upload_is_ready(tmp_path, monkeypatch):
+    _prepare_db(tmp_path, monkeypatch)
+
+    job_id = jobs.create_job(
+        "reconciliation_builder",
+        "tester",
+        {"params": {}},
+        status="STAGING",
+    )
+
+    assert jobs.claim_next_job() is None
+
+    jobs.queue_job(job_id)
+    claimed = jobs.claim_next_job()
+
+    assert claimed is not None
+    assert claimed["id"] == job_id
+    assert claimed["status"] == "RUNNING"
+
 def test_queued_job_can_be_cancelled(tmp_path, monkeypatch):
     _prepare_db(tmp_path, monkeypatch)
 
