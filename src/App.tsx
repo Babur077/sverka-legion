@@ -13,6 +13,7 @@ import { BankRrnOverview } from './components/BankRrnOverview';
 import { BankRrnAnalytics } from './components/BankRrnAnalytics';
 import { BankRrnArchive } from './components/BankRrnArchive';
 import { ReconciliationBuilderWorkspace } from './components/ReconciliationBuilderWorkspace';
+import { Ravan1CWorkspace } from './components/Ravan1CWorkspace';
 import { User, SystemSettings, ReconciliationModuleManifest } from './types';
 import { hasModuleWorkspace, ModuleWorkspaceKey } from './modules/workspaceRegistry';
 import { getSettingsViaApi } from './utils/settingsApi';
@@ -247,6 +248,11 @@ export const App: React.FC = () => {
       setCurrentTab('constructor');
       return;
     }
+    if (moduleId === 'ravan_1c') {
+      setActiveModuleWorkspace('ravan_1c');
+      setCurrentTab('module');
+      return;
+    }
     setActiveModuleWorkspace(null);
     setCurrentTab('modules');
   };
@@ -287,6 +293,16 @@ export const App: React.FC = () => {
       case 'reconciliation_builder':
         return (
           <ReconciliationBuilderWorkspace
+            user={user}
+            onBack={() => {
+              setActiveModuleWorkspace(null);
+              setCurrentTab('modules');
+            }}
+          />
+        );
+      case 'ravan_1c':
+        return (
+          <Ravan1CWorkspace
             user={user}
             onBack={() => {
               setActiveModuleWorkspace(null);
