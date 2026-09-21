@@ -1,4 +1,4 @@
-from backend.app.routers import admin, audit, auth, definitions, epos, health, jobs, modules, settings
+from backend.app.routers import admin, audit, auth, dashboard, definitions, epos, health, jobs, modules, settings
 
 
 def _paths(router):
@@ -52,3 +52,7 @@ def test_background_job_routes_are_registered():
         "/api/jobs/{job_id}",
         "/api/jobs/{job_id}/cancel",
     }.issubset(_paths(jobs.router))
+
+
+def test_dashboard_route_is_registered():
+    assert "/api/dashboard" in _paths(dashboard.router)
