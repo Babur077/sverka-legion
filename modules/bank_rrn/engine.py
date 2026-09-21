@@ -155,10 +155,14 @@ class BankRrnModule(BaseReconciliationModule):
         pl_our = load_file_polars(
             files["our_file"],
             params.get("our_filename", "our.xlsx"),
+            sheet_name=params.get("our_sheet_name") or 0,
+            header_row=params.get("our_header_row") or 1,
         )
         pl_bank = load_file_polars(
             files["bank_file"],
             params.get("bank_filename", "bank.xlsx"),
+            sheet_name=params.get("bank_sheet_name") or 0,
+            header_row=params.get("bank_header_row") or 1,
         )
 
         if pl_our is None or pl_bank is None:
