@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 
 import { apiFetch } from './apiClient';
-import { getModuleArchive, saveModuleArchive } from './archiveApi';
+import { deleteModuleArchive, getModuleArchive, saveModuleArchive } from './archiveApi';
 
 export interface Ravan1CRow {
   Partner_Ravan?: string | null;
@@ -120,6 +120,10 @@ export async function saveRavan1CRun(
 
 export async function getRavan1CArchive(username: string): Promise<Ravan1CArchiveRecord[]> {
   return getModuleArchive<Ravan1CArchiveRecord>(username, 'ravan_1c');
+}
+
+export async function deleteRavan1CArchive(username: string, id: number): Promise<void> {
+  await deleteModuleArchive(username, 'ravan_1c', id);
 }
 
 function safeCell(value: unknown): string | number {
