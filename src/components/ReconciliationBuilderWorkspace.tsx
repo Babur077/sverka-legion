@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import { ReconciliationBuilderRunArchiveModal } from './ReconciliationBuilderRunArchiveModal';
+import { ReconciliationDefinitionHistoryModal } from './ReconciliationDefinitionHistoryModal';
 import { parseFile } from '../utils/fileParser';
 import { getModuleArchive } from '../utils/archiveApi';
 import { hasPermission } from '../utils/permissions';
@@ -156,6 +157,8 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<number | null>(null);
   const [templateName, setTemplateName] = useState('');
   const [templateDescription, setTemplateDescription] = useState('');
+  const [templateChangeNote, setTemplateChangeNote] = useState('');
+  const [historyDefinition, setHistoryDefinition] = useState<ReconciliationDefinition | null>(null);
   const [periodMonth, setPeriodMonth] = useState(currentMonth());
   const [result, setResult] = useState<BuilderRunResult | null>(null);
   const [resultTab, setResultTab] = useState<ResultTab>('matched');
@@ -172,6 +175,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
   const canRun = hasPermission(user, 'reconciliation_builder.run');
   const canManage = hasPermission(user, 'reconciliation_builder.manage');
+  const selectedDefinition = definitions.find(item => item.id === selectedDefinitionId) || null;
 
   const effectiveColumnsA = useMemo(
     () => Array.from(new Set([
@@ -236,11 +240,14 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     return Array.from(new Set([...base, ...previous]));
   };
 
-  const loadDefinitions = async () => {
+  const loadDefinitions = async (): Promise<ReconciliationDefinition[]> => {
     try {
-      setDefinitions(await getReconciliationDefinitions());
+      const items = await getReconciliationDefinitions();
+      setDefinitions(items);
+      return items;
     } catch (error: any) {
       setMessage({ type: 'error', text: error?.message || 'Не удалось загрузить шаблоны.' });
+      return [];
     }
   };
 
@@ -534,6 +541,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setSelectedDefinitionId(definition.id);
     setTemplateName(definition.name);
     setTemplateDescription(definition.description || '');
+    setTemplateChangeNote('');
     setConfig({
       ...emptyConfig(),
       ...definition.config,
@@ -544,7 +552,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setResult(null);
     setMessage({
       type: 'info',
-      text: `Шаблон «${definition.name}» загружен. Подставьте файлы и проверьте выбранные колонки.`,
+      text: `Шаблон «${definition.name}» v${definition.current_version_number || 1} загружен. Подставьте файлы и проверьте выбранные колонки.`,
     });
   };
 
@@ -552,6 +560,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setSelectedDefinitionId(null);
     setTemplateName('');
     setTemplateDescription('');
+    setTemplateChangeNote('');
     setConfig(emptyConfig());
     setResult(null);
   };
@@ -561,6 +570,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setSelectedDefinitionId(null);
     setTemplateName('');
     setTemplateDescription('');
+    setTemplateChangeNote('');
     setResult(null);
     setMessage({
       type: 'info',
