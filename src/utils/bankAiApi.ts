@@ -49,6 +49,7 @@ interface AnalyzeBankRrnPayload {
     difference: number;
     active_only_our_count: number;
     active_only_bank_count: number;
+    by_date: ReconciliationResult['summary'];
   };
 }
 
