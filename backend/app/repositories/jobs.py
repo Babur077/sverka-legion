@@ -29,8 +29,15 @@ def _decode(row: sqlite3.Row | None) -> dict[str, Any] | None:
     return item
 
 
-def create_job(module_id: str, username: str, request_payload: dict[str, Any]) -> int:
+def create_job(
+    module_id: str,
+    username: str,
+    request_payload: dict[str, Any],
+    status: str = "QUEUED",
+) -> int:
     now = _now()
+    normalized_status = str(status or "QUEUED").upper()
+    stage = "Подготовка загрузки" if normalized_status == "STAGING" else "В очереди"
     with sqlite3.connect(db.DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -39,10 +46,12 @@ def create_job(module_id: str, username: str, request_payload: dict[str, Any]) -
                 module_id, status, progress, stage, created_by,
                 created_at, updated_at, request_json, files_json
             )
-            VALUES (?, 'QUEUED', 0, 'В очереди', ?, ?, ?, ?, '{}')
+            VALUES (?, ?, 0, ?, ?, ?, ?, ?, '{}')
             """,
             (
                 module_id,
+                normalized_status,
+                stage,
                 username,
                 now,
                 now,
@@ -51,6 +60,22 @@ def create_job(module_id: str, username: str, request_payload: dict[str, Any]) -
         )
         conn.commit()
         return int(cursor.lastrowid)
+
+
+def queue_job(job_id: int) -> None:
+    with sqlite3.connect(db.DB_PATH) as conn:
+        conn.execute(
+            """
+            UPDATE reconciliation_jobs
+            SET status = 'QUEUED',
+                progress = 0,
+                stage = 'В очереди',
+                updated_at = ?
+            WHERE id = ? AND status = 'STAGING'
+            """,
+            (_now(), int(job_id)),
+        )
+        conn.commit()
 
 
 def set_job_request(job_id: int, request_payload: dict[str, Any]) -> None:
