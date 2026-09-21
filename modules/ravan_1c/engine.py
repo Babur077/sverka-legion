@@ -259,7 +259,7 @@ class Ravan1CModule(BaseReconciliationModule):
 
         def get_status(row: pd.Series) -> str:
             if pd.isna(row["Partner_C"]):
-                return "Нет в 1C"
+                return "Нет в !C"
             if pd.isna(row["Partner_Ravan"]):
                 return "Нет в Ravan"
 
@@ -291,7 +291,7 @@ class Ravan1CModule(BaseReconciliationModule):
             "Ошибка Kolvo",
             "Ошибка Summ",
             "Ошибка Kolvo + Summ",
-            "Нет в 1C",
+            "Нет в !C",
             "Нет в Ravan",
             "Ошибка",
         ]
