@@ -64,20 +64,10 @@ async def enqueue_job(
     try:
         _, params = await persist_uploaded_files(job_id, list(form.multi_items()))
         params.pop("archive_payload", None)
-
-        with __import__("sqlite3").connect(__import__("utils.db_manager", fromlist=["DB_PATH"]).DB_PATH) as conn:
-            conn.execute(
-                "UPDATE reconciliation_jobs SET request_json = ? WHERE id = ?",
-                (
-                    json.dumps(
-                        {"params": params, "archive_payload": archive_payload},
-                        ensure_ascii=False,
-                        default=str,
-                    ),
-                    job_id,
-                ),
-            )
-            conn.commit()
+        jobs.set_job_request(
+            job_id,
+            {"params": params, "archive_payload": archive_payload},
+        )
 
         record_audit_event(
             user_id=username,
