@@ -3,7 +3,14 @@ import * as XLSX from 'xlsx';
 import { apiFetch } from './apiClient';
 import { deleteModuleArchive, getModuleArchive, saveModuleArchive } from './archiveApi';
 
+export type Ravan1CMatchType = 'exact' | 'fuzzy' | 'unmatched' | 'manual_unlinked';
+
 export interface Ravan1CRow {
+  Row_ID?: string;
+  Match_Type?: Ravan1CMatchType | string;
+  Name_Similarity?: number | null;
+  Needs_Review?: boolean;
+  Match_Confirmed?: boolean;
   Partner_Ravan?: string | null;
   NDS?: number | null;
   Kolvo_Ravan?: number | null;
@@ -43,6 +50,9 @@ export interface Ravan1CRunResult {
       rows?: Ravan1CRow[];
       source_ravan_rows?: number;
       source_1c_rows?: number;
+      source_files?: string[];
+      fuzzy_review_count?: number;
+      fuzzy_name_threshold?: number;
     };
   };
 }
@@ -98,24 +108,37 @@ export async function runRavan1C(
   return readJson(response) as Promise<Ravan1CRunResult>;
 }
 
+export async function saveRavan1CSnapshot(
+  username: string,
+  result: Ravan1CRunResult,
+  sourceFiles?: string[],
+): Promise<string> {
+  const metrics = result.custom_metrics?.ravan_1c;
+  const saved = await saveModuleArchive(username, 'ravan_1c', {
+    run_id: result.run_id,
+    status: result.status,
+    source_files: sourceFiles || metrics?.source_files || [],
+    summary: result.summary,
+    producer: 'Sayfulloh Abdusalomov',
+    sum_tolerance: metrics?.sum_tolerance ?? 1,
+    result_snapshot: result,
+    archive_schema_version: 2,
+  });
+  return saved.message;
+}
+
 export async function saveRavan1CRun(
   username: string,
   result: Ravan1CRunResult,
   ravanFile: File,
   cFile: File,
-  sumTolerance: number,
+  _sumTolerance: number,
 ): Promise<string> {
-  const saved = await saveModuleArchive(username, 'ravan_1c', {
-    run_id: result.run_id,
-    status: result.status,
-    source_files: [ravanFile.name, cFile.name],
-    summary: result.summary,
-    producer: 'Sayfulloh Abdusalomov',
-    sum_tolerance: sumTolerance,
-    result_snapshot: result,
-    archive_schema_version: 1,
-  });
-  return saved.message;
+  return saveRavan1CSnapshot(
+    username,
+    result,
+    [ravanFile.name, cFile.name],
+  );
 }
 
 export async function getRavan1CArchive(username: string): Promise<Ravan1CArchiveRecord[]> {
@@ -124,6 +147,128 @@ export async function getRavan1CArchive(username: string): Promise<Ravan1CArchiv
 
 export async function deleteRavan1CArchive(username: string, id: number): Promise<void> {
   await deleteModuleArchive(username, 'ravan_1c', id);
+}
+
+const RAVAN_STATUS_ORDER = [
+  'OK',
+  'Ошибка Kolvo',
+  'Ошибка Summ',
+  'Ошибка Kolvo + Summ',
+  'Нет в !C',
+  'Нет в Ravan',
+  'Ошибка',
+];
+
+function recalculateRavan1CResult(
+  result: Ravan1CRunResult,
+  nextRows: Ravan1CRow[],
+): Ravan1CRunResult {
+  const rows = nextRows.map(row => ({ ...row }));
+  const statusCounts: Record<string, number> = {};
+  rows.forEach(row => {
+    statusCounts[row.Status] = (statusCounts[row.Status] || 0) + 1;
+  });
+
+  const matchedCount = rows.filter(row => row.Status === 'OK').length;
+  const discrepancyCount = rows.length - matchedCount;
+  const orderedCategories = [
+    ...RAVAN_STATUS_ORDER,
+    ...Object.keys(statusCounts).filter(status => !RAVAN_STATUS_ORDER.includes(status)),
+  ]
+    .filter((status, index, values) => values.indexOf(status) === index)
+    .filter(status => (statusCounts[status] || 0) > 0)
+    .map(status => ({ status, count: statusCounts[status] }));
+
+  const metrics = result.custom_metrics?.ravan_1c || {};
+  return {
+    ...result,
+    status: discrepancyCount === 0 ? 'COMPLETED' : 'WARNING',
+    summary: {
+      ...result.summary,
+      matched_count: matchedCount,
+      discrepancy_count: discrepancyCount,
+      match_percentage: rows.length
+        ? Math.round((matchedCount / rows.length) * 10000) / 100
+        : 0,
+    },
+    by_category: orderedCategories,
+    discrepancies: rows.filter(row => row.Status !== 'OK'),
+    custom_metrics: {
+      ...(result.custom_metrics || {}),
+      ravan_1c: {
+        ...metrics,
+        rows,
+        status_counts: statusCounts,
+        fuzzy_review_count: rows.filter(row => row.Needs_Review).length,
+      },
+    },
+  };
+}
+
+export function confirmRavan1CFuzzyMatch(
+  result: Ravan1CRunResult,
+  rowId: string,
+): Ravan1CRunResult {
+  const rows = result.custom_metrics?.ravan_1c?.rows || [];
+  const nextRows = rows.map(row => (
+    row.Row_ID === rowId
+      ? { ...row, Needs_Review: false, Match_Confirmed: true }
+      : { ...row }
+  ));
+  return recalculateRavan1CResult(result, nextRows);
+}
+
+export function unlinkRavan1CFuzzyMatch(
+  result: Ravan1CRunResult,
+  rowId: string,
+): Ravan1CRunResult {
+  const rows = result.custom_metrics?.ravan_1c?.rows || [];
+  const target = rows.find(row => row.Row_ID === rowId);
+  if (!target || !target.Partner_Ravan || !target.Partner_C) {
+    return result;
+  }
+
+  const ravanOnly: Ravan1CRow = {
+    ...target,
+    Row_ID: `${rowId}-r`,
+    Match_Type: 'manual_unlinked',
+    Name_Similarity: null,
+    Needs_Review: false,
+    Match_Confirmed: false,
+    Partner_C: null,
+    Kolvo_C: null,
+    Summ_C: null,
+    Kolvo_Difference: -(Number(target.Kolvo_Ravan) || 0),
+    Summ_Difference: -(Number(target.Summ_Corrected) || 0),
+    Status: 'Нет в !C',
+  };
+
+  const oneCOnly: Ravan1CRow = {
+    ...target,
+    Row_ID: `${rowId}-c`,
+    Match_Type: 'manual_unlinked',
+    Name_Similarity: null,
+    Needs_Review: false,
+    Match_Confirmed: false,
+    Partner_Ravan: null,
+    NDS: null,
+    Kolvo_Ravan: null,
+    Summ_Ravan: null,
+    Summ_Corrected: null,
+    Kolvo_Difference: Number(target.Kolvo_C) || 0,
+    Summ_Difference: Number(target.Summ_C) || 0,
+    Status: 'Нет в Ravan',
+  };
+
+  const nextRows: Ravan1CRow[] = [];
+  rows.forEach(row => {
+    if (row.Row_ID === rowId) {
+      nextRows.push(ravanOnly, oneCOnly);
+    } else {
+      nextRows.push({ ...row });
+    }
+  });
+  return recalculateRavan1CResult(result, nextRows);
 }
 
 function safeCell(value: unknown): string | number {
