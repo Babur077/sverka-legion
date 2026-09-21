@@ -7,10 +7,20 @@ from datetime import datetime
 import httpx
 import pytest
 
-from conftest import login
 
 
 pytestmark = pytest.mark.e2e
+
+
+def login(client: httpx.Client, username: str, password: str) -> str:
+    response = client.post(
+        "/api/auth/login",
+        json={"username": username, "password": password},
+    )
+    assert response.status_code == 200, response.text
+    token = response.json().get("session_token")
+    assert token
+    return str(token)
 
 
 def auth(token: str, **extra: str) -> dict[str, str]:
