@@ -19,6 +19,7 @@ import { DEFAULT_BANKS, getBanksViaApi } from '../utils/banksApi';
 import { AlertModal, ConfirmModal } from './Modal';
 import { saveBankRrnArchive } from '../utils/archiveApi';
 import { getReconciliationQuality } from '../utils/reconciliationMetrics';
+import { BankAiSummary, analyzeBankRrnWithAi } from '../utils/bankAiApi';
 
 interface RrnPageProps {
   user: User;
@@ -115,6 +116,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [manualArchiveTerminalId, setManualArchiveTerminalId] = useState<string>('');
   const [isRegisteringArchiveTerminal, setIsRegisteringArchiveTerminal] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [aiSummary, setAiSummary] = useState<BankAiSummary | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Bank selection state (Quick Bank Select)
   const [availableBanks, setAvailableBanks] = useState<string[]>(DEFAULT_BANKS);
@@ -194,6 +198,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     if (!reconData) return;
     setReconData(null);
     setSaveSuccessMsg(null);
+    setAiSummary(null);
+    setAiError(null);
     setSelectedDrilldownDate(null);
     setActiveTab('summary');
   }, [
@@ -464,6 +470,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
     setIsProcessing(true);
     setSaveSuccessMsg(null);
+    setAiSummary(null);
+    setAiError(null);
 
     try {
       const revWords = revInput.split(',').map(w => w.trim()).filter(Boolean);
@@ -759,6 +767,32 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       sourceQualityIssueCount,
     };
   }, [reconData]);
+
+  const handleGenerateAiSummary = async () => {
+    if (!reconData || !dynamicCalculations) return;
+
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const summary = await analyzeBankRrnWithAi({
+        bank_name: selectedBank,
+        currency: settings.currency || 'UZS',
+        result: reconData,
+        adjusted: {
+          total_our: dynamicCalculations.totalOurSum,
+          total_bank: dynamicCalculations.totalBankSum,
+          difference: dynamicCalculations.totalDiff,
+          active_only_our_count: dynamicCalculations.activeOnlyOurCount,
+          active_only_bank_count: dynamicCalculations.activeOnlyBankCount,
+        },
+      });
+      setAiSummary(summary);
+    } catch (error: any) {
+      setAiError(error?.message || 'Не удалось сформировать AI-сводку.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   // Generate selectable months (detected from file dates + last 12 calendar months)
   const availableMonths = useMemo(() => {
