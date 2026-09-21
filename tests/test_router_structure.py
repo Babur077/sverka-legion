@@ -39,6 +39,9 @@ def test_reconciliation_definition_routes_are_registered():
     assert {
         "/api/reconciliation-definitions",
         "/api/reconciliation-definitions/{definition_id}",
+        "/api/reconciliation-definitions/{definition_id}/versions",
+        "/api/reconciliation-definitions/{definition_id}/versions/{version_id}",
+        "/api/reconciliation-definitions/{definition_id}/versions/{version_id}/restore",
     }.issubset(_paths(definitions.router))
 
 
