@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X, Layers, History, Wrench } from 'lucide-react';
+import { Settings, LogOut, Zap, ChevronLeft, ChevronRight, Menu, X, Layers, History, Wrench, LayoutDashboard } from 'lucide-react';
 import { User } from '../types';
 import { hasPermission } from '../utils/permissions';
 
@@ -38,6 +38,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   const currentRoleBadgeColor = roleBadgeColor[user.role] || 'bg-slate-50 text-slate-700 border-slate-200';
 
   const navItems = [
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      icon: LayoutDashboard,
+      requiredPermission: null,
+    },
     {
       id: 'modules',
       label: 'Модули сверок',
