@@ -14,6 +14,7 @@ import { User } from '../types';
 import { hasPermission } from '../utils/permissions';
 import { Ravan1CArchive } from './Ravan1CArchive';
 import {
+  deleteRavan1CArchive,
   exportRavan1CToExcel,
   getRavan1CArchive,
   Ravan1CArchiveRecord,
@@ -149,6 +150,26 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
       });
     } finally {
       setRunning(false);
+    }
+  };
+
+  const handleDeleteArchive = async (record: Ravan1CArchiveRecord) => {
+    try {
+      await deleteRavan1CArchive(user.username, record.id);
+      setArchive(current => current.filter(item => item.id !== record.id));
+      if (record.run_id && result?.run_id === record.run_id) {
+        setResult(null);
+      }
+      setMessage({
+        type: 'success',
+        text: `Архивный Run ${record.run_id || '#' + record.id} удалён.`,
+      });
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: error?.message || 'Не удалось удалить запись из архива.',
+      });
+      throw error;
     }
   };
 
@@ -441,8 +462,10 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
           records={archive}
           loading={archiveLoading}
           canExport={canExport}
+          canDelete={canRun}
           onRefresh={loadArchive}
           onOpen={restoreArchive}
+          onDelete={handleDeleteArchive}
         />
       </div>
     </div>
