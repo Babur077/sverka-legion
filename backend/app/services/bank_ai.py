@@ -116,11 +116,28 @@ def _month_end_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
-def _first_days_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    result = []
-    for row in rows:
+def _next_month_first_days_rows(
+    month_end_rows: list[dict[str, Any]],
+    opposite_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    target_months: set[tuple[int, int]] = set()
+    for row in month_end_rows:
         parsed = _parse_date(row.get("date_str"))
-        if parsed and parsed.day <= 3:
+        if not parsed:
+            continue
+        if parsed.month == 12:
+            target_months.add((parsed.year + 1, 1))
+        else:
+            target_months.add((parsed.year, parsed.month + 1))
+
+    result = []
+    for row in opposite_rows:
+        parsed = _parse_date(row.get("date_str"))
+        if (
+            parsed
+            and parsed.day <= 3
+            and (parsed.year, parsed.month) in target_months
+        ):
             result.append(row)
     return result
 
@@ -304,9 +321,6 @@ def build_local_hypotheses(
 
     end_our = _month_end_rows(only_our)
     end_bank = _month_end_rows(only_bank)
-    first_our = _first_days_rows(only_our)
-    first_bank = _first_days_rows(only_bank)
-
     if end_our or end_bank:
         our_count = len(end_our)
         bank_count = len(end_bank)
@@ -324,7 +338,12 @@ def build_local_hypotheses(
             f"Даты концентрации: {_date_label(dominant_rows)}.",
         ]
 
-        next_side_count = len(first_bank if our_count >= bank_count else first_our)
+        dominant_is_our = our_count >= bank_count
+        next_side_rows = _next_month_first_days_rows(
+            dominant_rows,
+            only_bank if dominant_is_our else only_our,
+        )
+        next_side_count = len(next_side_rows)
         if next_side_count:
             evidence.append(
                 f"На первых 3 днях доступного периода у противоположной стороны есть "
