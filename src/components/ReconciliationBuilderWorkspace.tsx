@@ -5,6 +5,7 @@ import {
   Copy,
   FileSpreadsheet,
   Clock3,
+  Eye,
   History,
   LoaderCircle,
   Plus,
@@ -16,9 +17,11 @@ import {
   XCircle,
 } from 'lucide-react';
 import { User } from '../types';
+import { ReconciliationBuilderRunArchiveModal } from './ReconciliationBuilderRunArchiveModal';
 import { parseFile } from '../utils/fileParser';
 import { getModuleArchive, saveModuleArchive } from '../utils/archiveApi';
 import { hasPermission } from '../utils/permissions';
+import { BuilderArchiveRecord } from '../utils/reconciliationBuilderExport';
 import {
   BuilderAmountTransform,
   BuilderComputedField,
@@ -150,7 +153,8 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const [periodMonth, setPeriodMonth] = useState(currentMonth());
   const [result, setResult] = useState<BuilderRunResult | null>(null);
   const [resultTab, setResultTab] = useState<ResultTab>('matched');
-  const [archive, setArchive] = useState<Array<Record<string, any>>>([]);
+  const [archive, setArchive] = useState<BuilderArchiveRecord[]>([]);
+  const [selectedArchivedRun, setSelectedArchivedRun] = useState<BuilderArchiveRecord | null>(null);
   const [loadingFile, setLoadingFile] = useState<'a' | 'b' | null>(null);
   const [running, setRunning] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
@@ -233,7 +237,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
   const loadArchive = async () => {
     try {
-      setArchive(await getModuleArchive<Record<string, any>>(user.username, 'reconciliation_builder'));
+      setArchive(await getModuleArchive<BuilderArchiveRecord>(user.username, 'reconciliation_builder'));
     } catch {
       setArchive([]);
     }
@@ -593,6 +597,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
         source_files: [sourceA!.name, sourceB!.name],
         summary: runResult.summary,
         config,
+        config_snapshot: config,
+        result_snapshot: runResult,
+        archive_schema_version: 1,
       });
 
       await loadArchive();
@@ -1655,9 +1662,16 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
               <div className={`space-y-2 ${showAllRuns ? 'max-h-[560px] overflow-y-auto pr-1' : ''}`}>
                 {(showAllRuns ? archive : archive.slice(0, 6)).map(item => {
-                  const summary = item.summary || {};
-                  const matchRate = Number(summary.match_percentage || 0);
-                  const discrepancies = Number(summary.discrepancy_count || 0);
+                  const matchRate = Number(
+                    item.summary?.match_percentage
+                    ?? item.result_snapshot?.summary.match_percentage
+                    ?? 0,
+                  );
+                  const discrepancies = Number(
+                    item.summary?.discrepancy_count
+                    ?? item.result_snapshot?.summary.discrepancy_count
+                    ?? 0,
+                  );
                   const createdBy = String(item.created_by || item.username || '—');
                   const timestamp = String(item.updated_at || item.timestamp || item.created_at || '');
                   const isCompleted = String(item.status || '').toUpperCase() === 'COMPLETED';
@@ -1707,6 +1721,13 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                           {discrepancies ? `${discrepancies} расхожд.` : 'Без расхождений'}
                         </span>
                       </div>
+                      <button
+                        onClick={() => setSelectedArchivedRun(item)}
+                        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                      >
+                        <Eye className="h-3 w-3" />
+                        Открыть результат
+                      </button>
                     </div>
                   );
                 })}
@@ -1721,6 +1742,13 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
           </aside>
         </div>
       </div>
+
+      {selectedArchivedRun && (
+        <ReconciliationBuilderRunArchiveModal
+          record={selectedArchivedRun}
+          onClose={() => setSelectedArchivedRun(null)}
+        />
+      )}
     </div>
   );
 };

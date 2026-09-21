@@ -251,3 +251,68 @@ def test_legacy_archive_is_copied_to_generic_bank_rrn_runs(tmp_path, monkeypatch
     # init_db is idempotent; migration must not duplicate old rows.
     db.init_db()
     assert len(db.get_reconciliation_runs("bank_rrn")) == 1
+
+
+
+def test_generic_run_preserves_full_result_snapshot(tmp_path, monkeypatch):
+    db_path = tmp_path / "builder_snapshot.db"
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    db.init_db()
+
+    snapshot = {
+        "run_id": "builder-run-1",
+        "module_id": "reconciliation_builder",
+        "status": "WARNING",
+        "summary": {
+            "total_records_a": 2,
+            "total_records_b": 2,
+            "matched_count": 1,
+            "discrepancy_count": 1,
+        },
+        "custom_metrics": {
+            "generic": {
+                "matched": [
+                    {
+                        "key": "A-1",
+                        "source_a": {"Amount": 100, "Status": "OK"},
+                        "source_b": {"Sum": 100, "State": "SETTLED"},
+                    }
+                ],
+                "mismatches": [
+                    {
+                        "key": "A-2",
+                        "reason": "Сумма вне допуска",
+                        "source_a": {"Amount": 200},
+                        "source_b": {"Sum": 190},
+                    }
+                ],
+                "only_a": [],
+                "only_b": [],
+            }
+        },
+    }
+
+    ok, _, record_id = db.save_reconciliation_run(
+        "reconciliation_builder",
+        "tester",
+        {
+            "run_id": "builder-run-1",
+            "period_month": "2026-09",
+            "definition_name": "1C ↔ Bank",
+            "summary": snapshot["summary"],
+            "config_snapshot": {
+                "key_pairs": [{"left": "Doc", "right": "Reference", "mode": "text"}],
+                "amount_tolerance": 1,
+            },
+            "result_snapshot": snapshot,
+            "archive_schema_version": 1,
+        },
+    )
+    assert ok
+    assert record_id is not None
+
+    runs = db.get_reconciliation_runs("reconciliation_builder")
+    assert len(runs) == 1
+    assert runs[0]["result_snapshot"] == snapshot
+    assert runs[0]["config_snapshot"]["amount_tolerance"] == 1
+    assert runs[0]["archive_schema_version"] == 1
