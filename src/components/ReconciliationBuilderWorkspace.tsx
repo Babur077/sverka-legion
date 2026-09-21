@@ -176,6 +176,21 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const canRun = hasPermission(user, 'reconciliation_builder.run');
   const canManage = hasPermission(user, 'reconciliation_builder.manage');
   const selectedDefinition = definitions.find(item => item.id === selectedDefinitionId) || null;
+  const selectedTemplateDirty = useMemo(() => {
+    if (!selectedDefinition) return false;
+    const baseline = {
+      ...emptyConfig(),
+      ...selectedDefinition.config,
+      key_pairs: selectedDefinition.config.key_pairs?.length
+        ? selectedDefinition.config.key_pairs
+        : emptyConfig().key_pairs,
+    };
+    return (
+      templateName.trim() !== selectedDefinition.name
+      || templateDescription.trim() !== (selectedDefinition.description || '')
+      || JSON.stringify(config) !== JSON.stringify(baseline)
+    );
+  }, [selectedDefinition, templateName, templateDescription, config]);
 
   const effectiveColumnsA = useMemo(
     () => Array.from(new Set([
@@ -680,6 +695,13 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
   const handleRun = async () => {
     if (!canRun || running) return;
+    if (selectedDefinitionId && selectedTemplateDirty) {
+      setMessage({
+        type: 'error',
+        text: 'Правила выбранного шаблона изменены. Сохраните новую версию или нажмите «Использовать правила разово» перед запуском.',
+      });
+      return;
+    }
     const validationError = validateConfig();
     if (validationError) {
       setMessage({ type: 'error', text: validationError });
