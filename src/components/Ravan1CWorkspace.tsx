@@ -2,19 +2,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Building2,
-  CheckCircle2,
   Download,
   FileSpreadsheet,
-  History,
   LoaderCircle,
   Play,
-  RefreshCcw,
+  Search,
   Upload,
-  XCircle,
 } from 'lucide-react';
 
 import { User } from '../types';
 import { hasPermission } from '../utils/permissions';
+import { Ravan1CArchive } from './Ravan1CArchive';
 import {
   exportRavan1CToExcel,
   getRavan1CArchive,
@@ -79,21 +77,28 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
   const [statusFilter, setStatusFilter] = useState('Все');
+  const [resultSearch, setResultSearch] = useState('');
   const [archive, setArchive] = useState<Ravan1CArchiveRecord[]>([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
 
   const rows = result?.custom_metrics?.ravan_1c?.rows || [];
-  const filteredRows = useMemo(
-    () => statusFilter === 'Все' ? rows : rows.filter(row => row.Status === statusFilter),
-    [rows, statusFilter],
-  );
+  const filteredRows = useMemo(() => {
+    const needle = resultSearch.trim().toLowerCase();
+    return rows.filter(row => {
+      if (statusFilter !== 'Все' && row.Status !== statusFilter) return false;
+      if (!needle) return true;
+      return [row.Partner_Ravan, row.Partner_C].some(value =>
+        String(value || '').toLowerCase().includes(needle),
+      );
+    });
+  }, [rows, statusFilter, resultSearch]);
   const statusCounts = result?.custom_metrics?.ravan_1c?.status_counts || {};
 
   const loadArchive = async () => {
     setArchiveLoading(true);
     try {
       const records = await getRavan1CArchive(user.username);
-      setArchive(records.slice(0, 8));
+      setArchive(records);
     } catch {
       // Archive is secondary to the reconciliation workspace.
     } finally {
@@ -119,6 +124,7 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
       const next = await runRavan1C(ravanFile, cFile, sumTolerance);
       setResult(next);
       setStatusFilter('Все');
+      setResultSearch('');
 
       try {
         const archiveMessage = await saveRavan1CRun(
@@ -156,6 +162,7 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
     }
     setResult(record.result_snapshot);
     setStatusFilter('Все');
+    setResultSearch('');
     setMessage({
       type: 'info',
       text: `Открыт архивный Run ${record.run_id || '#' + record.id}.`,
@@ -352,15 +359,26 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
                       Показано {filteredRows.length.toLocaleString('ru-RU')} из {rows.length.toLocaleString('ru-RU')} строк.
                     </p>
                   </div>
-                  <select
-                    value={statusFilter}
-                    onChange={event => setStatusFilter(event.target.value)}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"
-                  >
-                    {STATUS_ORDER.map(status => (
-                      <option key={status} value={status}>{status}</option>
-                    ))}
-                  </select>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <label className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={resultSearch}
+                        onChange={event => setResultSearch(event.target.value)}
+                        placeholder="Поиск контрагента"
+                        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-3 text-xs text-slate-600 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 sm:w-56"
+                      />
+                    </label>
+                    <select
+                      value={statusFilter}
+                      onChange={event => setStatusFilter(event.target.value)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"
+                    >
+                      {STATUS_ORDER.map(status => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="max-h-[650px] overflow-auto">
@@ -418,69 +436,14 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
           </>
         )}
 
-        <section className="rounded-xl border border-slate-200 bg-white shadow-xs">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-            <div className="flex items-center gap-2">
-              <History className="h-4 w-4 text-slate-400" />
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">Последние Run</h2>
-                <p className="mt-0.5 text-[10px] text-slate-400">Архив модуля «Сверка погашений».</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => void loadArchive()}
-              disabled={archiveLoading}
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700"
-            >
-              <RefreshCcw className={`h-4 w-4 ${archiveLoading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
 
-          <div className="divide-y divide-slate-100">
-            {archive.map(record => {
-              const summary = record.summary;
-              const snapshot = record.result_snapshot;
-              const problemCount = summary?.discrepancy_count ?? snapshot?.summary.discrepancy_count ?? 0;
-              return (
-                <button
-                  key={record.id}
-                  type="button"
-                  onClick={() => restoreArchive(record)}
-                  className="grid w-full grid-cols-[1fr_auto] gap-4 px-5 py-3 text-left hover:bg-slate-50"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      {problemCount === 0
-                        ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                        : <XCircle className="h-4 w-4 text-amber-500" />}
-                      <span className="truncate text-xs font-semibold text-slate-800">
-                        Run {record.run_id || '#' + record.id}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-[10px] text-slate-400">
-                      {record.created_by || record.username || '—'} · {formatDateTime(record.created_at || record.timestamp)}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs font-bold text-slate-800">
-                      {formatNumber(summary?.match_percentage ?? snapshot?.summary.match_percentage, 1)}%
-                    </div>
-                    <div className="mt-0.5 text-[10px] text-slate-400">
-                      {problemCount} расх.
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-
-            {!archiveLoading && archive.length === 0 && (
-              <div className="px-5 py-8 text-center text-xs text-slate-500">
-                В архиве пока нет запусков этой сверки.
-              </div>
-            )}
-          </div>
-        </section>
+        <Ravan1CArchive
+          records={archive}
+          loading={archiveLoading}
+          canExport={canExport}
+          onRefresh={loadArchive}
+          onOpen={restoreArchive}
+        />
       </div>
     </div>
   );
