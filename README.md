@@ -94,6 +94,21 @@ GitHub Actions автоматически проверяет:
 - production frontend build;
 - black-box E2E critical workflows.
 
+## Excel / CSV источники
+
+В Bank RRN и Конструкторе сверок после загрузки файла можно выбрать:
+
+- конкретный лист Excel;
+- номер строки, которая содержит заголовки;
+- предпросмотр первых строк уже после применения этих настроек.
+
+Например, если лист `Transactions` содержит служебный заголовок в строках 1–3,
+а таблица начинается со строки 4, выберите лист `Transactions`, укажите
+`Заголовок = 4` и нажмите `Применить`. Те же параметры передаются backend,
+поэтому preview и фактическая сверка читают один и тот же диапазон.
+
+Для CSV выбор листа отключён, но строка заголовков поддерживается.
+
 ## Экспериментальная AI-сводка Bank RRN
 
 После выполнения банковской сверки в рабочем месте Bank RRN доступна кнопка
@@ -117,6 +132,55 @@ RECONCILEHUB_AI_MODEL=gpt-6-astra
 
 `RECONCILEHUB_AI_MODEL` необязателен. Если внешний AI недоступен, интерфейс
 автоматически показывает локальные гипотезы.
+
+## Production-lite
+
+Основные runtime-настройки задаются переменными окружения:
+
+```text
+RECONCILEHUB_ENV=production
+RECONCILEHUB_DB_PATH=database/reconcile_hub.db
+RECONCILEHUB_ADMIN_PASSWORD=<strong-password>
+
+# Пусто = только same-origin frontend, что является безопасным default в production.
+# Для отдельного frontend укажите разрешённые origins через запятую.
+RECONCILEHUB_ALLOWED_ORIGINS=https://reconcile.example.com
+
+RECONCILEHUB_LOG_LEVEL=INFO
+RECONCILEHUB_LOG_DIR=logs
+
+RECONCILEHUB_BACKUP_ENABLED=true
+RECONCILEHUB_BACKUP_DIR=backups
+RECONCILEHUB_BACKUP_INTERVAL_HOURS=24
+RECONCILEHUB_BACKUP_RETENTION_DAYS=14
+```
+
+В development CORS остаётся открытым для удобства локальной разработки. В
+production wildcard CORS по умолчанию отключён.
+
+Логи пишутся в консоль и в ротируемый `logs/reconcilehub.log` (до 10 МБ,
+5 файлов). API добавляет `X-Request-ID` и логирует method/path/status/duration;
+необработанные production-ошибки возвращают request ID без stack trace клиенту.
+
+При `RECONCILEHUB_BACKUP_ENABLED=true` сервер делает безопасную SQLite backup
+через SQLite Backup API при старте и далее по расписанию. Старые копии удаляются
+по retention. Ручной backup:
+
+```bash
+python scripts/backup_db.py
+```
+
+Liveness:
+
+```text
+GET /api/health
+```
+
+Readiness (доступность БД + загрузка модулей):
+
+```text
+GET /api/ready
+```
 
 ## Repository hygiene
 
