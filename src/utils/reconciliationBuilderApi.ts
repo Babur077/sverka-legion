@@ -1,4 +1,5 @@
 import { apiFetch } from './apiClient';
+import { enqueueReconciliationJob, ReconciliationJob } from './jobsApi';
 
 export type BuilderKeyTransform = 'none' | 'remove_spaces' | 'digits_only' | 'strip_leading_zeros' | 'alnum';
 
@@ -200,12 +201,12 @@ export async function deleteReconciliationDefinition(id: number): Promise<void> 
   await readJson(response);
 }
 
-export async function runReconciliationBuilder(
+export function buildReconciliationBuilderForm(
   sourceA: File,
   sourceB: File,
   config: ReconciliationBuilderConfig,
   definition?: { id?: number; name?: string },
-): Promise<BuilderRunResult> {
+): FormData {
   const form = new FormData();
   form.append('source_a', sourceA, sourceA.name);
   form.append('source_b', sourceB, sourceB.name);
@@ -227,10 +228,31 @@ export async function runReconciliationBuilder(
   form.append('dayfirst', config.dayfirst ? 'true' : 'false');
   form.append('definition_id', definition?.id == null ? '' : String(definition.id));
   form.append('definition_name', definition?.name || '');
+  return form;
+}
 
+export async function runReconciliationBuilder(
+  sourceA: File,
+  sourceB: File,
+  config: ReconciliationBuilderConfig,
+  definition?: { id?: number; name?: string },
+): Promise<BuilderRunResult> {
+  const form = buildReconciliationBuilderForm(sourceA, sourceB, config, definition);
   const response = await apiFetch('/api/modules/reconciliation_builder/run', {
     method: 'POST',
     body: form,
   });
   return readJson(response) as Promise<BuilderRunResult>;
+}
+
+export async function enqueueReconciliationBuilderJob(
+  sourceA: File,
+  sourceB: File,
+  config: ReconciliationBuilderConfig,
+  archivePayload: Record<string, any>,
+  definition?: { id?: number; name?: string },
+): Promise<ReconciliationJob> {
+  const form = buildReconciliationBuilderForm(sourceA, sourceB, config, definition);
+  form.append('archive_payload', JSON.stringify(archivePayload));
+  return enqueueReconciliationJob('reconciliation_builder', form);
 }
