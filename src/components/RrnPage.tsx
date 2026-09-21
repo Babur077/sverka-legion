@@ -553,7 +553,16 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         throw new Error('После восстановления черновика необходимо заново выбрать оба исходных файла.');
       }
 
-      const result = await runBankRrnViaApi(ourSourceFile, bankSourceFile, cfg, user.username);
+      const result = await runBankRrnViaApi(
+        ourSourceFile,
+        bankSourceFile,
+        cfg,
+        user.username,
+        {
+          our: ourSourceOptions,
+          bank: bankSourceOptions,
+        },
+      );
       setReconData(result);
       const detectedTerminalIds = Array.from(new Set(
         (result.terminal_summary || [])
@@ -1037,6 +1046,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             unbind_mismatches: unbindMismatches,
             tolerance: settings.amount_tolerance,
             deduct_commission: deductCommission,
+            source_options: {
+              our: ourSourceOptions,
+              bank: bankSourceOptions,
+            },
           },
         },
       );
