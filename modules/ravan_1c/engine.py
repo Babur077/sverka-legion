@@ -167,10 +167,8 @@ class Ravan1CModule(BaseReconciliationModule):
         started = time.time()
         run_id = str(uuid.uuid4())[:8]
 
-        try:
-            tolerance = max(0.0, float(params.get("sum_tolerance") or 1))
-        except (TypeError, ValueError):
-            tolerance = 1.0
+        # The source workflow defines a fixed SUM_TOLERANCE = 1.
+        tolerance = 1.0
 
         ravan_sheet = params.get("ravan_sheet_name") or 0
         c_sheet = params.get("c_sheet_name") or 0
@@ -199,14 +197,14 @@ class Ravan1CModule(BaseReconciliationModule):
                 "В Ravan отсутствуют обязательные столбцы: " + ", ".join(missing)
             )
 
-        if c.shape[1] < 3:
+        if c.shape[1] != 3:
             raise ValueError(
-                "Файл 1C должен содержать минимум 3 колонки без строки заголовков: "
+                "Файл 1C должен содержать ровно 3 колонки без строки заголовков: "
                 "Partner, Kolvo, Summ"
             )
 
-        # The original workflow explicitly assigns the first three 1C columns.
-        c = c.iloc[:, :3].copy()
+        # The original workflow assigns all three 1C columns directly.
+        c = c.copy()
         c.columns = ["Partner", "Kolvo", "Summ"]
 
         ravan = ravan.copy()
