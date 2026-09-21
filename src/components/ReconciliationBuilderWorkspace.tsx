@@ -19,7 +19,7 @@ import {
 import { User } from '../types';
 import { ReconciliationBuilderRunArchiveModal } from './ReconciliationBuilderRunArchiveModal';
 import { ReconciliationDefinitionHistoryModal } from './ReconciliationDefinitionHistoryModal';
-import { parseFile } from '../utils/fileParser';
+import { FileParseOptions, ParsedFileResult, parseFile } from '../utils/fileParser';
 import { getModuleArchive } from '../utils/archiveApi';
 import { hasPermission } from '../utils/permissions';
 import { BuilderArchiveRecord } from '../utils/reconciliationBuilderExport';
@@ -152,6 +152,10 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const [columnsB, setColumnsB] = useState<string[]>([]);
   const [rowsA, setRowsA] = useState(0);
   const [rowsB, setRowsB] = useState(0);
+  const [sourceMetaA, setSourceMetaA] = useState<ParsedFileResult | null>(null);
+  const [sourceMetaB, setSourceMetaB] = useState<ParsedFileResult | null>(null);
+  const [sourceOptionsA, setSourceOptionsA] = useState<FileParseOptions>({ headerRow: 1 });
+  const [sourceOptionsB, setSourceOptionsB] = useState<FileParseOptions>({ headerRow: 1 });
   const [config, setConfig] = useState<ReconciliationBuilderConfig>(emptyConfig);
   const [definitions, setDefinitions] = useState<ReconciliationDefinition[]>([]);
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<number | null>(null);
@@ -377,26 +381,67 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     };
   }, [activeJobId]);
 
+  const applyParsedSource = (
+    side: 'a' | 'b',
+    file: File,
+    parsed: ParsedFileResult,
+  ) => {
+    const normalizedOptions: FileParseOptions = {
+      sheetName: parsed.selectedSheet || undefined,
+      headerRow: parsed.headerRow || 1,
+    };
+
+    if (side === 'a') {
+      setSourceA(file);
+      setColumnsA(parsed.columns);
+      setRowsA(parsed.rows.length);
+      setSourceMetaA(parsed);
+      setSourceOptionsA(normalizedOptions);
+    } else {
+      setSourceB(file);
+      setColumnsB(parsed.columns);
+      setRowsB(parsed.rows.length);
+      setSourceMetaB(parsed);
+      setSourceOptionsB(normalizedOptions);
+    }
+    setResult(null);
+  };
+
   const handleFile = async (side: 'a' | 'b', file: File | null) => {
     if (!file) return;
     setMessage(null);
     setLoadingFile(side);
     try {
-      const parsed = await parseFile(file);
-      if (side === 'a') {
-        setSourceA(file);
-        setColumnsA(parsed.columns);
-        setRowsA(parsed.rows.length);
-      } else {
-        setSourceB(file);
-        setColumnsB(parsed.columns);
-        setRowsB(parsed.rows.length);
-      }
-      setResult(null);
+      const parsed = await parseFile(file, { headerRow: 1 });
+      applyParsedSource(side, file, parsed);
     } catch (error: any) {
       setMessage({
         type: 'error',
         text: error?.message || 'Не удалось прочитать файл.',
+      });
+    } finally {
+      setLoadingFile(null);
+    }
+  };
+
+  const handleApplySourceOptions = async (side: 'a' | 'b') => {
+    const file = side === 'a' ? sourceA : sourceB;
+    const options = side === 'a' ? sourceOptionsA : sourceOptionsB;
+    if (!file) return;
+
+    setMessage(null);
+    setLoadingFile(side);
+    try {
+      const parsed = await parseFile(file, options);
+      applyParsedSource(side, file, parsed);
+      setMessage({
+        type: 'info',
+        text: `${side === 'a' ? 'Источник A' : 'Источник B'} перечитан: ${parsed.selectedSheet || 'CSV'}, заголовок строка ${parsed.headerRow}.`,
+      });
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: error?.message || 'Не удалось применить настройки источника.',
       });
     } finally {
       setLoadingFile(null);
