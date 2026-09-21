@@ -55,6 +55,7 @@ def test_external_ai_context_excludes_direct_identifiers_and_redacts_details():
         object_id="private-run-id",
         ip_address="192.168.1.25",
         details=(
+            "user sensitive-user object private-run-id "
             "contact finance@example.com ip 172.16.0.3 "
             "api_key=super-secret-value "
             "uuid 123e4567-e89b-12d3-a456-426614174000 "
