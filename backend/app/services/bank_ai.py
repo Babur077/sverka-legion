@@ -230,7 +230,9 @@ def build_bank_ai_context(payload: dict[str, Any]) -> dict[str, Any]:
         scope = matched_count + len(only_our) + len(only_bank)
         match_percentage = (exact_matched / scope * 100) if scope else 0.0
 
-    if isinstance(result.get("by_date"), list):
+    if isinstance(adjusted.get("by_date"), list):
+        date_rows = adjusted.get("by_date") or []
+    elif isinstance(result.get("by_date"), list):
         date_rows = result.get("by_date") or []
     elif isinstance(result.get("summary"), list):
         # Frontend Bank RRN adapter exposes the date table as result.summary.
