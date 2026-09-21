@@ -1769,7 +1769,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                         ? 'bg-indigo-50 text-indigo-700'
                         : 'bg-slate-100 text-slate-600'
                     }`}>
-                      {selectedDefinitionId ? 'Шаблон' : 'Разовая'}
+                      {selectedDefinitionId
+                        ? `v${selectedDefinition?.current_version_number || 1}`
+                        : 'Разовая'}
                     </span>
                   </div>
                   <p className="mt-1 text-[11px] leading-4 text-slate-500">
@@ -1777,13 +1779,24 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                   </p>
                 </div>
                 {selectedDefinitionId && (
-                  <button
-                    onClick={resetDefinition}
-                    className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-                    title="Новый пустой шаблон"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {selectedDefinition && (
+                      <button
+                        onClick={() => setHistoryDefinition(selectedDefinition)}
+                        className="rounded-lg p-2 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                        title="История версий"
+                      >
+                        <History className="h-4 w-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={resetDefinition}
+                      className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+                      title="Новый пустой шаблон"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1800,6 +1813,15 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 rows={2}
                 className="mt-2 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
+
+              {selectedDefinitionId && canManage && (
+                <input
+                  value={templateChangeNote}
+                  onChange={event => setTemplateChangeNote(event.target.value)}
+                  placeholder={'Что изменилось в v' + ((selectedDefinition?.current_version_number || 0) + 1) + '? (необязательно)'}
+                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                />
+              )}
 
               <div className="mt-3 grid grid-cols-1 gap-2">
                 {selectedDefinitionId && (
@@ -1819,7 +1841,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                     className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                   >
                     {savingTemplate ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                    {selectedDefinitionId ? 'Обновить шаблон' : 'Сохранить как шаблон'}
+                    {selectedDefinitionId
+                      ? 'Сохранить как v' + ((selectedDefinition?.current_version_number || 0) + 1)
+                      : 'Сохранить как v1'}
                   </button>
                 )}
               </div>
