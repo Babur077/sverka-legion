@@ -180,6 +180,14 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const canRun = hasPermission(user, 'reconciliation_builder.run');
   const canManage = hasPermission(user, 'reconciliation_builder.manage');
   const selectedDefinition = definitions.find(item => item.id === selectedDefinitionId) || null;
+  const sourceOptionsSyncedA = !sourceA || (
+    (sourceOptionsA.sheetName || sourceMetaA?.selectedSheet || '') === (sourceMetaA?.selectedSheet || '')
+    && (sourceOptionsA.headerRow || 1) === (sourceMetaA?.headerRow || 1)
+  );
+  const sourceOptionsSyncedB = !sourceB || (
+    (sourceOptionsB.sheetName || sourceMetaB?.selectedSheet || '') === (sourceMetaB?.selectedSheet || '')
+    && (sourceOptionsB.headerRow || 1) === (sourceMetaB?.headerRow || 1)
+  );
   const selectedTemplateDirty = useMemo(() => {
     if (!selectedDefinition) return false;
     const baseline = {
@@ -641,6 +649,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   };
 
   const validateConfig = (): string | null => {
+    if (!sourceOptionsSyncedA || !sourceOptionsSyncedB) {
+      return 'Примените выбранный лист и строку заголовков перед запуском.';
+    }
     if (!sourceA || !sourceB) return 'Загрузите оба источника.';
     if (!config.key_pairs.length) return 'Добавьте хотя бы один ключ.';
     const invalidPair = config.key_pairs.some(pair => !pair.left || !pair.right);
