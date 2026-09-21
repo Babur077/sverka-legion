@@ -7,6 +7,7 @@ def _paths(router):
 
 def test_backend_routes_keep_public_api_paths_after_split():
     assert "/api/health" in _paths(health.router)
+    assert "/api/ready" in _paths(health.router)
 
     assert {
         "/api/auth/login",
