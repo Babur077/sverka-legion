@@ -135,7 +135,16 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const filesReady = !!ourFile && !!bankFile && !!ourSourceFile && !!bankSourceFile;
   const mappingReady = !!ourDateCol && !!ourRrnCol && !!bankDateCol && !!bankRrnCol;
   const amountsReady = !!ourAmtCol && !!bankAmtCol;
-  const runReady = filesReady && mappingReady && amountsReady && !isProcessing;
+  const ourSourceOptionsSynced = !ourSourceFile || (
+    (ourSourceOptions.sheetName || ourSourceMeta?.selectedSheet || '') === (ourSourceMeta?.selectedSheet || '')
+    && (ourSourceOptions.headerRow || 1) === (ourSourceMeta?.headerRow || 1)
+  );
+  const bankSourceOptionsSynced = !bankSourceFile || (
+    (bankSourceOptions.sheetName || bankSourceMeta?.selectedSheet || '') === (bankSourceMeta?.selectedSheet || '')
+    && (bankSourceOptions.headerRow || 1) === (bankSourceMeta?.headerRow || 1)
+  );
+  const sourcesConfigured = ourSourceOptionsSynced && bankSourceOptionsSynced;
+  const runReady = filesReady && mappingReady && amountsReady && sourcesConfigured && !isProcessing;
 
   // Check stored draft on initial mount
   useEffect(() => {
@@ -482,6 +491,16 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     }
 
     // Validation checks
+    if (!ourSourceOptionsSynced || !bankSourceOptionsSynced) {
+      setAlertState({
+        isOpen: true,
+        title: 'Примените настройки источников',
+        message: 'После изменения листа или строки заголовков нажмите «Применить» у каждого изменённого файла.',
+        type: 'warning',
+      });
+      return;
+    }
+
     if (!ourFile || !bankFile) {
       setAlertState({
         isOpen: true,
