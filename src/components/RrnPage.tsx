@@ -784,6 +784,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           difference: dynamicCalculations.totalDiff,
           active_only_our_count: dynamicCalculations.activeOnlyOurCount,
           active_only_bank_count: dynamicCalculations.activeOnlyBankCount,
+          by_date: dynamicCalculations.adjustedSummary,
         },
       });
       setAiSummary(summary);
