@@ -1,4 +1,4 @@
-from backend.app.routers import admin, audit, auth, dashboard, definitions, epos, health, jobs, modules, settings
+from backend.app.routers import admin, audit, auth, bank_ai, dashboard, definitions, epos, health, jobs, modules, settings
 
 
 def _paths(router):
@@ -56,3 +56,7 @@ def test_background_job_routes_are_registered():
 
 def test_dashboard_route_is_registered():
     assert "/api/dashboard" in _paths(dashboard.router)
+
+
+def test_bank_ai_summary_route_is_registered():
+    assert "/api/modules/bank_rrn/ai/summary" in _paths(bank_ai.router)
