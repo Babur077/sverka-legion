@@ -1662,9 +1662,16 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
               <div className={`space-y-2 ${showAllRuns ? 'max-h-[560px] overflow-y-auto pr-1' : ''}`}>
                 {(showAllRuns ? archive : archive.slice(0, 6)).map(item => {
-                  const summary = item.summary || {};
-                  const matchRate = Number(summary.match_percentage || 0);
-                  const discrepancies = Number(summary.discrepancy_count || 0);
+                  const matchRate = Number(
+                    item.summary?.match_percentage
+                    ?? item.result_snapshot?.summary.match_percentage
+                    ?? 0,
+                  );
+                  const discrepancies = Number(
+                    item.summary?.discrepancy_count
+                    ?? item.result_snapshot?.summary.discrepancy_count
+                    ?? 0,
+                  );
                   const createdBy = String(item.created_by || item.username || '—');
                   const timestamp = String(item.updated_at || item.timestamp || item.created_at || '');
                   const isCompleted = String(item.status || '').toUpperCase() === 'COMPLETED';
