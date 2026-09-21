@@ -10,7 +10,7 @@ import pandas as pd
 
 from backend.db.migrations.runner import run_migrations
 
-DB_PATH = "database/reconcile_hub.db"
+DB_PATH = os.getenv("RECONCILEHUB_DB_PATH", "database/reconcile_hub.db")
 
 # ─────────────────────────────────────────────────────────────
 # Пароли: PBKDF2-HMAC-SHA256 с уникальной солью на пользователя.
