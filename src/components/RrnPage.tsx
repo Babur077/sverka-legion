@@ -1324,6 +1324,51 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             </div>
           )}
 
+          {ourFile && (
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_110px_auto]">
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Лист
+                <select
+                  value={ourSourceOptions.sheetName || ourSourceMeta?.selectedSheet || ''}
+                  onChange={event => setOurSourceOptions(current => ({
+                    ...current,
+                    sheetName: event.target.value || undefined,
+                  }))}
+                  disabled={!ourSourceMeta?.sheetNames?.length}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-normal normal-case tracking-normal text-slate-700 disabled:bg-slate-100"
+                >
+                  {ourSourceMeta?.sheetNames?.length ? (
+                    ourSourceMeta.sheetNames.map(sheet => <option key={sheet} value={sheet}>{sheet}</option>)
+                  ) : (
+                    <option value="">CSV / один лист</option>
+                  )}
+                </select>
+              </label>
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Заголовок
+                <input
+                  type="number"
+                  min="1"
+                  max="200"
+                  value={ourSourceOptions.headerRow || 1}
+                  onChange={event => setOurSourceOptions(current => ({
+                    ...current,
+                    headerRow: Math.max(1, Math.min(200, Number(event.target.value) || 1)),
+                  }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-normal normal-case tracking-normal text-slate-700"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleApplyBankSourceOptions(true)}
+                disabled={sourceParsingSide === 'our'}
+                className="self-end rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {sourceParsingSide === 'our' ? 'Чтение…' : 'Применить'}
+              </button>
+            </div>
+          )}
+
           {showPreviewOur && ourFile && (
             <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 text-xs">
               <table className="min-w-full divide-y divide-slate-200">
@@ -1380,6 +1425,51 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
               <span>Строк загружено: <strong className="text-slate-800">{bankFile.rows.length}</strong></span>
               <span>Колонок: <strong className="text-slate-800">{bankFile.columns.length}</strong></span>
+            </div>
+          )}
+
+          {bankFile && (
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_110px_auto]">
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Лист
+                <select
+                  value={bankSourceOptions.sheetName || bankSourceMeta?.selectedSheet || ''}
+                  onChange={event => setBankSourceOptions(current => ({
+                    ...current,
+                    sheetName: event.target.value || undefined,
+                  }))}
+                  disabled={!bankSourceMeta?.sheetNames?.length}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-normal normal-case tracking-normal text-slate-700 disabled:bg-slate-100"
+                >
+                  {bankSourceMeta?.sheetNames?.length ? (
+                    bankSourceMeta.sheetNames.map(sheet => <option key={sheet} value={sheet}>{sheet}</option>)
+                  ) : (
+                    <option value="">CSV / один лист</option>
+                  )}
+                </select>
+              </label>
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Заголовок
+                <input
+                  type="number"
+                  min="1"
+                  max="200"
+                  value={bankSourceOptions.headerRow || 1}
+                  onChange={event => setBankSourceOptions(current => ({
+                    ...current,
+                    headerRow: Math.max(1, Math.min(200, Number(event.target.value) || 1)),
+                  }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-normal normal-case tracking-normal text-slate-700"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleApplyBankSourceOptions(false)}
+                disabled={sourceParsingSide === 'bank'}
+                className="self-end rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {sourceParsingSide === 'bank' ? 'Чтение…' : 'Применить'}
+              </button>
             </div>
           )}
 
