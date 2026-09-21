@@ -59,6 +59,7 @@ async def enqueue_job(
         module_id,
         username,
         {"params": {}, "archive_payload": archive_payload},
+        status="STAGING",
     )
 
     try:
@@ -68,6 +69,7 @@ async def enqueue_job(
             job_id,
             {"params": params, "archive_payload": archive_payload},
         )
+        jobs.queue_job(job_id)
 
         record_audit_event(
             user_id=username,
