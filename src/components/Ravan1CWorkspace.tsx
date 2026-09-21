@@ -36,7 +36,7 @@ const STATUS_ORDER = [
   'Ошибка Kolvo',
   'Ошибка Summ',
   'Ошибка Kolvo + Summ',
-  'Нет в 1C',
+  'Нет в !C',
   'Нет в Ravan',
 ];
 
