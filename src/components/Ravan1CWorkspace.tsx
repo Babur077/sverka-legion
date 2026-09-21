@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Building2,
+  Check,
   Download,
   FileSpreadsheet,
   LoaderCircle,
   Play,
   Search,
+  Unlink,
   Upload,
 } from 'lucide-react';
 
@@ -14,6 +16,7 @@ import { User } from '../types';
 import { hasPermission } from '../utils/permissions';
 import { Ravan1CArchive } from './Ravan1CArchive';
 import {
+  confirmRavan1CFuzzyMatch,
   deleteRavan1CArchive,
   exportRavan1CToExcel,
   getRavan1CArchive,
@@ -22,6 +25,8 @@ import {
   Ravan1CRunResult,
   runRavan1C,
   saveRavan1CRun,
+  saveRavan1CSnapshot,
+  unlinkRavan1CFuzzyMatch,
 } from '../utils/ravan1cApi';
 
 interface Props {
@@ -31,6 +36,7 @@ interface Props {
 
 const STATUS_ORDER = [
   'Все',
+  'Проверить название',
   'OK',
   'Ошибка Kolvo',
   'Ошибка Summ',
@@ -81,17 +87,26 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
   const [resultSearch, setResultSearch] = useState('');
   const [archive, setArchive] = useState<Ravan1CArchiveRecord[]>([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
+  const [reviewSavingId, setReviewSavingId] = useState<string | null>(null);
 
   const rows = result?.custom_metrics?.ravan_1c?.rows || [];
+  const reviewCount = rows.filter(row => row.Needs_Review).length;
   const filteredRows = useMemo(() => {
     const needle = resultSearch.trim().toLowerCase();
-    return rows.filter(row => {
-      if (statusFilter !== 'Все' && row.Status !== statusFilter) return false;
-      if (!needle) return true;
-      return [row.Partner_Ravan, row.Partner_C].some(value =>
-        String(value || '').toLowerCase().includes(needle),
-      );
-    });
+    return [...rows]
+      .sort((left, right) => Number(Boolean(right.Needs_Review)) - Number(Boolean(left.Needs_Review)))
+      .filter(row => {
+        if (statusFilter === 'Проверить название' && !row.Needs_Review) return false;
+        if (
+          statusFilter !== 'Все'
+          && statusFilter !== 'Проверить название'
+          && row.Status !== statusFilter
+        ) return false;
+        if (!needle) return true;
+        return [row.Partner_Ravan, row.Partner_C].some(value =>
+          String(value || '').toLowerCase().includes(needle),
+        );
+      });
   }, [rows, statusFilter, resultSearch]);
   const statusCounts = result?.custom_metrics?.ravan_1c?.status_counts || {};
 
@@ -181,13 +196,72 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
       });
       return;
     }
-    setResult(record.result_snapshot);
+
+    const snapshot = record.result_snapshot;
+    const metrics = snapshot.custom_metrics?.ravan_1c;
+    setResult({
+      ...snapshot,
+      custom_metrics: {
+        ...(snapshot.custom_metrics || {}),
+        ravan_1c: {
+          ...(metrics || {}),
+          source_files: metrics?.source_files || record.source_files || [],
+        },
+      },
+    });
     setStatusFilter('Все');
     setResultSearch('');
     setMessage({
       type: 'info',
       text: `Открыт архивный Run ${record.run_id || '#' + record.id}.`,
     });
+  };
+
+  const persistReviewedResult = async (
+    rowId: string,
+    next: Ravan1CRunResult,
+    successText: string,
+  ) => {
+    if (!canRun || reviewSavingId) return;
+    setReviewSavingId(rowId);
+    try {
+      await saveRavan1CSnapshot(user.username, next);
+      setResult(next);
+      setMessage({ type: 'success', text: successText });
+      await loadArchive();
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: error?.message || 'Не удалось сохранить решение по сопоставлению.',
+      });
+    } finally {
+      setReviewSavingId(null);
+    }
+  };
+
+  const handleConfirmFuzzyMatch = async (row: Ravan1CRow) => {
+    if (!result || !row.Row_ID) return;
+    const next = confirmRavan1CFuzzyMatch(result, row.Row_ID);
+    await persistReviewedResult(
+      row.Row_ID,
+      next,
+      'Сопоставление подтверждено и сохранено в архиве.',
+    );
+  };
+
+  const handleUnlinkFuzzyMatch = async (row: Ravan1CRow) => {
+    if (!result || !row.Row_ID) return;
+    const confirmed = window.confirm(
+      `Отвязать «${row.Partner_Ravan || '—'}» от «${row.Partner_C || '—'}»?\n\nПосле этого они будут показаны как два отдельных несопоставленных контрагента.`,
+    );
+    if (!confirmed) return;
+
+    const next = unlinkRavan1CFuzzyMatch(result, row.Row_ID);
+    await persistReviewedResult(
+      row.Row_ID,
+      next,
+      'Контрагенты отвязаны. Изменение сохранено в архиве.',
+    );
   };
 
   return (
@@ -349,7 +423,9 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
                 <h2 className="text-sm font-bold text-slate-900">Статусы</h2>
                 <div className="mt-3 space-y-2">
                   {STATUS_ORDER.filter(status => status !== 'Все').map(status => {
-                    const count = Number(statusCounts[status] || 0);
+                    const count = status === 'Проверить название'
+                      ? reviewCount
+                      : Number(statusCounts[status] || 0);
                     return (
                       <button
                         key={status}
@@ -378,6 +454,11 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
                     <h2 className="text-sm font-bold text-slate-900">Результат сравнения</h2>
                     <p className="mt-0.5 text-[10px] text-slate-400">
                       Показано {filteredRows.length.toLocaleString('ru-RU')} из {rows.length.toLocaleString('ru-RU')} строк.
+                      {reviewCount > 0 && (
+                        <span className="ml-2 font-semibold text-amber-600">
+                          {reviewCount.toLocaleString('ru-RU')} похожих названий ждут проверки.
+                        </span>
+                      )}
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
@@ -403,7 +484,7 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
                 </div>
 
                 <div className="max-h-[650px] overflow-auto">
-                  <table className="min-w-[1350px] w-full text-xs">
+                  <table className="min-w-[1580px] w-full text-xs">
                     <thead className="sticky top-0 z-10 bg-slate-50">
                       <tr className="text-[10px] uppercase tracking-wider text-slate-400">
                         <th className="px-3 py-2 text-left">Ravan</th>
@@ -416,33 +497,93 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
                         <th className="px-3 py-2 text-right">Summ corrected</th>
                         <th className="px-3 py-2 text-right">Summ 1C</th>
                         <th className="px-3 py-2 text-right">Δ Summ</th>
+                        <th className="px-3 py-2 text-left">Название</th>
                         <th className="px-3 py-2 text-left">Статус</th>
+                        <th className="px-3 py-2 text-right">Действия</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredRows.slice(0, 2000).map((row: Ravan1CRow, index) => (
-                        <tr key={index} className="hover:bg-slate-50">
-                          <td className="max-w-[220px] px-3 py-2 font-medium text-slate-800">
-                            <div className="truncate" title={String(row.Partner_Ravan || '')}>{row.Partner_Ravan || '—'}</div>
-                          </td>
-                          <td className="max-w-[220px] px-3 py-2 text-slate-700">
-                            <div className="truncate" title={String(row.Partner_C || '')}>{row.Partner_C || '—'}</div>
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.NDS)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.Kolvo_Ravan)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.Kolvo_C)}</td>
-                          <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatNumber(row.Kolvo_Difference)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.Summ_Ravan)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.Summ_Corrected)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.Summ_C)}</td>
-                          <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatNumber(row.Summ_Difference)}</td>
-                          <td className="px-3 py-2">
-                            <span className={`inline-flex rounded-full border px-2 py-1 text-[9px] font-bold ${statusClass(row.Status)}`}>
-                              {row.Status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {filteredRows.slice(0, 2000).map((row: Ravan1CRow, index) => {
+                        const isFuzzy = row.Match_Type === 'fuzzy';
+                        const isSaving = Boolean(row.Row_ID && reviewSavingId === row.Row_ID);
+                        return (
+                          <tr
+                            key={row.Row_ID || index}
+                            className={row.Needs_Review
+                              ? 'bg-amber-50/80 hover:bg-amber-100/70'
+                              : 'hover:bg-slate-50'}
+                          >
+                            <td className="max-w-[220px] px-3 py-2 font-medium text-slate-800">
+                              <div className="truncate" title={String(row.Partner_Ravan || '')}>{row.Partner_Ravan || '—'}</div>
+                            </td>
+                            <td className="max-w-[220px] px-3 py-2 text-slate-700">
+                              <div className="truncate" title={String(row.Partner_C || '')}>{row.Partner_C || '—'}</div>
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.NDS)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.Kolvo_Ravan)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.Kolvo_C)}</td>
+                            <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatNumber(row.Kolvo_Difference)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.Summ_Ravan)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.Summ_Corrected)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.Summ_C)}</td>
+                            <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatNumber(row.Summ_Difference)}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {isFuzzy ? (
+                                <span className={`inline-flex rounded-full border px-2 py-1 text-[9px] font-bold ${
+                                  row.Needs_Review
+                                    ? 'border-amber-300 bg-amber-100 text-amber-800'
+                                    : 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                                }`}>
+                                  {row.Needs_Review ? 'Похоже' : 'Подтверждено'} · {formatNumber(row.Name_Similarity, 1)}%
+                                </span>
+                              ) : row.Match_Type === 'exact' ? (
+                                <span className="text-[10px] font-semibold text-slate-400">Точное</span>
+                              ) : row.Match_Type === 'manual_unlinked' ? (
+                                <span className="text-[10px] font-semibold text-slate-400">Отвязано</span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400">—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex rounded-full border px-2 py-1 text-[9px] font-bold ${statusClass(row.Status)}`}>
+                                {row.Status}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              {isFuzzy && canRun ? (
+                                <div className="flex justify-end gap-1.5 whitespace-nowrap">
+                                  {row.Needs_Review && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleConfirmFuzzyMatch(row)}
+                                      disabled={reviewSavingId != null}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
+                                      title="Подтвердить, что это один контрагент"
+                                    >
+                                      {isSaving
+                                        ? <LoaderCircle className="h-3 w-3 animate-spin" />
+                                        : <Check className="h-3 w-3" />}
+                                      Верно
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleUnlinkFuzzyMatch(row)}
+                                    disabled={reviewSavingId != null}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-40"
+                                    title="Разорвать автоматическое сопоставление"
+                                  >
+                                    {isSaving && !row.Needs_Review
+                                      ? <LoaderCircle className="h-3 w-3 animate-spin" />
+                                      : <Unlink className="h-3 w-3" />}
+                                    Отвязать
+                                  </button>
+                                </div>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
 

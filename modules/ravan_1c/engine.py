@@ -9,6 +9,7 @@ import re
 import time
 import uuid
 from datetime import datetime
+from difflib import SequenceMatcher
 from typing import Any, Dict, Optional
 
 import pandas as pd
@@ -38,13 +39,32 @@ LEGAL_FORMS = (
     "ltd",
 )
 
+LEGAL_PHRASES = (
+    "xususiy korxona",
+    "xususiy korxonasi",
+    "хусусий корхона",
+    "хусусий корхонаси",
+    "masuliyati cheklangan jamiyat",
+    "masuliyati cheklangan jamiyati",
+    "mas'uliyati cheklangan jamiyat",
+    "mas'uliyati cheklangan jamiyati",
+    "масъулияти чекланган жамият",
+    "масъулияти чекланган жамияти",
+    "частное предприятие",
+)
+
+FUZZY_NAME_THRESHOLD = 0.88
+
 
 def clean_company_name(value: Any) -> str:
-    """Mirror the colleague workflow's company-name normalization."""
+    """Normalize legal names before exact/fuzzy comparison."""
     name = str(value)
     name = name.lower()
     for quote in ('"', "'", "“", "”", "«", "»", "`"):
         name = name.replace(quote, "")
+
+    for phrase in LEGAL_PHRASES:
+        name = re.sub(rf"\b{re.escape(phrase)}\b", "", name)
 
     for form in LEGAL_FORMS:
         name = re.sub(rf"\b{re.escape(form)}\b", "", name)
@@ -52,6 +72,91 @@ def clean_company_name(value: Any) -> str:
     name = re.sub(r"[^a-zа-яё0-9]+", " ", name)
     name = re.sub(r"\s+", " ", name).strip()
     return name
+
+
+def company_name_similarity(left: Any, right: Any) -> float:
+    """Return conservative name similarity in [0, 1]."""
+    a = clean_company_name(left)
+    b = clean_company_name(right)
+    if not a or not b:
+        return 0.0
+    if a == b:
+        return 1.0
+
+    direct = SequenceMatcher(None, a, b).ratio()
+    token_sorted = SequenceMatcher(
+        None,
+        " ".join(sorted(a.split())),
+        " ".join(sorted(b.split())),
+    ).ratio()
+    return max(direct, token_sorted)
+
+
+def _apply_fuzzy_name_matches(result: pd.DataFrame) -> pd.DataFrame:
+    """Pair only mutually-best unmatched rows above a high similarity threshold."""
+    if result.empty:
+        return result
+
+    result = result.copy()
+    both_present = result["Partner_Ravan"].notna() & result["Partner_C"].notna()
+    result["Match_Type"] = "unmatched"
+    result.loc[both_present, "Match_Type"] = "exact"
+    result["Name_Similarity"] = None
+    result.loc[both_present, "Name_Similarity"] = 100.0
+    result["Needs_Review"] = False
+    result["Match_Confirmed"] = False
+
+    ravan_only = result.index[
+        result["Partner_Ravan"].notna() & result["Partner_C"].isna()
+    ].tolist()
+    c_only = result.index[
+        result["Partner_Ravan"].isna() & result["Partner_C"].notna()
+    ].tolist()
+    if not ravan_only or not c_only:
+        return result
+
+    candidates: list[tuple[float, int, int]] = []
+    for r_idx in ravan_only:
+        r_key = result.at[r_idx, "Company_Key"]
+        if len(str(r_key or "")) < 5:
+            continue
+        for c_idx in c_only:
+            c_key = result.at[c_idx, "Company_Key"]
+            if len(str(c_key or "")) < 5:
+                continue
+            score = company_name_similarity(r_key, c_key)
+            if score >= FUZZY_NAME_THRESHOLD:
+                candidates.append((score, r_idx, c_idx))
+
+    if not candidates:
+        return result
+
+    best_for_ravan: dict[int, tuple[float, int]] = {}
+    best_for_c: dict[int, tuple[float, int]] = {}
+    for score, r_idx, c_idx in candidates:
+        if r_idx not in best_for_ravan or score > best_for_ravan[r_idx][0]:
+            best_for_ravan[r_idx] = (score, c_idx)
+        if c_idx not in best_for_c or score > best_for_c[c_idx][0]:
+            best_for_c[c_idx] = (score, r_idx)
+
+    paired_c: set[int] = set()
+    for r_idx, (score, c_idx) in best_for_ravan.items():
+        reverse = best_for_c.get(c_idx)
+        if not reverse or reverse[1] != r_idx or c_idx in paired_c:
+            continue
+
+        for column in ("Partner_C", "Kolvo_C", "Summ_C"):
+            result.at[r_idx, column] = result.at[c_idx, column]
+        result.at[r_idx, "Match_Type"] = "fuzzy"
+        result.at[r_idx, "Name_Similarity"] = round(score * 100, 1)
+        result.at[r_idx, "Needs_Review"] = True
+        result.at[r_idx, "Match_Confirmed"] = False
+        paired_c.add(c_idx)
+
+    if paired_c:
+        result = result.drop(index=list(paired_c))
+
+    return result.reset_index(drop=True)
 
 
 def _read_source(
@@ -246,6 +351,7 @@ class Ravan1CModule(BaseReconciliationModule):
             on="Company_Key",
             how="outer",
         )
+        result = _apply_fuzzy_name_matches(result)
 
         result["Kolvo_Difference"] = (
             result["Kolvo_C"].fillna(0) - result["Kolvo_Ravan"].fillna(0)
@@ -282,6 +388,14 @@ class Ravan1CModule(BaseReconciliationModule):
             "Summ_Difference",
         ):
             result[column] = pd.to_numeric(result[column], errors="coerce").round(2)
+
+        # Put unresolved fuzzy name matches first so users can review them immediately.
+        result = result.sort_values(
+            by=["Needs_Review"],
+            ascending=[False],
+            kind="stable",
+        ).reset_index(drop=True)
+        result["Row_ID"] = [f"{run_id}-{index + 1}" for index in range(len(result))]
 
         status_order = [
             "OK",
@@ -346,6 +460,12 @@ class Ravan1CModule(BaseReconciliationModule):
                     "rows": _records(display),
                     "source_ravan_rows": len(ravan),
                     "source_1c_rows": len(c),
+                    "source_files": [
+                        params.get("ravan_file_filename", "Ravan.xlsx"),
+                        params.get("c_file_filename", "1C.xlsx"),
+                    ],
+                    "fuzzy_review_count": int(result["Needs_Review"].sum()),
+                    "fuzzy_name_threshold": FUZZY_NAME_THRESHOLD,
                 }
             },
         )
