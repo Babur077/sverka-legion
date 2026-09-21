@@ -71,3 +71,36 @@ export async function getAuditFilterOptionsViaApi(_username: string): Promise<Au
     statuses: Array.isArray(payload?.statuses) ? payload.statuses : [],
   };
 }
+
+export type AuditAiAttentionLevel = 'normal' | 'attention' | 'review';
+
+export interface AuditAiResult {
+  provider: 'openai' | 'local' | string;
+  model?: string | null;
+  attention_level: AuditAiAttentionLevel;
+  attention_label: string;
+  summary: string;
+  explanation: string;
+  checks: string[];
+  warning?: string | null;
+  disclaimer: string;
+  privacy: string;
+}
+
+export async function analyzeAuditEventViaApi(
+  _username: string,
+  eventId: number,
+): Promise<AuditAiResult> {
+  const response = await apiFetch('/api/audit/' + eventId + '/ai', {
+    method: 'POST',
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(
+      typeof payload?.detail === 'string'
+        ? payload.detail
+        : 'Не удалось выполнить AI-анализ события.',
+    );
+  }
+  return payload as AuditAiResult;
+}
