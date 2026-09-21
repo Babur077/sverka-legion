@@ -10,6 +10,11 @@ def _env(name: str, default: str = "") -> str:
 
 ENVIRONMENT = _env("RECONCILEHUB_ENV", "development").lower()
 IS_PRODUCTION = ENVIRONMENT in {"prod", "production"}
+HOST = _env("RECONCILEHUB_HOST", "0.0.0.0")
+try:
+    PORT = max(1, min(65535, int(_env("RECONCILEHUB_PORT", "8000"))))
+except ValueError:
+    PORT = 8000
 
 _raw_origins = _env("RECONCILEHUB_ALLOWED_ORIGINS")
 if _raw_origins:
