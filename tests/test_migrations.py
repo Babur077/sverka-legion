@@ -7,7 +7,7 @@ def test_migrations_apply_in_order_and_only_once(tmp_path):
     db_path = tmp_path / "reconcile_hub.db"
 
     applied = run_migrations(str(db_path))
-    assert applied == [1, 2, 3, 4, 5]
+    assert applied == [1, 2, 3, 4, 5, 6]
 
     with sqlite3.connect(db_path) as conn:
         tables = {
@@ -27,10 +27,11 @@ def test_migrations_apply_in_order_and_only_once(tmp_path):
         "auth_sessions",
         "reconciliation_runs",
         "reconciliation_definitions",
+        "reconciliation_jobs",
     }.issubset(tables)
 
     assert run_migrations(str(db_path)) == []
-    assert [item["version"] for item in get_applied_migrations(str(db_path))] == [1, 2, 3, 4, 5]
+    assert [item["version"] for item in get_applied_migrations(str(db_path))] == [1, 2, 3, 4, 5, 6]
 
 
 def test_migrations_upgrade_existing_minimal_database(tmp_path):
