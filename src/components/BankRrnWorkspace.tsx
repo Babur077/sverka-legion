@@ -70,6 +70,9 @@ export const BankRrnWorkspace: React.FC<BankRrnWorkspaceProps> = ({
                 <Building2 className="w-5 h-5" />
               </div>
               <div className="min-w-0">
+                <div className="text-[10px] font-bold tracking-[0.18em] text-indigo-600">
+                  produced by Babur Abdreimov
+                </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-xl font-bold text-slate-900">Сверка банков</h1>
                   <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-500">bank_rrn</span>

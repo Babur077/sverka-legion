@@ -1116,6 +1116,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
+          <div className="text-[10px] font-bold tracking-[0.18em] text-indigo-600">
+            produced by Babur Abdreimov
+          </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <span>Сверка по RRN</span>
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
