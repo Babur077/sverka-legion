@@ -1,5 +1,6 @@
 import { apiFetch } from './apiClient';
 import { enqueueReconciliationJob, ReconciliationJob } from './jobsApi';
+import type { FileParseOptions } from './fileParser';
 
 export type BuilderKeyTransform = 'none' | 'remove_spaces' | 'digits_only' | 'strip_leading_zeros' | 'alnum';
 
@@ -266,12 +267,17 @@ export function buildReconciliationBuilderForm(
   sourceB: File,
   config: ReconciliationBuilderConfig,
   definition?: { id?: number; name?: string },
+  sourceOptions?: { a?: FileParseOptions; b?: FileParseOptions },
 ): FormData {
   const form = new FormData();
   form.append('source_a', sourceA, sourceA.name);
   form.append('source_b', sourceB, sourceB.name);
   form.append('source_a_filename', sourceA.name);
   form.append('source_b_filename', sourceB.name);
+  form.append('source_a_sheet_name', sourceOptions?.a?.sheetName || '');
+  form.append('source_b_sheet_name', sourceOptions?.b?.sheetName || '');
+  form.append('source_a_header_row', String(sourceOptions?.a?.headerRow || 1));
+  form.append('source_b_header_row', String(sourceOptions?.b?.headerRow || 1));
   form.append('key_pairs', JSON.stringify(config.key_pairs));
   form.append('filters', JSON.stringify(config.filters || []));
   form.append('computed_fields', JSON.stringify(config.computed_fields || []));
@@ -296,8 +302,9 @@ export async function runReconciliationBuilder(
   sourceB: File,
   config: ReconciliationBuilderConfig,
   definition?: { id?: number; name?: string },
+  sourceOptions?: { a?: FileParseOptions; b?: FileParseOptions },
 ): Promise<BuilderRunResult> {
-  const form = buildReconciliationBuilderForm(sourceA, sourceB, config, definition);
+  const form = buildReconciliationBuilderForm(sourceA, sourceB, config, definition, sourceOptions);
   const response = await apiFetch('/api/modules/reconciliation_builder/run', {
     method: 'POST',
     body: form,
@@ -311,8 +318,9 @@ export async function enqueueReconciliationBuilderJob(
   config: ReconciliationBuilderConfig,
   archivePayload: Record<string, any>,
   definition?: { id?: number; name?: string },
+  sourceOptions?: { a?: FileParseOptions; b?: FileParseOptions },
 ): Promise<ReconciliationJob> {
-  const form = buildReconciliationBuilderForm(sourceA, sourceB, config, definition);
+  const form = buildReconciliationBuilderForm(sourceA, sourceB, config, definition, sourceOptions);
   form.append('archive_payload', JSON.stringify(archivePayload));
   return enqueueReconciliationJob('reconciliation_builder', form);
 }
