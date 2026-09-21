@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.app.config import ALLOWED_ORIGINS, IS_PRODUCTION
+from backend.app.config import ALLOWED_ORIGINS, HOST, IS_PRODUCTION, PORT
 from backend.app.http_utils import extract_bearer_token
 from backend.app.routers import admin, audit, auth, bank_ai, dashboard, definitions, epos, health, jobs, modules, settings
 from backend.app.logging_config import configure_logging
@@ -171,4 +171,4 @@ if os.path.exists(DIST_DIR):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=HOST, port=PORT)
