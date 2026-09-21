@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { RawRow } from '../types';
-import { FileParseOptions, ParsedFileResult } from './fileParser';
+import type { FileParseOptions, ParsedFileResult } from './fileParser';
 
 interface WorkerRequest {
   buffer: ArrayBuffer;
