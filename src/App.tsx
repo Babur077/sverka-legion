@@ -6,6 +6,7 @@ import { RrnPage } from './components/RrnPage';
 import { AdminPage } from './components/AdminPage';
 import { EposPage } from './components/EposPage';
 import { AuditPage } from './components/AuditPage';
+import { DashboardPage } from './components/DashboardPage';
 import { ModuleWorkspace } from './components/ModuleWorkspace';
 import { BankRrnWorkspace, BankRrnSection } from './components/BankRrnWorkspace';
 import { BankRrnOverview } from './components/BankRrnOverview';
@@ -169,7 +170,7 @@ export const App: React.FC = () => {
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   });
-  const [currentTab, setCurrentTab] = useState<string>('modules');
+  const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [activeModuleWorkspace, setActiveModuleWorkspace] = useState<ModuleWorkspaceKey | null>(null);
   const [bankSection, setBankSection] = useState<BankRrnSection>('overview');
   const [settings, setSettings] = useState<SystemSettings>({ amount_tolerance: 0.01, currency: 'UZS', dayfirst: true });
@@ -205,7 +206,7 @@ export const App: React.FC = () => {
   const handleLoginSuccess = (loggedInUser: User) => {
     try { sessionStorage.setItem('reconcile_active_user', JSON.stringify(loggedInUser)); } catch {}
     setUser(loggedInUser);
-    setCurrentTab('modules');
+    setCurrentTab('dashboard');
     setActiveModuleWorkspace(null);
     setBankSection('overview');
   };
@@ -232,6 +233,22 @@ export const App: React.FC = () => {
                   : 'overview',
       );
     }
+  };
+
+  const openDashboardModule = (moduleId: string) => {
+    if (moduleId === 'bank_rrn') {
+      setActiveModuleWorkspace('bank_rrn');
+      setBankSection('archive');
+      setCurrentTab('module');
+      return;
+    }
+    if (moduleId === 'reconciliation_builder') {
+      setActiveModuleWorkspace(null);
+      setCurrentTab('constructor');
+      return;
+    }
+    setActiveModuleWorkspace(null);
+    setCurrentTab('modules');
   };
 
   const renderBankSection = () => {
@@ -287,6 +304,7 @@ export const App: React.FC = () => {
       <UploadProgressIndicator />
       {currentTab !== 'module' && <Navbar user={user} currentTab={currentTab} onSelectTab={setCurrentTab} onLogout={handleLogout} />}
       <main className="flex-1 overflow-y-auto">
+        {currentTab === 'dashboard' && <DashboardPage onOpenModule={openDashboardModule} />}
         {currentTab === 'modules' && <ModuleWorkspace user={user} onOpenModule={openModule} />}
         {currentTab === 'constructor' && hasPermission(user, 'reconciliation_builder.view') && (
           <ReconciliationBuilderWorkspace
