@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.http_utils import extract_bearer_token
-from backend.app.routers import admin, audit, auth, dashboard, definitions, epos, health, jobs, modules, settings
+from backend.app.routers import admin, audit, auth, bank_ai, dashboard, definitions, epos, health, jobs, modules, settings
 from backend.app.services.job_worker import start_job_worker, stop_job_worker
 from utils.auth_sessions import get_session_user
 from utils.db_manager import init_db
@@ -73,6 +73,7 @@ async def authenticate_api_request(request: Request, call_next):
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(definitions.router)
+app.include_router(bank_ai.router)
 app.include_router(dashboard.router)
 app.include_router(jobs.router)
 app.include_router(modules.router)
