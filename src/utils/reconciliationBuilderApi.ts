@@ -64,6 +64,26 @@ export interface ReconciliationDefinition {
   created_at: string;
   updated_at: string;
   is_active: boolean;
+  active_version_id?: number | null;
+  current_version_number?: number;
+  version_created_by?: string;
+  version_created_at?: string;
+  version_change_note?: string;
+}
+
+export interface ReconciliationDefinitionVersion {
+  id: number;
+  definition_id: number;
+  version_number: number;
+  name_snapshot: string;
+  description_snapshot: string;
+  config: ReconciliationBuilderConfig;
+  status: 'ACTIVE' | 'ARCHIVED' | string;
+  created_by: string;
+  created_at: string;
+  change_note: string;
+  based_on_version_id?: number | null;
+  restored_from_version_id?: number | null;
 }
 
 export interface BuilderRunSummary {
@@ -169,14 +189,20 @@ export async function createReconciliationDefinition(
   name: string,
   description: string,
   config: ReconciliationBuilderConfig,
-): Promise<{ id: number; message: string }> {
+  changeNote = '',
+): Promise<{ id: number; message: string; version_id?: number; version_number?: number }> {
   const response = await apiFetch('/api/reconciliation-definitions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, description, config }),
+    body: JSON.stringify({ name, description, config, change_note: changeNote }),
   });
   const payload = await readJson(response);
-  return { id: Number(payload?.id), message: String(payload?.message || '') };
+  return {
+    id: Number(payload?.id),
+    message: String(payload?.message || ''),
+    version_id: payload?.version_id == null ? undefined : Number(payload.version_id),
+    version_number: payload?.version_number == null ? undefined : Number(payload.version_number),
+  };
 }
 
 export async function updateReconciliationDefinition(
@@ -184,14 +210,48 @@ export async function updateReconciliationDefinition(
   name: string,
   description: string,
   config: ReconciliationBuilderConfig,
-): Promise<{ id: number; message: string }> {
+  changeNote = '',
+): Promise<{ id: number; message: string; version_id?: number; version_number?: number }> {
   const response = await apiFetch('/api/reconciliation-definitions/' + id, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, description, config }),
+    body: JSON.stringify({ name, description, config, change_note: changeNote }),
   });
   const payload = await readJson(response);
-  return { id: Number(payload?.id), message: String(payload?.message || '') };
+  return {
+    id: Number(payload?.id),
+    message: String(payload?.message || ''),
+    version_id: payload?.version_id == null ? undefined : Number(payload.version_id),
+    version_number: payload?.version_number == null ? undefined : Number(payload.version_number),
+  };
+}
+
+export async function getReconciliationDefinitionVersions(
+  definitionId: number,
+): Promise<ReconciliationDefinitionVersion[]> {
+  const response = await apiFetch(`/api/reconciliation-definitions/${definitionId}/versions`);
+  const payload = await readJson(response);
+  return Array.isArray(payload) ? payload : [];
+}
+
+export async function restoreReconciliationDefinitionVersion(
+  definitionId: number,
+  versionId: number,
+  changeNote = '',
+): Promise<{ message: string; definition: ReconciliationDefinition }> {
+  const response = await apiFetch(
+    `/api/reconciliation-definitions/${definitionId}/versions/${versionId}/restore`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ change_note: changeNote }),
+    },
+  );
+  const payload = await readJson(response);
+  return {
+    message: String(payload?.message || ''),
+    definition: payload?.definition as ReconciliationDefinition,
+  };
 }
 
 export async function deleteReconciliationDefinition(id: number): Promise<void> {
