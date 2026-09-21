@@ -1212,7 +1212,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           <div className="grid grid-cols-3 gap-2 min-w-0 lg:min-w-[430px]">
             {[
               { label: '1. Банк', ready: !!selectedBank },
-              { label: '2. Файлы', ready: filesReady },
+              { label: '2. Файлы', ready: filesReady && sourcesConfigured },
               { label: '3. Колонки', ready: mappingReady && amountsReady },
             ].map(step => (
               <div
