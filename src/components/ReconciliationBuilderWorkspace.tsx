@@ -643,6 +643,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
           templateName.trim(),
           templateDescription.trim(),
           config,
+          templateChangeNote.trim(),
         );
         setMessage({ type: 'success', text: saved.message });
       } else {
@@ -650,11 +651,13 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
           templateName.trim(),
           templateDescription.trim(),
           config,
+          templateChangeNote.trim(),
         );
         setSelectedDefinitionId(saved.id);
         setMessage({ type: 'success', text: saved.message });
       }
       await loadDefinitions();
+      setTemplateChangeNote('');
     } catch (error: any) {
       setMessage({ type: 'error', text: error?.message || 'Не удалось сохранить шаблон.' });
     } finally {
@@ -704,6 +707,8 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
           definition_name: selectedDefinitionId
             ? (templateName.trim() || `Шаблон #${selectedDefinitionId}`)
             : 'Разовая сверка',
+          definition_version_id: selectedDefinition?.active_version_id || null,
+          definition_version_number: selectedDefinition?.current_version_number || null,
           source_a_name: sourceA!.name,
           source_b_name: sourceB!.name,
           source_files: [sourceA!.name, sourceB!.name],
