@@ -666,7 +666,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   };
 
   const handleRun = async () => {
-    if (!canRun) return;
+    if (!canRun || running) return;
     const validationError = validateConfig();
     if (validationError) {
       setMessage({ type: 'error', text: validationError });
@@ -677,50 +677,74 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     setMessage(null);
     setResult(null);
     try {
-      const runResult = await runReconciliationBuilder(
+      const definition = selectedDefinitionId
+        ? {
+            id: selectedDefinitionId,
+            name: templateName.trim() || undefined,
+          }
+        : undefined;
+
+      const job = await enqueueReconciliationBuilderJob(
         sourceA!,
         sourceB!,
         config,
-        selectedDefinitionId
-          ? {
-              id: selectedDefinitionId,
-              name: templateName.trim() || undefined,
-            }
-          : undefined,
+        {
+          period_month: periodMonth,
+          definition_id: selectedDefinitionId,
+          definition_name: selectedDefinitionId
+            ? (templateName.trim() || `Шаблон #${selectedDefinitionId}`)
+            : 'Разовая сверка',
+          source_a_name: sourceA!.name,
+          source_b_name: sourceB!.name,
+          source_files: [sourceA!.name, sourceB!.name],
+          config,
+          config_snapshot: config,
+          archive_schema_version: 1,
+        },
+        definition,
       );
-      setResult(runResult);
-      setResultTab('matched');
 
-      await saveModuleArchive(user.username, 'reconciliation_builder', {
-        run_id: runResult.run_id,
-        status: runResult.status,
-        period_month: periodMonth,
-        definition_id: selectedDefinitionId,
-        definition_name: selectedDefinitionId
-          ? (templateName.trim() || `Шаблон #${selectedDefinitionId}`)
-          : 'Разовая сверка',
-        source_a_name: sourceA!.name,
-        source_b_name: sourceB!.name,
-        source_files: [sourceA!.name, sourceB!.name],
-        summary: runResult.summary,
-        config,
-        config_snapshot: config,
-        result_snapshot: runResult,
-        archive_schema_version: 1,
-      });
-
-      await loadArchive();
+      setActiveJobId(job.id);
+      setActiveJob(job);
+      setJobs(current => [
+        job,
+        ...current.filter(item => item.id !== job.id),
+      ].slice(0, 12));
       setMessage({
-        type: 'success',
-        text: `Сверка выполнена и сохранена в журнал. Run ID: ${runResult.run_id}`,
+        type: 'info',
+        text: `Сверка поставлена в очередь как задача #${job.id}. Можно уйти со страницы — сервер продолжит работу.`,
       });
     } catch (error: any) {
       setMessage({
         type: 'error',
-        text: error?.message || 'Не удалось выполнить универсальную сверку.',
+        text: error?.message || 'Не удалось поставить сверку в очередь.',
       });
-    } finally {
       setRunning(false);
+    }
+  };
+
+  const handleCancelActiveJob = async () => {
+    if (!activeJobId) return;
+    try {
+      const updated = await cancelReconciliationJob(activeJobId);
+      setActiveJob(updated);
+      setJobs(current => current.map(job => job.id === updated.id ? updated : job));
+      if (updated.status === 'CANCELLED') {
+        setRunning(false);
+        setActiveJobId(null);
+        setActiveJob(null);
+        setMessage({ type: 'info', text: `Задача #${updated.id} отменена.` });
+      } else {
+        setMessage({
+          type: 'info',
+          text: 'Запрос на отмену принят. Текущий этап будет завершён безопасно.',
+        });
+      }
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: error?.message || 'Не удалось отменить задачу.',
+      });
     }
   };
 
