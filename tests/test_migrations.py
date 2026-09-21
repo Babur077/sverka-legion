@@ -85,3 +85,68 @@ def test_migrations_upgrade_existing_minimal_database(tmp_path):
     assert "permissions" in user_columns
     assert "assigned_terminal_id" in archive_columns
     assert "period_month" in archive_columns
+
+
+
+def test_template_versioning_migration_backfills_existing_definition(tmp_path):
+    db_path = tmp_path / "definitions_legacy.db"
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE reconciliation_definitions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT NOT NULL DEFAULT '',
+                config_json TEXT NOT NULL DEFAULT '{}',
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT 1
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO reconciliation_definitions (
+                name, description, config_json, created_by,
+                created_at, updated_at, is_active
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 1)
+            """,
+            (
+                "Legacy template",
+                "Before versions",
+                '{"amount_tolerance": 100}',
+                "tester",
+                "2026-09-01T10:00:00",
+                "2026-09-01T10:00:00",
+            ),
+        )
+        conn.commit()
+
+    run_migrations(str(db_path))
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        definition = conn.execute(
+            """
+            SELECT active_version_id, current_version_number
+            FROM reconciliation_definitions
+            WHERE name = 'Legacy template'
+            """
+        ).fetchone()
+        version = conn.execute(
+            """
+            SELECT version_number, status, name_snapshot, config_json
+            FROM reconciliation_definition_versions
+            WHERE definition_id = 1
+            """
+        ).fetchone()
+
+    assert definition["active_version_id"] is not None
+    assert definition["current_version_number"] == 1
+    assert version["version_number"] == 1
+    assert version["status"] == "ACTIVE"
+    assert version["name_snapshot"] == "Legacy template"
+    assert '"amount_tolerance": 100' in version["config_json"]
