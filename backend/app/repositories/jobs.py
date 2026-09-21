@@ -53,6 +53,19 @@ def create_job(module_id: str, username: str, request_payload: dict[str, Any]) -
         return int(cursor.lastrowid)
 
 
+def set_job_request(job_id: int, request_payload: dict[str, Any]) -> None:
+    with sqlite3.connect(db.DB_PATH) as conn:
+        conn.execute(
+            "UPDATE reconciliation_jobs SET request_json = ?, updated_at = ? WHERE id = ?",
+            (
+                json.dumps(request_payload or {}, ensure_ascii=False, default=str),
+                _now(),
+                int(job_id),
+            ),
+        )
+        conn.commit()
+
+
 def set_job_files(job_id: int, files_payload: dict[str, Any]) -> None:
     with sqlite3.connect(db.DB_PATH) as conn:
         conn.execute(
