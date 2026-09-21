@@ -1873,13 +1873,28 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                       onClick={() => loadDefinition(definition)}
                       className="w-full text-left"
                     >
-                      <div className="text-sm font-semibold text-slate-900">{definition.name}</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-sm font-semibold text-slate-900">{definition.name}</div>
+                        <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-700">
+                          v{definition.current_version_number || 1}
+                        </span>
+                      </div>
                       <div className="mt-1 line-clamp-2 text-[11px] text-slate-500">
                         {definition.description || `${definition.config.key_pairs?.length || 0} ключ(а)`}
                       </div>
+                      <div className="mt-1 text-[9px] text-slate-400">
+                        {definition.version_created_by || definition.created_by || '—'} · {formatDateTime(definition.version_created_at || definition.updated_at)}
+                      </div>
                     </button>
-                    {canManage && (
-                      <div className="mt-2 flex justify-end">
+                    <div className="mt-2 flex justify-end gap-1">
+                      <button
+                        onClick={() => setHistoryDefinition(definition)}
+                        className="rounded p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                        title="История версий"
+                      >
+                        <History className="h-3.5 w-3.5" />
+                      </button>
+                      {canManage && (
                         <button
                           onClick={() => void handleDeleteTemplate(definition)}
                           className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
@@ -1887,8 +1902,8 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1930,6 +1945,7 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                   const isCompleted = String(item.status || '').toUpperCase() === 'COMPLETED';
                   const title = item.definition_id
                     ? (item.definition_name || `Шаблон #${item.definition_id}`)
+                      + (item.definition_version_number ? ` · v${item.definition_version_number}` : '')
                     : 'Разовая сверка';
 
                   return (
