@@ -265,6 +265,17 @@ def query_audit_events(
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
+def get_audit_event(event_id: int) -> Optional[Dict[str, Any]]:
+    """Return one immutable audit event by id."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM audit_events WHERE id = ?",
+            (int(event_id),),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def get_audit_filter_options() -> Dict[str, List[str]]:
     """Return complete distinct filter values, independent of current page."""
     def distinct_values(cursor: sqlite3.Cursor, column: str) -> List[str]:
