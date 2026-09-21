@@ -793,7 +793,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
             className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {running ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-white" />}
-            {running ? 'Сверка…' : 'Запустить сверку'}
+            {running
+              ? (activeJob?.status === 'QUEUED' ? 'В очереди…' : 'Сверка…')
+              : 'Запустить сверку'}
           </button>
         </div>
       </div>
@@ -1655,12 +1657,93 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {running ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-white" />}
-                {running ? 'Сверка…' : result ? 'Запустить сверку ещё раз' : 'Запустить сверку'}
+                {running
+                  ? (activeJob?.status === 'QUEUED' ? 'В очереди…' : 'Сверка…')
+                  : result ? 'Запустить сверку ещё раз' : 'Запустить сверку'}
               </button>
             </div>
           </div>
 
           <aside className="space-y-5">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Фоновые задачи</h2>
+                  <p className="text-[10px] text-slate-400">Очередь продолжает работать даже после ухода со страницы</p>
+                </div>
+                {activeJob && (
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+                    activeJob.status === 'RUNNING'
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'bg-amber-50 text-amber-700'
+                  }`}>
+                    #{activeJob.id}
+                  </span>
+                )}
+              </div>
+
+              {activeJob ? (
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-slate-800">
+                        {activeJob.status === 'QUEUED' ? 'Ожидает в очереди' : activeJob.stage || 'Выполняется'}
+                      </div>
+                      <div className="mt-1 text-[10px] text-slate-500">
+                        {activeJob.status} · {Math.max(0, Math.min(100, activeJob.progress || 0))}%
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => void handleCancelActiveJob()}
+                      className="shrink-0 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-rose-600 hover:bg-rose-50"
+                    >
+                      Отменить
+                    </button>
+                  </div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white">
+                    <div
+                      className="h-full rounded-full bg-indigo-600 transition-[width] duration-300"
+                      style={{ width: `${Math.max(3, Math.min(100, activeJob.progress || 0))}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                  Активных задач нет.
+                </div>
+              )}
+
+              {jobs.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {jobs.slice(0, 5).map(job => (
+                    <div key={job.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-2.5 py-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-[10px] font-semibold text-slate-700">
+                          #{job.id} · {job.stage || job.status}
+                        </div>
+                        <div className="mt-0.5 text-[9px] text-slate-400">
+                          {formatDateTime(job.created_at)}
+                        </div>
+                      </div>
+                      <div className={`shrink-0 text-[9px] font-bold ${
+                        job.status === 'COMPLETED'
+                          ? 'text-emerald-600'
+                          : job.status === 'FAILED'
+                            ? 'text-rose-600'
+                            : job.status === 'CANCELLED'
+                              ? 'text-slate-400'
+                              : 'text-indigo-600'
+                      }`}>
+                        {job.status === 'RUNNING' || job.status === 'QUEUED'
+                          ? `${job.progress}%`
+                          : job.status}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
