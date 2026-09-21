@@ -31,6 +31,8 @@ node_modules/
 
 # Logs
 *.log
+logs/
+backups/
 
 # Local / OS files
 .DS_Store

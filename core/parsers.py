@@ -3,13 +3,22 @@ from typing import Union, Optional
 import polars as pl
 import pandas as pd
 
-def load_file_polars(first_arg, second_arg=None, sheet_name=0) -> pl.DataFrame:
+def load_file_polars(
+    first_arg,
+    second_arg=None,
+    sheet_name=0,
+    header_row: int = 1,
+) -> pl.DataFrame:
     """
     Универсальный загрузчик файлов в Polars DataFrame.
     Поддерживает вызовы:
       load_file_polars(filename, file_bytes)
       load_file_polars(file_bytes, filename)
       load_file_polars(file_path_str)
+
+    Дополнительно:
+      sheet_name — индекс (0-based) или имя листа Excel;
+      header_row — 1-based номер строки с заголовками.
     """
     if isinstance(first_arg, (bytes, bytearray)):
         file_bytes = bytes(first_arg)
@@ -25,8 +34,27 @@ def load_file_polars(first_arg, second_arg=None, sheet_name=0) -> pl.DataFrame:
         file_name = str(first_arg or "data.xlsx")
         file_bytes = bytes(second_arg or b"")
 
+    try:
+        header_row = max(1, min(int(header_row or 1), 200))
+    except (TypeError, ValueError):
+        header_row = 1
+
     if file_name.lower().endswith((".xlsx", ".xls")):
-        sheet_id = 1 if sheet_name in (0, None) else (sheet_name + 1 if isinstance(sheet_name, int) else 1)
+        # For non-default source options pandas gives the most predictable
+        # behavior across engines (named sheet + arbitrary header row).
+        if header_row != 1 or sheet_name not in (0, None, "", "0"):
+            pdf = pd.read_excel(
+                io.BytesIO(file_bytes),
+                sheet_name=sheet_name if sheet_name not in (None, "") else 0,
+                header=header_row - 1,
+                dtype=object,
+            )
+            if isinstance(pdf, dict):
+                # Defensive fallback if a caller accidentally requested all sheets.
+                pdf = next(iter(pdf.values()), pd.DataFrame())
+            return pl.from_pandas(pdf)
+
+        sheet_id = 1
         try:
             return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id, engine="calamine")
         except Exception:
@@ -36,27 +64,33 @@ def load_file_polars(first_arg, second_arg=None, sheet_name=0) -> pl.DataFrame:
                 try:
                     return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id)
                 except Exception:
-                    # В крайнем случае читаем через pandas и конвертируем в polars
-                    pdf = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name or 0)
+                    pdf = pd.read_excel(
+                        io.BytesIO(file_bytes),
+                        sheet_name=0,
+                        header=0,
+                        dtype=object,
+                    )
                     return pl.from_pandas(pdf)
-    else:
-        # CSV exports in finance commonly arrive with semicolon, comma or tab
-        # delimiters. A wrong delimiter often parses "successfully" as one huge
-        # column, so choose the successful parse with the most columns.
-        candidates = []
-        for separator in (";", ",", "\t"):
-            try:
-                frame = pl.read_csv(
-                    io.BytesIO(file_bytes),
-                    separator=separator,
-                    ignore_errors=True,
-                )
-                candidates.append(frame)
-            except Exception:
-                continue
-        if not candidates:
-            raise ValueError(f"Не удалось распознать CSV-файл: {file_name}")
-        return max(candidates, key=lambda frame: frame.width)
+
+    # CSV exports in finance commonly arrive with semicolon, comma or tab
+    # delimiters. A wrong delimiter often parses "successfully" as one huge
+    # column, so choose the successful parse with the most columns.
+    candidates = []
+    skip_rows = header_row - 1
+    for separator in (";", ",", "\t"):
+        try:
+            frame = pl.read_csv(
+                io.BytesIO(file_bytes),
+                separator=separator,
+                ignore_errors=True,
+                skip_rows=skip_rows,
+            )
+            candidates.append(frame)
+        except Exception:
+            continue
+    if not candidates:
+        raise ValueError(f"Не удалось распознать CSV-файл: {file_name}")
+    return max(candidates, key=lambda frame: frame.width)
 
 # Синоним для совместимости с модульным API
 parse_file_to_polars = load_file_polars

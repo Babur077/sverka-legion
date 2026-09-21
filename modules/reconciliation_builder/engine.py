@@ -515,10 +515,14 @@ class ReconciliationBuilderModule(BaseReconciliationModule):
         frame_a_pl = load_file_polars(
             files["source_a"],
             params.get("source_a_filename", "source_a.xlsx"),
+            sheet_name=params.get("source_a_sheet_name") or 0,
+            header_row=params.get("source_a_header_row") or 1,
         )
         frame_b_pl = load_file_polars(
             files["source_b"],
             params.get("source_b_filename", "source_b.xlsx"),
+            sheet_name=params.get("source_b_sheet_name") or 0,
+            header_row=params.get("source_b_header_row") or 1,
         )
         if frame_a_pl is None or frame_b_pl is None:
             raise ValueError("Не удалось распознать один из файлов")

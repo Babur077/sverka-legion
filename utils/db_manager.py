@@ -72,7 +72,9 @@ def verify_password(password: str, stored: str) -> bool:
 
 def init_db():
     """Apply versioned schema migrations and bootstrap reference data."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     run_migrations(DB_PATH)
 
     with sqlite3.connect(DB_PATH) as conn:

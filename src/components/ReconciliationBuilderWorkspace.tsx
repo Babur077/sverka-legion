@@ -19,7 +19,7 @@ import {
 import { User } from '../types';
 import { ReconciliationBuilderRunArchiveModal } from './ReconciliationBuilderRunArchiveModal';
 import { ReconciliationDefinitionHistoryModal } from './ReconciliationDefinitionHistoryModal';
-import { parseFile } from '../utils/fileParser';
+import { FileParseOptions, ParsedFileResult, parseFile } from '../utils/fileParser';
 import { getModuleArchive } from '../utils/archiveApi';
 import { hasPermission } from '../utils/permissions';
 import { BuilderArchiveRecord } from '../utils/reconciliationBuilderExport';
@@ -152,6 +152,10 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const [columnsB, setColumnsB] = useState<string[]>([]);
   const [rowsA, setRowsA] = useState(0);
   const [rowsB, setRowsB] = useState(0);
+  const [sourceMetaA, setSourceMetaA] = useState<ParsedFileResult | null>(null);
+  const [sourceMetaB, setSourceMetaB] = useState<ParsedFileResult | null>(null);
+  const [sourceOptionsA, setSourceOptionsA] = useState<FileParseOptions>({ headerRow: 1 });
+  const [sourceOptionsB, setSourceOptionsB] = useState<FileParseOptions>({ headerRow: 1 });
   const [config, setConfig] = useState<ReconciliationBuilderConfig>(emptyConfig);
   const [definitions, setDefinitions] = useState<ReconciliationDefinition[]>([]);
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<number | null>(null);
@@ -176,6 +180,14 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   const canRun = hasPermission(user, 'reconciliation_builder.run');
   const canManage = hasPermission(user, 'reconciliation_builder.manage');
   const selectedDefinition = definitions.find(item => item.id === selectedDefinitionId) || null;
+  const sourceOptionsSyncedA = !sourceA || (
+    (sourceOptionsA.sheetName || sourceMetaA?.selectedSheet || '') === (sourceMetaA?.selectedSheet || '')
+    && (sourceOptionsA.headerRow || 1) === (sourceMetaA?.headerRow || 1)
+  );
+  const sourceOptionsSyncedB = !sourceB || (
+    (sourceOptionsB.sheetName || sourceMetaB?.selectedSheet || '') === (sourceMetaB?.selectedSheet || '')
+    && (sourceOptionsB.headerRow || 1) === (sourceMetaB?.headerRow || 1)
+  );
   const selectedTemplateDirty = useMemo(() => {
     if (!selectedDefinition) return false;
     const baseline = {
@@ -377,26 +389,67 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
     };
   }, [activeJobId]);
 
+  const applyParsedSource = (
+    side: 'a' | 'b',
+    file: File,
+    parsed: ParsedFileResult,
+  ) => {
+    const normalizedOptions: FileParseOptions = {
+      sheetName: parsed.selectedSheet || undefined,
+      headerRow: parsed.headerRow || 1,
+    };
+
+    if (side === 'a') {
+      setSourceA(file);
+      setColumnsA(parsed.columns);
+      setRowsA(parsed.rows.length);
+      setSourceMetaA(parsed);
+      setSourceOptionsA(normalizedOptions);
+    } else {
+      setSourceB(file);
+      setColumnsB(parsed.columns);
+      setRowsB(parsed.rows.length);
+      setSourceMetaB(parsed);
+      setSourceOptionsB(normalizedOptions);
+    }
+    setResult(null);
+  };
+
   const handleFile = async (side: 'a' | 'b', file: File | null) => {
     if (!file) return;
     setMessage(null);
     setLoadingFile(side);
     try {
-      const parsed = await parseFile(file);
-      if (side === 'a') {
-        setSourceA(file);
-        setColumnsA(parsed.columns);
-        setRowsA(parsed.rows.length);
-      } else {
-        setSourceB(file);
-        setColumnsB(parsed.columns);
-        setRowsB(parsed.rows.length);
-      }
-      setResult(null);
+      const parsed = await parseFile(file, { headerRow: 1 });
+      applyParsedSource(side, file, parsed);
     } catch (error: any) {
       setMessage({
         type: 'error',
         text: error?.message || 'Не удалось прочитать файл.',
+      });
+    } finally {
+      setLoadingFile(null);
+    }
+  };
+
+  const handleApplySourceOptions = async (side: 'a' | 'b') => {
+    const file = side === 'a' ? sourceA : sourceB;
+    const options = side === 'a' ? sourceOptionsA : sourceOptionsB;
+    if (!file) return;
+
+    setMessage(null);
+    setLoadingFile(side);
+    try {
+      const parsed = await parseFile(file, options);
+      applyParsedSource(side, file, parsed);
+      setMessage({
+        type: 'info',
+        text: `${side === 'a' ? 'Источник A' : 'Источник B'} перечитан: ${parsed.selectedSheet || 'CSV'}, заголовок строка ${parsed.headerRow}.`,
+      });
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: error?.message || 'Не удалось применить настройки источника.',
       });
     } finally {
       setLoadingFile(null);
@@ -596,6 +649,9 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
   };
 
   const validateConfig = (): string | null => {
+    if (!sourceOptionsSyncedA || !sourceOptionsSyncedB) {
+      return 'Примените выбранный лист и строку заголовков перед запуском.';
+    }
     if (!sourceA || !sourceB) return 'Загрузите оба источника.';
     if (!config.key_pairs.length) return 'Добавьте хотя бы один ключ.';
     const invalidPair = config.key_pairs.some(pair => !pair.left || !pair.right);
@@ -734,11 +790,19 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
           source_a_name: sourceA!.name,
           source_b_name: sourceB!.name,
           source_files: [sourceA!.name, sourceB!.name],
+          source_options: {
+            a: sourceOptionsA,
+            b: sourceOptionsB,
+          },
           config,
           config_snapshot: config,
           archive_schema_version: 1,
         },
         definition,
+        {
+          a: sourceOptionsA,
+          b: sourceOptionsB,
+        },
       );
 
       setActiveJobId(job.id);
@@ -860,31 +924,139 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {[
-                  { side: 'a' as const, label: 'Источник A', file: sourceA, rows: rowsA, columns: columnsA },
-                  { side: 'b' as const, label: 'Источник B', file: sourceB, rows: rowsB, columns: columnsB },
+                  {
+                    side: 'a' as const,
+                    label: 'Источник A',
+                    file: sourceA,
+                    rows: rowsA,
+                    columns: columnsA,
+                    meta: sourceMetaA,
+                    options: sourceOptionsA,
+                    setOptions: setSourceOptionsA,
+                  },
+                  {
+                    side: 'b' as const,
+                    label: 'Источник B',
+                    file: sourceB,
+                    rows: rowsB,
+                    columns: columnsB,
+                    meta: sourceMetaB,
+                    options: sourceOptionsB,
+                    setOptions: setSourceOptionsB,
+                  },
                 ].map(item => (
-                  <label
+                  <div
                     key={item.side}
-                    className="cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 transition hover:border-indigo-300 hover:bg-indigo-50/30"
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-4"
                   >
-                    <div className="text-xs font-bold uppercase tracking-wider text-slate-400">{item.label}</div>
-                    <div className="mt-2 font-semibold text-slate-900">
-                      {item.file?.name || 'Выберите Excel / CSV'}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold uppercase tracking-wider text-slate-400">{item.label}</div>
+                        <div className="mt-1 truncate font-semibold text-slate-900">
+                          {item.file?.name || 'Файл не выбран'}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {loadingFile === item.side
+                            ? 'Чтение файла…'
+                            : item.file
+                              ? `${item.rows.toLocaleString('ru-RU')} строк · ${item.columns.length} колонок`
+                              : 'После загрузки настройте лист и строку заголовков.'}
+                        </div>
+                      </div>
+                      <label className="shrink-0 cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                        {item.file ? 'Заменить' : 'Выбрать файл'}
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls,.csv"
+                          className="hidden"
+                          onChange={event => void handleFile(item.side, event.target.files?.[0] || null)}
+                        />
+                      </label>
                     </div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {loadingFile === item.side
-                        ? 'Чтение файла…'
-                        : item.file
-                          ? `${item.rows.toLocaleString('ru-RU')} строк · ${item.columns.length} колонок`
-                          : 'После загрузки колонки появятся в конструкторе.'}
-                    </div>
-                    <input
-                      type="file"
-                      accept=".xlsx,.xls,.csv"
-                      className="hidden"
-                      onChange={event => void handleFile(item.side, event.target.files?.[0] || null)}
-                    />
-                  </label>
+
+                    {item.file && (
+                      <>
+                        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_130px_auto]">
+                          <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                            Лист
+                            <select
+                              value={item.options.sheetName || item.meta?.selectedSheet || ''}
+                              onChange={event => item.setOptions(current => ({
+                                ...current,
+                                sheetName: event.target.value || undefined,
+                              }))}
+                              disabled={!item.meta?.sheetNames?.length}
+                              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-normal normal-case tracking-normal text-slate-700 disabled:bg-slate-100"
+                            >
+                              {item.meta?.sheetNames?.length ? (
+                                item.meta.sheetNames.map(sheet => (
+                                  <option key={sheet} value={sheet}>{sheet}</option>
+                                ))
+                              ) : (
+                                <option value="">CSV / один лист</option>
+                              )}
+                            </select>
+                          </label>
+
+                          <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                            Заголовок
+                            <input
+                              type="number"
+                              min="1"
+                              max="200"
+                              value={item.options.headerRow || 1}
+                              onChange={event => item.setOptions(current => ({
+                                ...current,
+                                headerRow: Math.max(1, Math.min(200, Number(event.target.value) || 1)),
+                              }))}
+                              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-normal normal-case tracking-normal text-slate-700"
+                            />
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() => void handleApplySourceOptions(item.side)}
+                            disabled={loadingFile === item.side}
+                            className="self-end rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                          >
+                            Применить
+                          </button>
+                        </div>
+
+                        <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                          <table className="min-w-full text-[10px]">
+                            <thead className="bg-slate-50">
+                              <tr>
+                                {item.columns.slice(0, 6).map(column => (
+                                  <th key={column} className="max-w-[160px] px-2 py-1.5 text-left font-semibold text-slate-500">
+                                    <div className="truncate" title={column}>{column}</div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {(item.meta?.previewRows || []).slice(0, 4).map((row, rowIndex) => (
+                                <tr key={rowIndex}>
+                                  {item.columns.slice(0, 6).map(column => (
+                                    <td key={column} className="max-w-[160px] px-2 py-1.5 text-slate-600">
+                                      <div className="truncate" title={String(row[column] ?? '')}>
+                                        {String(row[column] ?? '') || '—'}
+                                      </div>
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {item.columns.length === 0 && (
+                            <div className="px-3 py-4 text-xs text-amber-700">
+                              Колонки не обнаружены. Проверьте лист и номер строки заголовков.
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 ))}
               </div>
             </section>

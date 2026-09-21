@@ -1,5 +1,6 @@
 import { ReconciliationConfig, ReconciliationResult, RawRow } from '../types';
 import { apiFetch } from './apiClient';
+import type { FileParseOptions } from './fileParser';
 
 interface BankRrnApiResult {
   run_id: string;
@@ -118,12 +119,17 @@ export async function runBankRrnViaApi(
   bankFile: File,
   cfg: ReconciliationConfig,
   _username: string,
+  sourceOptions?: { our?: FileParseOptions; bank?: FileParseOptions },
 ): Promise<ReconciliationResult> {
   const form = new FormData();
   form.append('our_file', ourFile, ourFile.name);
   form.append('bank_file', bankFile, bankFile.name);
   form.append('our_filename', ourFile.name);
   form.append('bank_filename', bankFile.name);
+  form.append('our_sheet_name', sourceOptions?.our?.sheetName || '');
+  form.append('bank_sheet_name', sourceOptions?.bank?.sheetName || '');
+  form.append('our_header_row', String(sourceOptions?.our?.headerRow || 1));
+  form.append('bank_header_row', String(sourceOptions?.bank?.headerRow || 1));
   form.append('our_date_col', cfg.our_date);
   form.append('our_rrn_col', cfg.our_rrn);
   form.append('our_amt_col', cfg.our_amt || '');

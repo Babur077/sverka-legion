@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import { RawRow, ReconciliationConfig, ReconciliationResult, UnmatchedRow, AmountMismatchRow, DateSummaryRow, SystemSettings, User, EposTerminal } from '../types';
 import { hasPermission } from '../utils/permissions';
-import { parseFile, guessCol, exportReconciliationToExcel } from '../utils/fileParser';
+import { FileParseOptions, ParsedFileResult, parseFile, guessCol, exportReconciliationToExcel } from '../utils/fileParser';
 import { runBankRrnViaApi } from '../utils/bankRrnApi';
 import { getStoredDraft, saveActiveDraft, clearActiveDraft } from '../utils/storage';
 import { createEposViaApi, getEposViaApi } from '../utils/eposApi';
@@ -83,6 +83,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [bankSourceFile, setBankSourceFile] = useState<File | null>(null);
   const [showPreviewOur, setShowPreviewOur] = useState(false);
   const [showPreviewBank, setShowPreviewBank] = useState(false);
+  const [ourSourceMeta, setOurSourceMeta] = useState<ParsedFileResult | null>(null);
+  const [bankSourceMeta, setBankSourceMeta] = useState<ParsedFileResult | null>(null);
+  const [ourSourceOptions, setOurSourceOptions] = useState<FileParseOptions>({ headerRow: 1 });
+  const [bankSourceOptions, setBankSourceOptions] = useState<FileParseOptions>({ headerRow: 1 });
+  const [sourceParsingSide, setSourceParsingSide] = useState<'our' | 'bank' | null>(null);
 
   // Column selectors
   const [ourDateCol, setOurDateCol] = useState<string>('');
@@ -130,7 +135,16 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const filesReady = !!ourFile && !!bankFile && !!ourSourceFile && !!bankSourceFile;
   const mappingReady = !!ourDateCol && !!ourRrnCol && !!bankDateCol && !!bankRrnCol;
   const amountsReady = !!ourAmtCol && !!bankAmtCol;
-  const runReady = filesReady && mappingReady && amountsReady && !isProcessing;
+  const ourSourceOptionsSynced = !ourSourceFile || (
+    (ourSourceOptions.sheetName || ourSourceMeta?.selectedSheet || '') === (ourSourceMeta?.selectedSheet || '')
+    && (ourSourceOptions.headerRow || 1) === (ourSourceMeta?.headerRow || 1)
+  );
+  const bankSourceOptionsSynced = !bankSourceFile || (
+    (bankSourceOptions.sheetName || bankSourceMeta?.selectedSheet || '') === (bankSourceMeta?.selectedSheet || '')
+    && (bankSourceOptions.headerRow || 1) === (bankSourceMeta?.headerRow || 1)
+  );
+  const sourcesConfigured = ourSourceOptionsSynced && bankSourceOptionsSynced;
+  const runReady = filesReady && mappingReady && amountsReady && sourcesConfigured && !isProcessing;
 
   // Check stored draft on initial mount
   useEffect(() => {
@@ -256,6 +270,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         setBankFile(null);
         setOurSourceFile(null);
         setBankSourceFile(null);
+        setOurSourceMeta(null);
+        setBankSourceMeta(null);
+        setOurSourceOptions({ headerRow: 1 });
+        setBankSourceOptions({ headerRow: 1 });
+        setSourceParsingSide(null);
         setReconData(null);
         setOurDateCol('');
         setOurRrnCol('');
@@ -382,30 +401,51 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   }, [unmatchedOurPageCount, unmatchedBankPageCount, unmatchedPageOur, unmatchedPageBank]);
 
   // File Handlers
+  const applyParsedBankSource = (
+    file: File,
+    parsed: ParsedFileResult,
+    isOur: boolean,
+  ) => {
+    const options: FileParseOptions = {
+      sheetName: parsed.selectedSheet || undefined,
+      headerRow: parsed.headerRow || 1,
+    };
+
+    if (isOur) {
+      setOurSourceFile(file);
+      setOurFile({ name: parsed.fileName, rows: parsed.rows, columns: parsed.columns });
+      setOurSourceMeta(parsed);
+      setOurSourceOptions(options);
+      setDraftRestored(false);
+      setOurDateCol(guessCol(parsed.columns, ['date', 'дата']) || parsed.columns[0] || '');
+      setOurRrnCol(guessCol(parsed.columns, ['rrn', 'ref']) || parsed.columns[1] || '');
+      setOurAmtCol(guessCol(parsed.columns, ['amount', 'сумма']) || '');
+      setOurStatusCol(guessCol(parsed.columns, ['status', 'статус']) || '');
+    } else {
+      setBankSourceFile(file);
+      setBankFile({ name: parsed.fileName, rows: parsed.rows, columns: parsed.columns });
+      setBankSourceMeta(parsed);
+      setBankSourceOptions(options);
+      setDraftRestored(false);
+      setBankDateCol(guessCol(parsed.columns, ['date', 'дата']) || parsed.columns[0] || '');
+      setBankRrnCol(guessCol(parsed.columns, ['rrn', 'ref']) || parsed.columns[1] || '');
+      setBankAmtCol(guessCol(parsed.columns, ['amount', 'сумма']) || '');
+      setBankStatusCol(guessCol(parsed.columns, ['status', 'статус']) || '');
+      setBankTidCol(guessCol(parsed.columns, ['tid', 'terminal', 'терминал']) || '');
+    }
+    setReconData(null);
+    setAiSummary(null);
+    setAiError(null);
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isOur: boolean) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setSourceParsingSide(isOur ? 'our' : 'bank');
     try {
-      const parsed = await parseFile(file);
-      if (isOur) {
-        setOurSourceFile(file);
-        setOurFile({ name: parsed.fileName, rows: parsed.rows, columns: parsed.columns });
-        setDraftRestored(false);
-        setOurDateCol(guessCol(parsed.columns, ['date', 'дата']) || parsed.columns[0] || '');
-        setOurRrnCol(guessCol(parsed.columns, ['rrn', 'ref']) || parsed.columns[1] || '');
-        setOurAmtCol(guessCol(parsed.columns, ['amount', 'сумма']) || '');
-        setOurStatusCol(guessCol(parsed.columns, ['status', 'статус']) || '');
-      } else {
-        setBankSourceFile(file);
-        setBankFile({ name: parsed.fileName, rows: parsed.rows, columns: parsed.columns });
-        setDraftRestored(false);
-        setBankDateCol(guessCol(parsed.columns, ['date', 'дата']) || parsed.columns[0] || '');
-        setBankRrnCol(guessCol(parsed.columns, ['rrn', 'ref']) || parsed.columns[1] || '');
-        setBankAmtCol(guessCol(parsed.columns, ['amount', 'сумма']) || '');
-        setBankStatusCol(guessCol(parsed.columns, ['status', 'статус']) || '');
-        setBankTidCol(guessCol(parsed.columns, ['tid', 'terminal', 'терминал']) || '');
-      }
+      const parsed = await parseFile(file, { headerRow: 1 });
+      applyParsedBankSource(file, parsed, isOur);
     } catch (err) {
       setAlertState({
         isOpen: true,
@@ -413,6 +453,29 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         message: `Не удалось прочитать загруженный файл: ${err}`,
         type: 'error',
       });
+    } finally {
+      setSourceParsingSide(null);
+    }
+  };
+
+  const handleApplyBankSourceOptions = async (isOur: boolean) => {
+    const file = isOur ? ourSourceFile : bankSourceFile;
+    const options = isOur ? ourSourceOptions : bankSourceOptions;
+    if (!file) return;
+
+    setSourceParsingSide(isOur ? 'our' : 'bank');
+    try {
+      const parsed = await parseFile(file, options);
+      applyParsedBankSource(file, parsed, isOur);
+    } catch (err) {
+      setAlertState({
+        isOpen: true,
+        title: 'Ошибка настроек источника',
+        message: `Не удалось прочитать выбранный лист/строку заголовков: ${err}`,
+        type: 'error',
+      });
+    } finally {
+      setSourceParsingSide(null);
     }
   };
 
@@ -428,6 +491,16 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     }
 
     // Validation checks
+    if (!ourSourceOptionsSynced || !bankSourceOptionsSynced) {
+      setAlertState({
+        isOpen: true,
+        title: 'Примените настройки источников',
+        message: 'После изменения листа или строки заголовков нажмите «Применить» у каждого изменённого файла.',
+        type: 'warning',
+      });
+      return;
+    }
+
     if (!ourFile || !bankFile) {
       setAlertState({
         isOpen: true,
@@ -499,7 +572,16 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         throw new Error('После восстановления черновика необходимо заново выбрать оба исходных файла.');
       }
 
-      const result = await runBankRrnViaApi(ourSourceFile, bankSourceFile, cfg, user.username);
+      const result = await runBankRrnViaApi(
+        ourSourceFile,
+        bankSourceFile,
+        cfg,
+        user.username,
+        {
+          our: ourSourceOptions,
+          bank: bankSourceOptions,
+        },
+      );
       setReconData(result);
       const detectedTerminalIds = Array.from(new Set(
         (result.terminal_summary || [])
@@ -983,6 +1065,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             unbind_mismatches: unbindMismatches,
             tolerance: settings.amount_tolerance,
             deduct_commission: deductCommission,
+            source_options: {
+              our: ourSourceOptions,
+              bank: bankSourceOptions,
+            },
           },
         },
       );
@@ -1126,7 +1212,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           <div className="grid grid-cols-3 gap-2 min-w-0 lg:min-w-[430px]">
             {[
               { label: '1. Банк', ready: !!selectedBank },
-              { label: '2. Файлы', ready: filesReady },
+              { label: '2. Файлы', ready: filesReady && sourcesConfigured },
               { label: '3. Колонки', ready: mappingReady && amountsReady },
             ].map(step => (
               <div
@@ -1257,6 +1343,51 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             </div>
           )}
 
+          {ourFile && (
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_110px_auto]">
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Лист
+                <select
+                  value={ourSourceOptions.sheetName || ourSourceMeta?.selectedSheet || ''}
+                  onChange={event => setOurSourceOptions(current => ({
+                    ...current,
+                    sheetName: event.target.value || undefined,
+                  }))}
+                  disabled={!ourSourceMeta?.sheetNames?.length}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-normal normal-case tracking-normal text-slate-700 disabled:bg-slate-100"
+                >
+                  {ourSourceMeta?.sheetNames?.length ? (
+                    ourSourceMeta.sheetNames.map(sheet => <option key={sheet} value={sheet}>{sheet}</option>)
+                  ) : (
+                    <option value="">CSV / один лист</option>
+                  )}
+                </select>
+              </label>
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Заголовок
+                <input
+                  type="number"
+                  min="1"
+                  max="200"
+                  value={ourSourceOptions.headerRow || 1}
+                  onChange={event => setOurSourceOptions(current => ({
+                    ...current,
+                    headerRow: Math.max(1, Math.min(200, Number(event.target.value) || 1)),
+                  }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-normal normal-case tracking-normal text-slate-700"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleApplyBankSourceOptions(true)}
+                disabled={sourceParsingSide === 'our'}
+                className="self-end rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {sourceParsingSide === 'our' ? 'Чтение…' : 'Применить'}
+              </button>
+            </div>
+          )}
+
           {showPreviewOur && ourFile && (
             <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 text-xs">
               <table className="min-w-full divide-y divide-slate-200">
@@ -1313,6 +1444,51 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
               <span>Строк загружено: <strong className="text-slate-800">{bankFile.rows.length}</strong></span>
               <span>Колонок: <strong className="text-slate-800">{bankFile.columns.length}</strong></span>
+            </div>
+          )}
+
+          {bankFile && (
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_110px_auto]">
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Лист
+                <select
+                  value={bankSourceOptions.sheetName || bankSourceMeta?.selectedSheet || ''}
+                  onChange={event => setBankSourceOptions(current => ({
+                    ...current,
+                    sheetName: event.target.value || undefined,
+                  }))}
+                  disabled={!bankSourceMeta?.sheetNames?.length}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-normal normal-case tracking-normal text-slate-700 disabled:bg-slate-100"
+                >
+                  {bankSourceMeta?.sheetNames?.length ? (
+                    bankSourceMeta.sheetNames.map(sheet => <option key={sheet} value={sheet}>{sheet}</option>)
+                  ) : (
+                    <option value="">CSV / один лист</option>
+                  )}
+                </select>
+              </label>
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Заголовок
+                <input
+                  type="number"
+                  min="1"
+                  max="200"
+                  value={bankSourceOptions.headerRow || 1}
+                  onChange={event => setBankSourceOptions(current => ({
+                    ...current,
+                    headerRow: Math.max(1, Math.min(200, Number(event.target.value) || 1)),
+                  }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-normal normal-case tracking-normal text-slate-700"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleApplyBankSourceOptions(false)}
+                disabled={sourceParsingSide === 'bank'}
+                className="self-end rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {sourceParsingSide === 'bank' ? 'Чтение…' : 'Применить'}
+              </button>
             </div>
           )}
 

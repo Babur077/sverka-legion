@@ -1,6 +1,21 @@
 import * as XLSX from 'xlsx';
 import { RawRow, DateSummaryRow, UnmatchedRow, AmountMismatchRow, TerminalSummaryItem } from '../types';
 
+export interface FileParseOptions {
+  sheetName?: string;
+  headerRow?: number;
+}
+
+export interface ParsedFileResult {
+  fileName: string;
+  rows: RawRow[];
+  columns: string[];
+  sheetNames: string[];
+  selectedSheet: string;
+  headerRow: number;
+  previewRows: RawRow[];
+}
+
 export function guessCol(cols: string[], keywords: string[]): string | null {
   if (!cols || cols.length === 0) return null;
   for (const col of cols) {
@@ -36,28 +51,49 @@ function emitFileParseProgress(detail: FileParseProgressDetail): void {
   }
 }
 
-function parseWorkbook(data: ArrayBuffer | string, fileName: string): { fileName: string; rows: RawRow[]; columns: string[] } {
+function parseWorkbook(
+  data: ArrayBuffer | string,
+  fileName: string,
+  options: FileParseOptions = {},
+): ParsedFileResult {
   const workbook = XLSX.read(data, {
     type: typeof data === 'string' ? 'binary' : 'array',
     cellDates: true,
     dense: true,
   });
-  const firstSheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[firstSheetName];
-  const jsonRows: RawRow[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
-  if (jsonRows.length === 0) {
-    return { fileName, rows: [], columns: [] };
+  const headerRow = Math.max(1, Math.min(200, Math.floor(Number(options.headerRow) || 1)));
+  const isCsv = /\.csv$/i.test(fileName);
+  const availableSheets = isCsv ? [] : workbook.SheetNames;
+  const selectedSheet = (
+    options.sheetName && workbook.SheetNames.includes(options.sheetName)
+      ? options.sheetName
+      : workbook.SheetNames[0]
+  ) || '';
+
+  const worksheet = workbook.Sheets[selectedSheet];
+  if (!worksheet) {
+    throw new Error('Не удалось найти выбранный лист Excel.');
   }
+
+  const jsonRows: RawRow[] = XLSX.utils.sheet_to_json(worksheet, {
+    defval: '',
+    range: headerRow - 1,
+  });
+  const columns = jsonRows.length > 0 ? Object.keys(jsonRows[0]) : [];
 
   return {
     fileName,
     rows: jsonRows,
-    columns: Object.keys(jsonRows[0]),
+    columns,
+    sheetNames: availableSheets,
+    selectedSheet,
+    headerRow,
+    previewRows: jsonRows.slice(0, 5),
   };
 }
 
-export async function parseFile(file: File): Promise<{ fileName: string; rows: RawRow[]; columns: string[] }> {
+export async function parseFile(file: File, options: FileParseOptions = {}): Promise<ParsedFileResult> {
   const startedAt = performance.now();
   const fileSize = file.size;
 
@@ -127,7 +163,7 @@ export async function parseFile(file: File): Promise<{ fileName: string; rows: R
 
       if (typeof Worker === 'undefined') {
         try {
-          const result = parseWorkbook(data, file.name);
+          const result = parseWorkbook(data, file.name, options);
           emitFileParseProgress({
             status: 'success',
             stage: 'ready',
@@ -158,7 +194,7 @@ export async function parseFile(file: File): Promise<{ fileName: string; rows: R
       try {
         worker = new Worker(new URL('./fileParseWorker.ts', import.meta.url), { type: 'module' });
 
-        worker.onmessage = (event: MessageEvent<{ success: boolean; result?: { fileName: string; rows: RawRow[]; columns: string[] }; error?: string }>) => {
+        worker.onmessage = (event: MessageEvent<{ success: boolean; result?: ParsedFileResult; error?: string }>) => {
           worker?.terminate();
           worker = null;
 
@@ -205,12 +241,12 @@ export async function parseFile(file: File): Promise<{ fileName: string; rows: R
           reject(new Error(message));
         };
 
-        worker.postMessage({ buffer: data, fileName: file.name }, [data]);
+        worker.postMessage({ buffer: data, fileName: file.name, options }, [data]);
       } catch (err) {
         worker?.terminate();
         worker = null;
         try {
-          const result = parseWorkbook(data, file.name);
+          const result = parseWorkbook(data, file.name, options);
           emitFileParseProgress({
             status: 'success',
             stage: 'ready',
