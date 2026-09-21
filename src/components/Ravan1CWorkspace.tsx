@@ -179,12 +179,12 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
               <Building2 className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-600">
+              <div className="text-[10px] font-bold tracking-[0.18em] text-indigo-600">
                 produced by Sayfulloh Abdusalomov
               </div>
-              <h1 className="truncate text-xl font-black text-slate-900">Ravan ↔ 1C</h1>
+              <h1 className="truncate text-xl font-black text-slate-900">Сверка погашений</h1>
               <p className="mt-0.5 text-xs text-slate-500">
-                Сверка контрагентов, количества и суммы с корректировкой по NDS.
+                Ravan ↔ 1C: сверка контрагентов, количества и суммы с корректировкой по NDS.
               </p>
             </div>
           </div>
@@ -208,7 +208,7 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
             <h2 className="text-sm font-bold text-slate-900">Исходные файлы</h2>
             <p className="mt-1 text-xs leading-5 text-slate-500">
               Ravan должен содержать колонки <strong>Partner, NDS, Kolvo, Summ</strong>.
-              В файле 1C первая строка считается данными, а первые три колонки интерпретируются как
+              В файле 1C первая строка считается данными; файл должен содержать ровно три колонки:
               <strong> Partner, Kolvo, Summ</strong>.
             </p>
           </div>
@@ -424,7 +424,7 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
               <History className="h-4 w-4 text-slate-400" />
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Последние Run</h2>
-                <p className="mt-0.5 text-[10px] text-slate-400">Архив модуля Ravan ↔ 1C.</p>
+                <p className="mt-0.5 text-[10px] text-slate-400">Архив модуля «Сверка погашений».</p>
               </div>
             </div>
             <button

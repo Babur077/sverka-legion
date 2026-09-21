@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import io
 import math
 import re
@@ -62,19 +63,17 @@ def _read_source(
 ) -> pd.DataFrame:
     lower = str(filename or "").lower()
     if lower.endswith(".csv"):
-        # Keep the dedicated module forgiving for common finance CSV exports.
-        last_error: Exception | None = None
-        for sep in (";", ",", "\t"):
-            try:
-                return pd.read_csv(
-                    io.BytesIO(content),
-                    sep=sep,
-                    header=header,
-                    dtype=object,
-                )
-            except Exception as exc:
-                last_error = exc
-        raise ValueError(f"Не удалось прочитать CSV: {last_error}")
+        # A wrong separator can parse successfully as one column. Detect it
+        # explicitly, including quoted delimiters, before reading the source.
+        try:
+            text = content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = content.decode("cp1251")
+        try:
+            dialect = csv.Sniffer().sniff(text[:65536], delimiters=";,\t")
+        except csv.Error as exc:
+            raise ValueError("Не удалось определить разделитель CSV: ожидается ; , или табуляция") from exc
+        return pd.read_csv(io.StringIO(text), sep=dialect.delimiter, header=header, dtype=object)
 
     return pd.read_excel(
         io.BytesIO(content),
@@ -122,10 +121,10 @@ class Ravan1CModule(BaseReconciliationModule):
     def manifest(self) -> ModuleManifest:
         return ModuleManifest(
             id="ravan_1c",
-            name="Ravan ↔ 1C",
-            version="1.0.0",
+            name="Сверка погашений",
+            version="1.0.1",
             description=(
-                "Сверка Ravan с 1C по очищенному названию контрагента, количеству "
+                "Сверка погашений Ravan с 1C по очищенному названию контрагента, количеству "
                 "и скорректированной сумме с учетом NDS."
             ),
             category="Бухгалтерия",
@@ -302,9 +301,11 @@ class Ravan1CModule(BaseReconciliationModule):
         total_companies = len(result)
         ok_count = int((result["Status"] == "OK").sum())
         discrepancy_count = total_companies - ok_count
-        corrected_sum = float(result["Summ_Corrected"].fillna(0).sum())
-        c_sum = float(result["Summ_C"].fillna(0).sum())
-        diff_sum = float(result["Summ_Difference"].fillna(0).sum())
+        # Totals describe the uploaded sources. The original outer merge can
+        # repeat source rows when a normalized company occurs more than once.
+        corrected_sum = float(ravan["Summ_Corrected"].sum())
+        c_sum = float(c["Summ"].sum())
+        diff_sum = c_sum - corrected_sum
         match_percentage = (
             round(ok_count / total_companies * 100, 2)
             if total_companies
