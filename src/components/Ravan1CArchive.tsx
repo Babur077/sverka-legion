@@ -6,8 +6,10 @@ import {
   Download,
   FileSpreadsheet,
   FolderOpen,
+  LoaderCircle,
   RefreshCcw,
   Search,
+  Trash2,
   X,
 } from 'lucide-react';
 
@@ -21,8 +23,10 @@ interface Props {
   records: Ravan1CArchiveRecord[];
   loading: boolean;
   canExport: boolean;
+  canDelete: boolean;
   onRefresh: () => void | Promise<void>;
   onOpen: (record: Ravan1CArchiveRecord) => void;
+  onDelete: (record: Ravan1CArchiveRecord) => void | Promise<void>;
 }
 
 const PAGE_SIZE = 12;
@@ -76,14 +80,17 @@ export const Ravan1CArchive: React.FC<Props> = ({
   records,
   loading,
   canExport,
+  canDelete,
   onRefresh,
   onOpen,
+  onDelete,
 }) => {
   const [query, setQuery] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [userFilter, setUserFilter] = useState('Все');
   const [page, setPage] = useState(1);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const users = useMemo(
     () => Array.from(new Set(records.map(archiveUser).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ru')),
@@ -150,6 +157,22 @@ export const Ravan1CArchive: React.FC<Props> = ({
     setDateFrom('');
     setDateTo('');
     setUserFilter('Все');
+  };
+
+  const handleDelete = async (record: Ravan1CArchiveRecord) => {
+    if (!canDelete || deletingId != null) return;
+    const label = record.run_id ? `Run ${record.run_id}` : `запись #${record.id}`;
+    const confirmed = window.confirm(
+      `Удалить ${label} из архива?\n\nЭто действие нельзя отменить.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingId(record.id);
+    try {
+      await onDelete(record);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -326,6 +349,20 @@ export const Ravan1CArchive: React.FC<Props> = ({
                         <Download className="h-3.5 w-3.5" />
                         Excel
                       </button>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(record)}
+                          disabled={deletingId != null}
+                          title="Удалить запись из архива"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {deletingId === record.id
+                            ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                            : <Trash2 className="h-3.5 w-3.5" />}
+                          Удалить
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
