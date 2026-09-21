@@ -9,6 +9,7 @@ import {
   RefreshCw,
   ShieldAlert,
   Wrench,
+  Building2,
 } from 'lucide-react';
 import { ReconciliationModuleManifest, User } from '../types';
 import { hasModuleWorkspace } from '../modules/workspaceRegistry';
@@ -23,6 +24,7 @@ const iconFor = (name: string) => {
   if (name === 'CreditCard') return CreditCard;
   if (name === 'Receipt') return Receipt;
   if (name === 'Wrench') return Wrench;
+  if (name === 'Building2') return Building2;
   return Layers;
 };
 
