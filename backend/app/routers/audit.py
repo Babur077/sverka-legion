@@ -5,7 +5,10 @@ from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
 
+from backend.app.http_utils import json_safe
+from backend.app.services.audit_ai import analyze_audit_event
 from utils.permissions import (
+    get_audit_event,
     get_audit_filter_options,
     get_user_permissions,
     has_permission,
@@ -24,6 +27,25 @@ async def fetch_audit_filters(x_user: Optional[str] = Header("admin")):
             detail="Нет прав на просмотр журнала аудита",
         )
     return get_audit_filter_options()
+
+
+@router.post("/{event_id}/ai")
+async def analyze_audit_log(
+    event_id: int,
+    x_user: Optional[str] = Header("admin"),
+):
+    perms = get_user_permissions(x_user)
+    if not has_permission(perms, "audit.view") and "*" not in perms:
+        raise HTTPException(
+            status_code=403,
+            detail="Нет прав на AI-анализ журнала аудита",
+        )
+
+    event = get_audit_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Событие аудита не найдено")
+
+    return json_safe(analyze_audit_event(event))
 
 
 @router.get("")
