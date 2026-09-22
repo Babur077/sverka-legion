@@ -48,11 +48,11 @@ async def execute_module(module_id: str, request: Request, username: str):
 
         result = module.run(files_dict, params_dict)
         result_payload = result.model_dump()
-        source_files = [
-            str(value)
-            for key, value in params_dict.items()
-            if key.endswith("_filename") and str(value or "").strip()
-        ]
+        source_files: list[str] = []
+        for key, value in params_dict.items():
+            filename = str(value or "").strip()
+            if key.endswith("_filename") and filename and filename not in source_files:
+                source_files.append(filename)
         cache_run_result(
             module_id,
             result.run_id,
