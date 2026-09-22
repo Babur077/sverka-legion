@@ -423,3 +423,109 @@ def test_archive_delete_is_restricted_to_owner_with_admin_override(tmp_path, mon
     ) is True
     assert db.get_reconciliation_runs("ravan_1c") == []
 
+
+def test_lightweight_archive_summary_does_not_expand_result_snapshot(tmp_path, monkeypatch):
+    db_path = tmp_path / "light_archive.db"
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    db.init_db()
+
+    huge_rows = [{"RRN": str(index), "amount": index} for index in range(5000)]
+    payload = {
+        "run_id": "big-bank-run",
+        "period_month": "2026-09",
+        "bank_name": "Big Bank",
+        "assigned_terminal_id": "TID-BIG",
+        "total_our": 1000,
+        "total_bank": 990,
+        "difference": -10,
+        "matched_count": 900,
+        "mismatch_count": 10,
+        "only_our_count": 3,
+        "only_bank_count": 4,
+        "total_commission": 12.34,
+        "source_our_name": "our.xlsx",
+        "source_bank_name": "bank.xlsx",
+        "summary": {
+            "total_sum_a": 1000,
+            "total_sum_b": 990,
+            "diff_sum": -10,
+            "matched_count": 900,
+            "match_percentage": 98.1,
+        },
+        "result_snapshot": {
+            "custom_metrics": {
+                "rrn": {
+                    "only_our": huge_rows,
+                    "only_bank": huge_rows,
+                }
+            }
+        },
+        "archive_schema_version": 3,
+    }
+
+    ok, _, record_id = db.save_reconciliation_run(
+        "bank_rrn",
+        "alice",
+        payload,
+    )
+    assert ok
+    assert record_id is not None
+
+    summaries = db.get_reconciliation_run_summaries("bank_rrn")
+    assert len(summaries) == 1
+    item = summaries[0]
+    assert item["bank_name"] == "Big Bank"
+    assert item["assigned_terminal_id"] == "TID-BIG"
+    assert item["total_bank"] == 990
+    assert item["total_commission"] == 12.34
+    assert item["source_our_name"] == "our.xlsx"
+    assert "result_snapshot" not in item
+
+    full = db.get_reconciliation_run("bank_rrn", record_id)
+    assert full is not None
+    assert len(full["result_snapshot"]["custom_metrics"]["rrn"]["only_our"]) == 5000
+
+
+def test_lightweight_archive_reads_legacy_metadata_from_bounded_prefix(tmp_path, monkeypatch):
+    db_path = tmp_path / "legacy_light_archive.db"
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    db.init_db()
+
+    payload = {
+        "run_id": "legacy-big",
+        "status": "WARNING",
+        "period_month": "2026-09",
+        "bank_name": "Legacy Big Bank",
+        "assigned_terminal_id": "TID-LEGACY-BIG",
+        "total_our": 500,
+        "total_bank": 490,
+        "difference": -10,
+        "matched_count": 5,
+        "mismatch_count": 1,
+        "only_our_count": 2,
+        "only_bank_count": 3,
+        "total_commission": 4.56,
+        "result_snapshot": {"rows": ["x" * 1000] * 5000},
+    }
+    ok, _, record_id = db.save_reconciliation_run(
+        "bank_rrn",
+        "alice",
+        payload,
+    )
+    assert ok
+
+    # Simulate a pre-optimization archive row whose summary_json did not carry
+    # list metadata, while leaving the large payload intact.
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE reconciliation_runs SET summary_json = ? WHERE id = ?",
+            (json.dumps({"matched_count": 5}), record_id),
+        )
+        conn.commit()
+
+    summaries = db.get_reconciliation_run_summaries("bank_rrn")
+    assert summaries[0]["bank_name"] == "Legacy Big Bank"
+    assert summaries[0]["assigned_terminal_id"] == "TID-LEGACY-BIG"
+    assert summaries[0]["total_bank"] == 490
+    assert summaries[0]["only_bank_count"] == 3
+
