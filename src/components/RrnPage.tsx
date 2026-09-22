@@ -917,6 +917,89 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     };
   }, [reconData, tolerance]);
 
+  const amountMismatchStats = useMemo(() => {
+    if (!reconData) {
+      return {
+        detectedCount: 0,
+        netDelta: 0,
+        absoluteDelta: 0,
+        positiveDelta: 0,
+        negativeDelta: 0,
+        invalidDeltaCount: 0,
+        compensation: 'none' as 'none' | 'partial' | 'full',
+      };
+    }
+
+    const deltas = reconData.amt_mismatches
+      .map(row => row['Δ сумма'])
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+    const localNet = deltas.reduce((sum, value) => sum + value, 0);
+    const localAbsolute = deltas.reduce((sum, value) => sum + Math.abs(value), 0);
+    const localPositive = deltas.filter(value => value > 0).reduce((sum, value) => sum + value, 0);
+    const localNegative = deltas.filter(value => value < 0).reduce((sum, value) => sum + value, 0);
+
+    const netDelta = Number.isFinite(Number(reconData.amount_mismatch_net_delta))
+      ? Number(reconData.amount_mismatch_net_delta)
+      : localNet;
+    const absoluteDelta = Number.isFinite(Number(reconData.amount_mismatch_abs_delta))
+      ? Number(reconData.amount_mismatch_abs_delta)
+      : localAbsolute;
+    const positiveDelta = Number.isFinite(Number(reconData.amount_mismatch_positive_delta))
+      ? Number(reconData.amount_mismatch_positive_delta)
+      : localPositive;
+    const negativeDelta = Number.isFinite(Number(reconData.amount_mismatch_negative_delta))
+      ? Number(reconData.amount_mismatch_negative_delta)
+      : localNegative;
+    const invalidDeltaCount = Number(
+      reconData.amount_mismatch_invalid_delta_count
+      ?? reconData.amt_mismatches.filter(row => row['Δ сумма'] == null).length,
+    );
+    const detectedCount = Number(
+      reconData.amount_mismatch_count_before_unbind
+      ?? reconData.mismatch_count
+      ?? reconData.amt_mismatches.length,
+    );
+
+    const hasOppositeSigns = positiveDelta > tolerance && negativeDelta < -tolerance;
+    const compensation = absoluteDelta <= tolerance
+      ? 'none'
+      : Math.abs(netDelta) <= tolerance && hasOppositeSigns
+        ? 'full'
+        : hasOppositeSigns
+          ? 'partial'
+          : 'none';
+
+    return {
+      detectedCount,
+      netDelta,
+      absoluteDelta,
+      positiveDelta,
+      negativeDelta,
+      invalidDeltaCount,
+      compensation,
+    };
+  }, [reconData, tolerance]);
+
+  const duplicateActionSummary = useMemo(() => {
+    if (!reconData) return '';
+    const action = String(reconData.dup_action || '').toLowerCase();
+    const removedOur = Number(reconData.dup_removed_our_c || 0);
+    const removedBank = Number(reconData.dup_removed_bank_c || 0);
+    const removedText = `Удалено строк: у нас ${removedOur}, у банка ${removedBank}.`;
+
+    if (action.includes('удалить все')) {
+      return `Все строки по дублирующимся RRN удалены из сверки, включая исходную строку. ${removedText}`;
+    }
+    if (action.includes('первую')) {
+      return `Для каждого дублирующегося RRN оставлена только первая строка. ${removedText}`;
+    }
+    if (action.includes('последнюю')) {
+      return `Для каждого дублирующегося RRN оставлена только последняя строка. ${removedText}`;
+    }
+    return 'Дубликаты не удалялись: все повторяющиеся строки были оставлены и сопоставлены между собой.';
+  }, [reconData]);
+
   const rrnSelectionDiagnostic = useMemo(() => {
     const sampleValues = (rows: RawRow[], column: string) => {
       if (!column) return [];
