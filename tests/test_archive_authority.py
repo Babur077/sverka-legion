@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 import utils.db_manager as db
+import utils.permissions as permissions
 from backend.app.repositories.run_results import cache_run_result
 from backend.app.services.archive_authority import (
     prepare_authoritative_archive_payload,
@@ -14,6 +15,7 @@ from backend.app.services.archive_authority import (
 def _init(tmp_path, monkeypatch):
     db_path = tmp_path / "authoritative_archive.db"
     monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    monkeypatch.setattr(permissions, "DB_PATH", str(db_path))
     db.init_db()
     return db_path
 
