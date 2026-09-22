@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Archive, Eye, Search, Trash2, RefreshCw, X, Terminal } from 'lucide-react';
 import { ReconciliationArchive, User } from '../types';
 import { hasPermission } from '../utils/permissions';
-import { deleteBankRrnArchive, getBankRrnArchive } from '../utils/archiveApi';
+import { deleteBankRrnArchive, getBankRrnArchive, getBankRrnArchiveRecord } from '../utils/archiveApi';
 import { ConfirmModal } from './Modal';
 import { getReconciliationQuality } from '../utils/reconciliationMetrics';
 
@@ -28,6 +28,7 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
   const [query, setQuery] = useState('');
   const [month, setMonth] = useState('(Все)');
   const [selected, setSelected] = useState<ReconciliationArchive | null>(null);
+  const [selectedLoadingId, setSelectedLoadingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ReconciliationArchive | null>(null);
 
   const months = useMemo(() => Array.from(new Set(archive.map(archiveMonthValue))).sort().reverse(), [archive]);
@@ -51,6 +52,18 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
   };
 
   React.useEffect(() => { refresh(); }, [user.username]);
+
+  const openArchiveRecord = async (record: ReconciliationArchive) => {
+    setSelectedLoadingId(record.id);
+    try {
+      setSelected(await getBankRrnArchiveRecord(user.username, record.id));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSelectedLoadingId(null);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     try {
@@ -93,7 +106,16 @@ export const BankRrnArchive: React.FC<Props> = ({ user, onNewReconciliation }) =
 
     <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900">Результаты</div><div className="text-xs text-slate-500 mt-0.5">Показано {filtered.length} из {archive.length}</div></div>
-      {filtered.length === 0 ? <div className="p-12 text-center text-slate-500 text-sm">Записи не найдены.</div> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['Дата', 'Месяц', 'Банк', 'TID архива', 'Оператор', 'Сумма банка', 'Комиссия', 'Δ', 'Точное совпадение', 'Действия'].map(h => <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{filtered.map(a => { const quality = getReconciliationQuality(a.matched_count, a.mismatch_count, a.only_our_count, a.only_bank_count); const rate = quality.exactMatchRate; return <tr key={a.id} className="hover:bg-slate-50"><td className="px-5 py-3.5 whitespace-nowrap">{new Date(a.timestamp).toLocaleString('ru-RU')}</td><td className="px-5 py-3.5 whitespace-nowrap font-medium text-slate-700">{archiveMonthLabel(a)}</td><td className="px-5 py-3.5 font-medium">{a.bank_name}</td><td className="px-5 py-3.5 font-mono text-slate-700">{a.assigned_terminal_id || ((a.terminals_summary || []).length === 1 ? a.terminals_summary?.[0]?.terminal_id : '—')}</td><td className="px-5 py-3.5 text-slate-600">{a.username}</td><td className="px-5 py-3.5 text-slate-600">{money(a.total_bank)}</td><td className="px-5 py-3.5 text-violet-700 font-semibold">{money(a.total_commission || 0)}</td><td className={`px-5 py-3.5 font-medium ${a.difference === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>{money(a.difference)}</td><td className="px-5 py-3.5"><span className="font-semibold">{rate.toFixed(1)}%</span><span className="text-xs text-slate-400 ml-2">({quality.exactMatched})</span></td><td className="px-5 py-3.5"><div className="flex items-center gap-1"><button onClick={() => setSelected(a)} className="p-2 rounded-lg hover:bg-indigo-50 text-slate-500 hover:text-indigo-600" title="Просмотр"><Eye className="w-4 h-4" /></button>{canRun && <button onClick={() => setDeleteTarget(a)} className="p-2 rounded-lg hover:bg-rose-50 text-slate-500 hover:text-rose-600" title="Удалить"><Trash2 className="w-4 h-4" /></button>}</div></td></tr>; })}</tbody></table></div>}
+      {filtered.length === 0 ? <div className="p-12 text-center text-slate-500 text-sm">Записи не найдены.</div> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['Дата', 'Месяц', 'Банк', 'TID архива', 'Оператор', 'Сумма банка', 'Комиссия', 'Δ', 'Точное совпадение', 'Действия'].map(h => <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{filtered.map(a => { const quality = getReconciliationQuality(a.matched_count, a.mismatch_count, a.only_our_count, a.only_bank_count); const rate = quality.exactMatchRate; return <tr key={a.id} className="hover:bg-slate-50"><td className="px-5 py-3.5 whitespace-nowrap">{new Date(a.timestamp).toLocaleString('ru-RU')}</td><td className="px-5 py-3.5 whitespace-nowrap font-medium text-slate-700">{archiveMonthLabel(a)}</td><td className="px-5 py-3.5 font-medium">{a.bank_name}</td><td className="px-5 py-3.5 font-mono text-slate-700">{a.assigned_terminal_id || ((a.terminals_summary || []).length === 1 ? a.terminals_summary?.[0]?.terminal_id : '—')}</td><td className="px-5 py-3.5 text-slate-600">{a.username}</td><td className="px-5 py-3.5 text-slate-600">{money(a.total_bank)}</td><td className="px-5 py-3.5 text-violet-700 font-semibold">{money(a.total_commission || 0)}</td><td className={`px-5 py-3.5 font-medium ${a.difference === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>{money(a.difference)}</td><td className="px-5 py-3.5"><span className="font-semibold">{rate.toFixed(1)}%</span><span className="text-xs text-slate-400 ml-2">({quality.exactMatched})</span></td><td className="px-5 py-3.5"><div className="flex items-center gap-1"><button
+                  onClick={() => void openArchiveRecord(a)}
+                  disabled={selectedLoadingId === a.id}
+                  className="p-2 rounded-lg hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 disabled:opacity-50"
+                  title="Просмотр"
+                >
+                  {selectedLoadingId === a.id
+                    ? <RefreshCw className="w-4 h-4 animate-spin" />
+                    : <Eye className="w-4 h-4" />}
+                </button>{canRun && <button onClick={() => setDeleteTarget(a)} className="p-2 rounded-lg hover:bg-rose-50 text-slate-500 hover:text-rose-600" title="Удалить"><Trash2 className="w-4 h-4" /></button>}</div></td></tr>; })}</tbody></table></div>}
     </div>
 
     {selected && <div className="fixed inset-0 z-50 bg-slate-950/40 flex items-center justify-center p-4" onClick={() => setSelected(null)}>
