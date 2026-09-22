@@ -71,30 +71,37 @@ export async function saveBankRrnArchive(
     assigned_terminal_id?: string;
     terminals_summary?: ReconciliationResult['terminal_summary'];
   },
-  context?: {
+  _context?: {
     source_our_name?: string;
     source_bank_name?: string;
     config?: Record<string, any>;
   },
 ): Promise<string> {
+  const excludedOurIndices: number[] = [];
+  const excludedBankIndices: number[] = [];
+  const reasonsOur: Record<string, string> = {};
+  const reasonsBank: Record<string, string> = {};
+
+  result.only_our.forEach((row, index) => {
+    if (!row.checked) excludedOurIndices.push(index);
+    if (row.reason) reasonsOur[String(index)] = String(row.reason);
+  });
+  result.only_bank.forEach((row, index) => {
+    if (!row.checked) excludedBankIndices.push(index);
+    if (row.reason) reasonsBank[String(index)] = String(row.reason);
+  });
+
   const saved = await saveModuleArchive(username, 'bank_rrn', {
-    bank_name: bankName,
-    total_our: totals.total_our,
-    total_bank: totals.total_bank,
-    difference: totals.difference,
-    matched_count: result.matched_count,
-    mismatch_count: result.mismatch_count,
-    only_our_count: totals.only_our_count ?? result.only_our.length,
-    only_bank_count: totals.only_bank_count ?? result.only_bank.length,
-    period_month: totals.period_month,
-    total_commission: totals.total_commission ?? result.total_commission ?? 0,
-    assigned_terminal_id: totals.assigned_terminal_id || null,
-    terminals_summary: totals.terminals_summary ?? result.terminal_summary ?? [],
     run_id: result.run_id || null,
-    source_our_name: context?.source_our_name || '',
-    source_bank_name: context?.source_bank_name || '',
-    config: context?.config || {},
-    status: 'COMPLETED',
+    bank_name: bankName,
+    period_month: totals.period_month,
+    assigned_terminal_id: totals.assigned_terminal_id || null,
+    review: {
+      excluded_our_indices: excludedOurIndices,
+      excluded_bank_indices: excludedBankIndices,
+      reasons_our: reasonsOur,
+      reasons_bank: reasonsBank,
+    },
   });
   return saved.message;
 }
