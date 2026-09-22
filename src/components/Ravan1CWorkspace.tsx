@@ -16,7 +16,6 @@ import { User } from '../types';
 import { hasPermission } from '../utils/permissions';
 import { Ravan1CArchive } from './Ravan1CArchive';
 import {
-  confirmRavan1CFuzzyMatch,
   deleteRavan1CArchive,
   exportRavan1CToExcel,
   getRavan1CArchive,
@@ -25,8 +24,7 @@ import {
   Ravan1CRunResult,
   runRavan1C,
   saveRavan1CRun,
-  saveRavan1CSnapshot,
-  unlinkRavan1CFuzzyMatch,
+  updateRavan1CMatchDecision,
 } from '../utils/ravan1cApi';
 
 interface Props {
@@ -217,15 +215,20 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
     });
   };
 
-  const persistReviewedResult = async (
+  const persistReviewedDecision = async (
     rowId: string,
-    next: Ravan1CRunResult,
+    decision: 'confirm' | 'unlink',
     successText: string,
   ) => {
-    if (!canRun || reviewSavingId) return;
+    if (!canRun || reviewSavingId || !result?.run_id) return;
     setReviewSavingId(rowId);
     try {
-      await saveRavan1CSnapshot(user.username, next);
+      const next = await updateRavan1CMatchDecision(
+        user.username,
+        result.run_id,
+        rowId,
+        decision,
+      );
       setResult(next);
       setMessage({ type: 'success', text: successText });
       await loadArchive();
@@ -241,10 +244,9 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
 
   const handleConfirmFuzzyMatch = async (row: Ravan1CRow) => {
     if (!result || !row.Row_ID) return;
-    const next = confirmRavan1CFuzzyMatch(result, row.Row_ID);
-    await persistReviewedResult(
+    await persistReviewedDecision(
       row.Row_ID,
-      next,
+      'confirm',
       'Сопоставление подтверждено и сохранено в архиве.',
     );
   };
@@ -256,10 +258,9 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
     );
     if (!confirmed) return;
 
-    const next = unlinkRavan1CFuzzyMatch(result, row.Row_ID);
-    await persistReviewedResult(
+    await persistReviewedDecision(
       row.Row_ID,
-      next,
+      'unlink',
       'Контрагенты отвязаны. Изменение сохранено в архиве.',
     );
   };
