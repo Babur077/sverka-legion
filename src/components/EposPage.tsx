@@ -10,6 +10,28 @@ interface EposPageProps {
   user: User;
 }
 
+const COMMISSION_INPUT_RE = /^\d{0,3}(?:[.,]\d{0,6})?$/;
+
+function parseCommissionPct(value: string): number | null {
+  const normalized = value.trim().replace(',', '.');
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return null;
+  return parsed;
+}
+
+function formatCommissionInput(value: number): string {
+  if (!Number.isFinite(value)) return '';
+  return String(value).replace('.', ',');
+}
+
+function formatCommissionDisplay(value: number): string {
+  return Number(value || 0).toLocaleString('ru-RU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 6,
+  });
+}
+
 export const EposPage: React.FC<EposPageProps> = ({ user }) => {
   const canManage = hasPermission(user, 'epos.manage');
   const [terminals, setTerminals] = useState<EposTerminal[]>([]);
@@ -43,7 +65,7 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
 
   const [tid, setTid] = useState('');
   const [mid, setMid] = useState('');
-  const [commPct, setCommPct] = useState<number>(1.2);
+  const [commPctInput, setCommPctInput] = useState<string>('1,2');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Sorting
@@ -67,7 +89,7 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
     // Auto-suggest commission if terminal with this bank already exists
     const existing = terminals.find(t => t.bank_acquirer.toLowerCase() === bankName.toLowerCase());
     if (existing) {
-      setCommPct(existing.commission_pct);
+      setCommPctInput(formatCommissionInput(existing.commission_pct));
     }
   };
 
@@ -99,6 +121,15 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
       return;
     }
 
+    const commissionPct = parseCommissionPct(commPctInput);
+    if (commissionPct === null) {
+      setMessage({
+        type: 'error',
+        text: 'Введите корректную комиссию от 0 до 100%. Можно использовать запятую или точку, например 0,363.',
+      });
+      return;
+    }
+
     // If TID is left blank, auto-generate standard TID based on bank name
     const cleanTid = tid.trim() || `TID_${bankName.replace(/\s+/g, '_').toUpperCase()}_${Date.now().toString().slice(-4)}`;
     const cleanMid = mid.trim() || `MID_${bankName.replace(/\s+/g, '_').toUpperCase()}`;
@@ -107,7 +138,7 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
       terminal_id: cleanTid,
       merchant_id: cleanMid,
       bank_acquirer: bankName,
-      commission_pct: commPct,
+      commission_pct: commissionPct,
       is_active: true,
     };
 
@@ -323,17 +354,25 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
               <div className="relative">
                 <input
                   id="epos-commission"
-                  type="number"
-                  step="0.05"
-                  min="0"
-                  max="100"
-                  value={commPct}
-                  onChange={(e) => setCommPct(parseFloat(e.target.value) || 0)}
-                  className="w-full py-2 px-3 border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 font-semibold"
+                  type="text"
+                  inputMode="decimal"
+                  value={commPctInput}
+                  onChange={(e) => {
+                    const next = e.target.value.replace(/\s+/g, '');
+                    if (next === '' || COMMISSION_INPUT_RE.test(next)) {
+                      setCommPctInput(next);
+                    }
+                  }}
+                  placeholder="напр. 0,363"
+                  aria-describedby="epos-commission-hint"
+                  className="w-full py-2 pl-3 pr-8 border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 font-semibold tabular-nums"
                   required
                 />
                 <span className="absolute right-3 top-2 text-slate-400 font-semibold">%</span>
               </div>
+              <p id="epos-commission-hint" className="mt-1 text-[10px] text-slate-400">
+                До 6 знаков после запятой. Поддерживаются запятая и точка: 0,36 · 0,363 · 0.363
+              </p>
             </div>
 
             <button
@@ -432,7 +471,7 @@ export const EposPage: React.FC<EposPageProps> = ({ user }) => {
                       <td className="px-3 py-2.5 font-mono font-bold text-slate-700">{t.terminal_id}</td>
                       <td className="px-3 py-2.5 font-mono text-slate-500">{t.merchant_id || '—'}</td>
                       <td className="px-3 py-2.5 text-right font-bold text-slate-900 tabular-nums">
-                        {t.commission_pct.toFixed(2)}%
+                        {formatCommissionDisplay(t.commission_pct)}%
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         <input
