@@ -131,6 +131,56 @@ def test_amount_mismatch_is_reported():
     assert result["amt_mismatches"].iloc[0]["status_bank"] == "OK"
 
 
+def test_amount_mismatch_totals_show_full_compensation():
+    our = frame([
+        {"date": "2026-09-01", "rrn": "A1", "amount": "100", "status": "OK"},
+        {"date": "2026-09-01", "rrn": "A2", "amount": "200", "status": "OK"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "A1", "amount": "110", "status": "OK"},
+        {"date": "2026-09-01", "rrn": "A2", "amount": "190", "status": "OK"},
+    ])
+
+    result = run_rrn_reconciliation(our, bank, base_cfg())
+
+    assert result["mismatch_count"] == 2
+    assert result["amount_mismatch_net_delta"] == pytest.approx(0)
+    assert result["amount_mismatch_abs_delta"] == pytest.approx(20)
+    assert result["amount_mismatch_positive_delta"] == pytest.approx(10)
+    assert result["amount_mismatch_negative_delta"] == pytest.approx(-10)
+    assert result["amount_mismatch_invalid_delta_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("dup_action", "expected_removed"),
+    [
+        ("Ничего не делать (оставить все)", 0),
+        ("Оставить первую строку", 2),
+        ("Оставить последнюю строку", 2),
+        ("Удалить все дубли (и оригинал)", 3),
+    ],
+)
+def test_duplicate_processing_reports_removed_rows(dup_action, expected_removed):
+    rows = [
+        {"date": "2026-09-01", "rrn": "DUP-1", "amount": "100", "status": "OK"},
+        {"date": "2026-09-02", "rrn": "DUP-1", "amount": "100", "status": "OK"},
+        {"date": "2026-09-03", "rrn": "DUP-1", "amount": "100", "status": "OK"},
+    ]
+
+    result = run_rrn_reconciliation(
+        frame(rows),
+        frame(rows),
+        base_cfg(dup_action=dup_action),
+    )
+
+    assert result["dup_our_c"] == 3
+    assert result["dup_bank_c"] == 3
+    assert result["dup_our_rrn_c"] == 1
+    assert result["dup_bank_rrn_c"] == 1
+    assert result["dup_removed_our_c"] == expected_removed
+    assert result["dup_removed_bank_c"] == expected_removed
+
+
 def test_reversal_status_can_zero_out_transaction():
     our = frame([
         {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "REFUND - client request"},
@@ -233,13 +283,15 @@ def test_epos_commission_is_joined_and_can_be_deducted():
 
 
 
-def test_ui_reversal_labels_are_applied_case_insensitively_and_keep_null_status_rows():
+def test_delete_approved_keeps_reversal_and_unrelated_rows():
     our = frame([
-        {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "REFUND"},
+        {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "APPROVED"},
+        {"date": "2026-09-01", "rrn": "R100", "amount": "-500", "status": "REFUND"},
         {"date": "2026-09-01", "rrn": "R101", "amount": "700", "status": None},
     ])
     bank = frame([
-        {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "refund"},
+        {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "approved"},
+        {"date": "2026-09-01", "rrn": "R100", "amount": "-500", "status": "refund"},
         {"date": "2026-09-01", "rrn": "R101", "amount": "700", "status": None},
     ])
 
@@ -247,16 +299,68 @@ def test_ui_reversal_labels_are_applied_case_insensitively_and_keep_null_status_
         our,
         bank,
         base_cfg(
-            our_rev="Удалить строку",
-            bank_rev="Удалить строку",
+            our_rev="Удалить approved",
+            bank_rev="Удалить approved",
             rev_words=["Refund"],
         ),
     )
 
-    assert result["matched_count"] == 1
+    assert result["matched_count"] == 2
     assert result["mismatch_count"] == 0
+    assert result["summary"].iloc[-1]["Кол_во_у_нас"] == 2
+    assert result["summary"].iloc[-1]["Кол_во_в_банке"] == 2
+    assert result["summary"].iloc[-1]["Сумма_у_нас"] == 200
+    assert result["summary"].iloc[-1]["Сумма_в_банке"] == 200
+
+
+def test_delete_approved_and_reversed_removes_entire_reversal_rrn():
+    our = frame([
+        {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "APPROVED"},
+        {"date": "2026-09-01", "rrn": "R100", "amount": "-500", "status": "REFUND"},
+        {"date": "2026-09-01", "rrn": "R101", "amount": "700", "status": "APPROVED"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "APPROVED"},
+        {"date": "2026-09-01", "rrn": "R100", "amount": "-500", "status": "REFUND"},
+        {"date": "2026-09-01", "rrn": "R101", "amount": "700", "status": "APPROVED"},
+    ])
+
+    result = run_rrn_reconciliation(
+        our,
+        bank,
+        base_cfg(
+            our_rev="Удалить approved и reversed",
+            bank_rev="Удалить approved и reversed",
+            rev_words=["refund"],
+        ),
+    )
+
+    assert result["matched_count"] == 1
     assert result["summary"].iloc[-1]["Кол_во_у_нас"] == 1
     assert result["summary"].iloc[-1]["Кол_во_в_банке"] == 1
+    assert result["summary"].iloc[-1]["Сумма_у_нас"] == 700
+    assert result["summary"].iloc[-1]["Сумма_в_банке"] == 700
+
+
+def test_legacy_delete_row_label_maps_to_delete_approved_semantics():
+    our = frame([
+        {"date": "2026-09-01", "rrn": "R100", "amount": "100", "status": "APPROVED"},
+        {"date": "2026-09-01", "rrn": "R100", "amount": "-100", "status": "REFUND"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "R100", "amount": "100", "status": "APPROVED"},
+        {"date": "2026-09-01", "rrn": "R100", "amount": "-100", "status": "REFUND"},
+    ])
+
+    result = run_rrn_reconciliation(
+        our,
+        bank,
+        base_cfg(our_rev="Удалить строку", bank_rev="Удалить строку"),
+    )
+
+    assert result["matched_count"] == 1
+    assert result["summary"].iloc[-1]["Сумма_у_нас"] == -100
+    assert result["summary"].iloc[-1]["Сумма_в_банке"] == -100
 
 
 def test_unbind_mismatch_only_splits_the_mismatching_duplicate_row():
