@@ -3,6 +3,7 @@ import os
 import hashlib
 import secrets
 import json
+import re
 import warnings
 from datetime import datetime
 
@@ -434,29 +435,33 @@ def save_reconciliation_run(
             return False, f"Ошибка при сохранении: {exc}", None
 
 
+def _json_prefix_value(prefix: str, key: str):
+    """Extract a simple top-level JSON scalar from a small payload prefix.
+
+    Legacy archive rows kept list metadata only in payload_json. Reading a
+    bounded prefix avoids loading/parsing a potentially huge result_snapshot.
+    """
+    if not prefix:
+        return None
+    token = (
+        r'"' + re.escape(key) + r'"\\s*:\\s*'
+        r'("(?:\\\\.|[^"\\\\])*"|null|true|false|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)'
+    )
+    match = re.search(token, prefix)
+    if not match:
+        return None
+    try:
+        return json.loads(match.group(1))
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
 def get_reconciliation_run_summaries(module_id: str | None = None) -> list[dict]:
     """Return lightweight archive rows without loading full payload_json snapshots."""
     query = """
         SELECT id, module_id, run_id, status, period_month, created_at, updated_at,
                created_by, source_files_json, summary_json, review_status,
-               json_extract(
-                   payload_json,
-                   '$.bank_name',
-                   '$.assigned_terminal_id',
-                   '$.total_our',
-                   '$.total_bank',
-                   '$.difference',
-                   '$.matched_count',
-                   '$.mismatch_count',
-                   '$.only_our_count',
-                   '$.only_bank_count',
-                   '$.total_commission',
-                   '$.source_our_name',
-                   '$.source_bank_name',
-                   '$.archive_schema_version',
-                   '$.producer',
-                   '$.sum_tolerance'
-               ) AS legacy_meta_json
+               substr(payload_json, 1, 32768) AS payload_prefix
         FROM reconciliation_runs
     """
     params: tuple = ()
@@ -468,24 +473,6 @@ def get_reconciliation_run_summaries(module_id: str | None = None) -> list[dict]
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(query, params).fetchall()
-
-    legacy_keys = [
-        "bank_name",
-        "assigned_terminal_id",
-        "total_our",
-        "total_bank",
-        "difference",
-        "matched_count",
-        "mismatch_count",
-        "only_our_count",
-        "only_bank_count",
-        "total_commission",
-        "source_our_name",
-        "source_bank_name",
-        "archive_schema_version",
-        "producer",
-        "sum_tolerance",
-    ]
 
     records: list[dict] = []
     for row in rows:
@@ -504,25 +491,15 @@ def get_reconciliation_run_summaries(module_id: str | None = None) -> list[dict]
         if not isinstance(source_files, list):
             source_files = []
 
-        legacy_values = []
-        try:
-            parsed_legacy = json.loads(raw.get("legacy_meta_json") or "[]")
-            if isinstance(parsed_legacy, list):
-                legacy_values = parsed_legacy
-        except (TypeError, json.JSONDecodeError):
-            legacy_values = []
-        legacy = {
-            key: legacy_values[index] if index < len(legacy_values) else None
-            for index, key in enumerate(legacy_keys)
-        }
+        prefix = str(raw.get("payload_prefix") or "")
 
         def pick(name: str, *fallback_names: str, default=None):
             for candidate in (name, *fallback_names):
                 value = summary.get(candidate)
                 if value is not None:
                     return value
-            value = legacy.get(name)
-            return default if value is None else value
+            legacy = _json_prefix_value(prefix, name)
+            return default if legacy is None else legacy
 
         total_our = pick("total_our", "total_sum_a", default=0)
         total_bank = pick("total_bank", "total_sum_b", default=0)
@@ -556,6 +533,7 @@ def get_reconciliation_run_summaries(module_id: str | None = None) -> list[dict]
             "mismatch_count": int(mismatch_count or 0),
             "only_our_count": int(only_our_count or 0),
             "only_bank_count": int(only_bank_count or 0),
+            "match_percentage": float(pick("match_percentage", default=0) or 0),
             "total_commission": float(total_commission or 0),
             "source_our_name": pick(
                 "source_our_name",
