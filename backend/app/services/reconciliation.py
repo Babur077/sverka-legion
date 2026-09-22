@@ -8,6 +8,7 @@ from fastapi import HTTPException, Request
 
 from backend.app.http_utils import json_safe
 from backend.app.repositories.run_results import cache_run_result
+from backend.app.services.archive_authority import prepare_authoritative_archive_payload
 from backend.app.repositories.runs import delete_run, list_runs, save_run
 from modules.registry import module_registry
 from utils.permissions import record_audit_event
@@ -102,7 +103,12 @@ def save_module_run(
     allow_owner_override: bool = False,
 ) -> dict:
     require_module(module_id)
-    normalized = dict(payload or {})
+    normalized = prepare_authoritative_archive_payload(
+        module_id,
+        username,
+        dict(payload or {}),
+        allow_owner_override=allow_owner_override,
+    )
     if not normalized.get("period_month"):
         normalized["period_month"] = datetime.now().strftime("%Y-%m")
 
