@@ -20,6 +20,27 @@ export async function getModuleArchive<T = Record<string, any>>(
   return apiRequest('/api/modules/' + encodeURIComponent(moduleId) + '/archive', username);
 }
 
+export async function getModuleArchiveSummary<T = Record<string, any>>(
+  username: string,
+  moduleId: string,
+): Promise<T[]> {
+  return apiRequest(
+    '/api/modules/' + encodeURIComponent(moduleId) + '/archive?summary_only=true',
+    username,
+  );
+}
+
+export async function getModuleArchiveRecord<T = Record<string, any>>(
+  username: string,
+  moduleId: string,
+  recordId: number,
+): Promise<T> {
+  return apiRequest(
+    '/api/modules/' + encodeURIComponent(moduleId) + '/archive/' + recordId,
+    username,
+  );
+}
+
 export async function saveModuleArchive(
   username: string,
   moduleId: string,
@@ -53,7 +74,14 @@ export async function deleteModuleArchive(
 }
 
 export async function getBankRrnArchive(username: string): Promise<ReconciliationArchive[]> {
-  return getModuleArchive<ReconciliationArchive>(username, 'bank_rrn');
+  return getModuleArchiveSummary<ReconciliationArchive>(username, 'bank_rrn');
+}
+
+export async function getBankRrnArchiveRecord(
+  username: string,
+  id: number,
+): Promise<ReconciliationArchive> {
+  return getModuleArchiveRecord<ReconciliationArchive>(username, 'bank_rrn', id);
 }
 
 export async function saveBankRrnArchive(
