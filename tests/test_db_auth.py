@@ -59,3 +59,24 @@ def test_legacy_sha256_password_is_rehashed_after_successful_login(tmp_path, mon
     assert "$" in upgraded_hash
     assert upgraded_hash != legacy_hash
     assert db_manager.verify_password(password, upgraded_hash)
+
+
+def test_epos_registry_preserves_fractional_commission_precision(tmp_path, monkeypatch):
+    db_path = tmp_path / "epos_precision.db"
+    monkeypatch.setattr(db_manager, "DB_PATH", str(db_path))
+    monkeypatch.setenv("RECONCILEHUB_ADMIN_PASSWORD", "test-admin-password")
+    db_manager.init_db()
+
+    ok, message = db_manager.add_epos_terminal(
+        "T-PRECISE",
+        "MID-PRECISE",
+        "Precision Bank",
+        "",
+        0.363,
+    )
+
+    assert ok is True, message
+    registry = db_manager.get_epos_registry()
+    row = registry.loc[registry["terminal_id"] == "T-PRECISE"].iloc[0]
+    assert float(row["commission_pct"]) == pytest.approx(0.363)
+
