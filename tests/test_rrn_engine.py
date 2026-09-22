@@ -91,6 +91,29 @@ def test_alphanumeric_rrn_keeps_leading_zero_semantics():
     assert len(result["only_bank"]) == 1
 
 
+def test_api_mode_skips_full_merged_materialization_and_keeps_unbind_results():
+    our = frame([
+        {"date": "2026-09-01", "rrn": "A100", "amount": "100", "status": "OK"},
+        {"date": "2026-09-01", "rrn": "A200", "amount": "200", "status": "OK"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "A100", "amount": "101", "status": "OK"},
+        {"date": "2026-09-01", "rrn": "A200", "amount": "200", "status": "OK"},
+    ])
+
+    result = run_rrn_reconciliation(
+        our,
+        bank,
+        base_cfg(include_merged=False, unbind_mismatches=True),
+    )
+
+    assert result["merged"] is None
+    assert result["rrn_found_count"] == 2
+    assert result["unbound_mismatch_count"] == 1
+    assert len(result["only_our"]) == 1
+    assert len(result["only_bank"]) == 1
+
+
 def test_amount_mismatch_is_reported():
     our = frame([
         {"date": "2026-09-01", "rrn": "A100", "amount": "1000", "status": "OK"},
