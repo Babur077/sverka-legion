@@ -10,7 +10,13 @@ from fastapi import HTTPException, Request
 from backend.app.http_utils import json_safe
 from backend.app.repositories.run_results import cache_run_result
 from backend.app.services.archive_authority import prepare_authoritative_archive_payload
-from backend.app.repositories.runs import delete_run, list_runs, save_run
+from backend.app.repositories.runs import (
+    delete_run,
+    get_run,
+    list_run_summaries,
+    list_runs,
+    save_run,
+)
 from modules.registry import module_registry
 from utils.permissions import record_audit_event
 
@@ -173,9 +179,17 @@ def save_module_run(
     return {"success": True, "message": message, "id": record_id}
 
 
-def list_module_runs(module_id: str) -> list[dict]:
+def list_module_runs(module_id: str, *, summary_only: bool = False) -> list[dict]:
     require_module(module_id)
-    return list_runs(module_id)
+    return list_run_summaries(module_id) if summary_only else list_runs(module_id)
+
+
+def get_module_run(module_id: str, record_id: int) -> dict:
+    require_module(module_id)
+    record = get_run(module_id, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Запись архива не найдена")
+    return record
 
 
 def remove_module_run(
