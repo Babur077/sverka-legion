@@ -4,6 +4,7 @@ import io
 
 from openpyxl import Workbook
 
+import core.parsers as parsers
 from backend.app.services.source_preview import preview_source_file
 from core.parsers import load_file_polars
 
@@ -39,6 +40,24 @@ def test_excel_named_sheet_and_header_row_are_applied():
     assert frame.height == 2
     assert str(frame["RRN"][0]) == "00123"
     assert frame["Сумма"][1] == 200000
+
+
+def test_named_sheet_custom_header_uses_calamine_before_pandas(monkeypatch):
+    def fail_pandas(*_args, **_kwargs):
+        raise AssertionError("pandas.read_excel fallback should not be used")
+
+    monkeypatch.setattr(parsers.pd, "read_excel", fail_pandas)
+
+    frame = load_file_polars(
+        _xlsx_with_custom_sheet_and_header(),
+        "sample.xlsx",
+        sheet_name="Transactions",
+        header_row=3,
+    )
+
+    assert frame.columns == ["Дата", "RRN", "Сумма"]
+    assert frame.height == 2
+    assert str(frame["RRN"][0]) == "00123"
 
 
 def test_csv_header_row_is_applied_before_delimiter_detection():
