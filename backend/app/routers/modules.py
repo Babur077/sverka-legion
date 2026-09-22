@@ -50,7 +50,12 @@ async def save_module_archive(
     perms = get_user_permissions(x_user)
     if not has_permission(perms, f"{module_id}.run") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Нет прав на сохранение результата сверки")
-    return save_module_run(module_id, x_user or "", payload)
+    return save_module_run(
+        module_id,
+        x_user or "",
+        payload,
+        allow_owner_override="*" in perms,
+    )
 
 
 @router.get("/{module_id}/archive")
@@ -77,7 +82,12 @@ async def remove_module_archive(
     perms = get_user_permissions(x_user)
     if not has_permission(perms, f"{module_id}.run") and "*" not in perms:
         raise HTTPException(status_code=403, detail="Нет прав на удаление записи архива")
-    remove_module_run(module_id, record_id, x_user or "")
+    remove_module_run(
+        module_id,
+        record_id,
+        x_user or "",
+        allow_owner_override="*" in perms,
+    )
     return {"success": True}
 
 
