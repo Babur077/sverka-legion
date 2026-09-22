@@ -111,18 +111,10 @@ export async function runRavan1C(
 export async function saveRavan1CSnapshot(
   username: string,
   result: Ravan1CRunResult,
-  sourceFiles?: string[],
+  _sourceFiles?: string[],
 ): Promise<string> {
-  const metrics = result.custom_metrics?.ravan_1c;
   const saved = await saveModuleArchive(username, 'ravan_1c', {
     run_id: result.run_id,
-    status: result.status,
-    source_files: sourceFiles || metrics?.source_files || [],
-    summary: result.summary,
-    producer: 'Sayfulloh Abdusalomov',
-    sum_tolerance: metrics?.sum_tolerance ?? 1,
-    result_snapshot: result,
-    archive_schema_version: 2,
   });
   return saved.message;
 }
@@ -147,6 +139,30 @@ export async function getRavan1CArchive(username: string): Promise<Ravan1CArchiv
 
 export async function deleteRavan1CArchive(username: string, id: number): Promise<void> {
   await deleteModuleArchive(username, 'ravan_1c', id);
+}
+
+export async function updateRavan1CMatchDecision(
+  _username: string,
+  runId: string,
+  rowId: string,
+  decision: 'confirm' | 'unlink',
+): Promise<Ravan1CRunResult> {
+  const response = await apiFetch(
+    '/api/modules/ravan_1c/archive/'
+      + encodeURIComponent(runId)
+      + '/matches/'
+      + encodeURIComponent(rowId),
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision }),
+    },
+  );
+  const payload = await readJson(response);
+  if (!payload?.result_snapshot) {
+    throw new Error('Сервер не вернул обновлённый snapshot сверки.');
+  }
+  return payload.result_snapshot as Ravan1CRunResult;
 }
 
 const RAVAN_STATUS_ORDER = [
