@@ -236,8 +236,14 @@ def _json_text(value, fallback):
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
-def save_reconciliation_run(module_id: str, user: str, payload: dict):
-    """Create/update one module run in the shared reconciliation journal."""
+def save_reconciliation_run(
+    module_id: str,
+    user: str,
+    payload: dict,
+    *,
+    allow_owner_override: bool = False,
+):
+    """Create/update one module run while preserving archive ownership."""
     normalized_module_id = str(module_id or "").strip()
     if not normalized_module_id:
         return False, "module_id обязателен", None
@@ -284,7 +290,7 @@ def save_reconciliation_run(module_id: str, user: str, payload: dict):
             if run_id:
                 existing = cursor.execute(
                     """
-                    SELECT id, created_at
+                    SELECT id, created_at, created_by
                     FROM reconciliation_runs
                     WHERE module_id = ? AND run_id = ?
                     ORDER BY id DESC LIMIT 1
@@ -292,32 +298,38 @@ def save_reconciliation_run(module_id: str, user: str, payload: dict):
                     (normalized_module_id, run_id),
                 ).fetchone()
 
-            values = (
-                normalized_module_id,
-                run_id,
-                status,
-                period_month,
-                existing[1] if existing else now,
-                now,
-                str(user or ""),
-                _json_text(source_files, []),
-                _json_text(summary, {}),
-                _json_text(payload, {}),
-                review_status,
-            )
-
             if existing:
                 record_id = int(existing[0])
+                created_by = str(existing[2] or "")
+                if created_by != str(user or "") and not allow_owner_override:
+                    return (
+                        False,
+                        "Нет прав на изменение архивной записи другого пользователя.",
+                        record_id,
+                    )
+
                 cursor.execute(
                     """
                     UPDATE reconciliation_runs
                     SET module_id = ?, run_id = ?, status = ?, period_month = ?,
-                        created_at = ?, updated_at = ?, created_by = ?,
+                        created_at = ?, updated_at = ?,
                         source_files_json = ?, summary_json = ?, payload_json = ?,
                         review_status = ?
                     WHERE id = ?
                     """,
-                    values + (record_id,),
+                    (
+                        normalized_module_id,
+                        run_id,
+                        status,
+                        period_month,
+                        existing[1],
+                        now,
+                        _json_text(source_files, []),
+                        _json_text(summary, {}),
+                        _json_text(payload, {}),
+                        review_status,
+                        record_id,
+                    ),
                 )
                 message = f"Сверка #{record_id} обновлена в системном журнале."
             else:
@@ -330,7 +342,19 @@ def save_reconciliation_run(module_id: str, user: str, payload: dict):
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    values,
+                    (
+                        normalized_module_id,
+                        run_id,
+                        status,
+                        period_month,
+                        now,
+                        now,
+                        str(user or ""),
+                        _json_text(source_files, []),
+                        _json_text(summary, {}),
+                        _json_text(payload, {}),
+                        review_status,
+                    ),
                 )
                 record_id = int(cursor.lastrowid)
                 message = f"Сверка #{record_id} сохранена в системный журнал."
@@ -397,14 +421,29 @@ def get_reconciliation_runs(module_id: str | None = None) -> list[dict]:
     return records
 
 
-def delete_reconciliation_run(module_id: str, record_id: int) -> bool:
-    """Delete exactly one run from one module archive."""
+def delete_reconciliation_run(
+    module_id: str,
+    record_id: int,
+    user: str | None = None,
+    *,
+    allow_owner_override: bool = False,
+) -> bool:
+    """Delete one run, restricted to its owner unless an explicit override is allowed."""
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "DELETE FROM reconciliation_runs WHERE id = ? AND module_id = ?",
-            (int(record_id), str(module_id)),
-        )
+        if allow_owner_override:
+            cursor.execute(
+                "DELETE FROM reconciliation_runs WHERE id = ? AND module_id = ?",
+                (int(record_id), str(module_id)),
+            )
+        else:
+            cursor.execute(
+                """
+                DELETE FROM reconciliation_runs
+                WHERE id = ? AND module_id = ? AND created_by = ?
+                """,
+                (int(record_id), str(module_id), str(user or "")),
+            )
         conn.commit()
         return cursor.rowcount > 0
 
@@ -470,8 +509,8 @@ def get_archive_data() -> pd.DataFrame:
     return pd.DataFrame(compatible)
 
 
-def delete_archive_record(record_id: int):
-    return delete_reconciliation_run("bank_rrn", record_id)
+def delete_archive_record(record_id: int, user: str | None = None):
+    return delete_reconciliation_run("bank_rrn", record_id, user)
 
 
 # ─────────────────────────────────────────────────────────────
