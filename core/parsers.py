@@ -170,8 +170,33 @@ def clean_date_polars(first_arg, col_name: Optional[str] = None):
 def _clean_rrn_expr(col_name: str, prefix: str = "norm") -> pl.Expr:
     row_index_str = pl.int_range(0, pl.len()).cast(pl.Utf8)
     empty_filler = pl.lit(f"_EMPTY_{prefix.upper()}_") + row_index_str
-    normalized = pl.col(col_name).cast(pl.Utf8).str.strip_chars().str.to_uppercase().str.replace(r"\.0$", "")
-    return pl.when(normalized.is_in(["", "NAN", "NONE", "NAT"]) | normalized.is_null()).then(empty_filler).otherwise(normalized)
+    normalized = (
+        pl.col(col_name)
+        .cast(pl.Utf8)
+        .str.strip_chars()
+        .str.to_uppercase()
+        .str.replace(r"\.0$", "")
+    )
+
+    # Excel frequently stores a 12-digit RRN as a numeric cell and drops the
+    # leading zero. Treat purely numeric RRNs as the same identifier regardless
+    # of leading zero padding, while leaving alphanumeric references untouched.
+    numeric_without_padding = normalized.str.replace(r"^0+", "")
+    normalized = (
+        pl.when(normalized.str.contains(r"^\d+$"))
+        .then(
+            pl.when(numeric_without_padding == "")
+            .then(pl.lit("0"))
+            .otherwise(numeric_without_padding)
+        )
+        .otherwise(normalized)
+    )
+
+    return (
+        pl.when(normalized.is_in(["", "NAN", "NONE", "NAT"]) | normalized.is_null())
+        .then(empty_filler)
+        .otherwise(normalized)
+    )
 
 
 def clean_rrn_polars(first_arg, second_arg: str = "norm", prefix: str = "norm"):
