@@ -139,3 +139,21 @@ def test_commission_and_data_quality_generate_separate_hypotheses(monkeypatch):
     assert "commission" in kinds
     assert "data_quality" in kinds
     assert "DO-NOT-LEAK" not in json.dumps(result["context"], ensure_ascii=False)
+
+
+def test_ai_summary_distinguishes_found_rrn_from_unbound_amount_mismatches(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    payload = _payload()
+    payload["result"]["matched_count"] = 0
+    payload["result"]["rrn_found_count"] = 10
+    payload["result"]["amount_mismatch_count_before_unbind"] = 10
+    payload["result"]["unbound_mismatch_count"] = 10
+
+    result = bank_ai.analyze_bank_reconciliation(payload)
+
+    assert result["context"]["rrn_presence"]["found_on_both_sides"] == 10
+    assert result["context"]["rrn_presence"]["unbound_amount_mismatches"] == 10
+    assert "RRN найдено с обеих сторон: 10" in result["executive_summary"]
+    assert "10 пар развязано" in result["executive_summary"]
+

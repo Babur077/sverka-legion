@@ -70,6 +70,11 @@ export interface ReconciliationArchive {
   difference: number;
   matched_count: number;
   mismatch_count: number;
+  rrn_found_count?: number;
+  amount_mismatch_count_before_unbind?: number;
+  only_our_count_before_unbind?: number;
+  only_bank_count_before_unbind?: number;
+  unbound_mismatch_count?: number;
   only_our_count: number;
   only_bank_count: number;
   period_month?: string;
@@ -156,6 +161,11 @@ export interface ReconciliationResult {
   dup_bank_c: number;
   matched_count: number;
   mismatch_count: number;
+  rrn_found_count?: number;
+  amount_mismatch_count_before_unbind?: number;
+  only_our_count_before_unbind?: number;
+  only_bank_count_before_unbind?: number;
+  unbound_mismatch_count?: number;
   terminal_summary?: TerminalSummaryItem[];
   total_commission?: number;
   effective_commission_rate?: number;

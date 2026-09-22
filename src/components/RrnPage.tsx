@@ -765,6 +765,13 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       reconData.mismatch_count,
       activeOnlyOurCount,
       activeOnlyBankCount,
+      {
+        rrnFoundCount: reconData.rrn_found_count,
+        amountMismatchCountBeforeUnbind: reconData.amount_mismatch_count_before_unbind,
+        onlyOurCountBeforeUnbind: reconData.only_our_count_before_unbind,
+        onlyBankCountBeforeUnbind: reconData.only_bank_count_before_unbind,
+        unboundMismatchCount: reconData.unbound_mismatch_count,
+      },
     );
 
     const excludedByTerminal = new Map<string, { tx: number; volume: number; commission: number }>();
@@ -1902,7 +1909,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Точно / Δ сумм</div>
               <div className="text-base font-bold text-slate-900 mt-1 break-words tabular-nums">
-                {dynamicCalculations.quality.exactMatched} <span className="text-xs text-slate-400 font-normal">/</span> <span className={reconData.mismatch_count > 0 ? 'text-amber-600' : 'text-slate-500'}>{reconData.mismatch_count}</span>
+                {dynamicCalculations.quality.exactMatched} <span className="text-xs text-slate-400 font-normal">/</span> <span className={dynamicCalculations.quality.detectedAmountMismatches > 0 ? 'text-amber-600' : 'text-slate-500'}>{dynamicCalculations.quality.detectedAmountMismatches}</span>
               </div>
             </div>
 
@@ -1911,7 +1918,14 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
               <div className="text-base font-bold text-indigo-600 mt-1 break-words tabular-nums">
                 {dynamicCalculations.quality.exactMatchRate.toFixed(1)}%
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">RRN найдено: {dynamicCalculations.quality.rrnMatchRate.toFixed(1)}%</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                RRN найдено: {dynamicCalculations.quality.rrnMatchRate.toFixed(1)}%
+                {dynamicCalculations.quality.unboundMismatches > 0 && (
+                  <span className="ml-1 text-amber-600">
+                    · развязано по сумме: {dynamicCalculations.quality.unboundMismatches}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

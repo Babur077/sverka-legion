@@ -316,6 +316,15 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     amt_mismatches = amt_mismatches_pl.to_pandas()
     merged = merged_pl.to_pandas()
 
+    # Keep the original RRN-presence metrics before optional unbinding turns
+    # amount mismatches into two unmatched rows. These figures answer the
+    # business question "was this RRN present on both sides?" independently
+    # from the later amount-matching workflow.
+    rrn_found_count = merged_pl.filter(pl.col("_merge") == "both").height
+    amount_mismatch_count_before_unbind = amt_mismatches_pl.height
+    only_our_count_before_unbind = len(only_our)
+    only_bank_count_before_unbind = len(only_bank)
+
     comm_only_diff_count = 0
     if not amt_mismatches.empty:
         our_valid = amt_mismatches["_our_amount_valid"].fillna(False).astype(bool)
@@ -434,8 +443,13 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         "dups_bank": dups_bank_pl.to_pandas(),
         "dup_our_c": dups_our_pl.height,
         "dup_bank_c": dups_bank_pl.height,
-        "matched_count": merged_pl.filter(pl.col("_merge") == "both").height - unbound_count,
-        "mismatch_count": 0 if cfg["unbind_mismatches"] else amt_mismatches_pl.height,
+        "matched_count": rrn_found_count - unbound_count,
+        "mismatch_count": 0 if cfg["unbind_mismatches"] else amount_mismatch_count_before_unbind,
+        "rrn_found_count": rrn_found_count,
+        "amount_mismatch_count_before_unbind": amount_mismatch_count_before_unbind,
+        "only_our_count_before_unbind": only_our_count_before_unbind,
+        "only_bank_count_before_unbind": only_bank_count_before_unbind,
+        "unbound_mismatch_count": unbound_count,
         "comm_only_diff_count": comm_only_diff_count,
         "deduct_commission": deduct_comm,
         "terminal_summary": terminal_summary_list,
