@@ -79,8 +79,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [draftRestored, setDraftRestored] = useState<boolean>(false);
 
   // File upload state
-  const [ourFile, setOurFile] = useState<{ name: string; rows: RawRow[]; columns: string[] } | null>(null);
-  const [bankFile, setBankFile] = useState<{ name: string; rows: RawRow[]; columns: string[] } | null>(null);
+  const [ourFile, setOurFile] = useState<{ name: string; rows: RawRow[]; columns: string[]; rowCount?: number } | null>(null);
+  const [bankFile, setBankFile] = useState<{ name: string; rows: RawRow[]; columns: string[]; rowCount?: number } | null>(null);
   const [ourSourceFile, setOurSourceFile] = useState<File | null>(null);
   const [bankSourceFile, setBankSourceFile] = useState<File | null>(null);
   const [showPreviewOur, setShowPreviewOur] = useState(false);
@@ -415,7 +415,12 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
     if (isOur) {
       setOurSourceFile(file);
-      setOurFile({ name: parsed.fileName, rows: parsed.rows, columns: parsed.columns });
+      setOurFile({
+        name: parsed.fileName,
+        rows: parsed.rows,
+        columns: parsed.columns,
+        rowCount: parsed.rowCount ?? parsed.rows.length,
+      });
       setOurSourceMeta(parsed);
       setOurSourceOptions(options);
       setDraftRestored(false);
@@ -425,7 +430,12 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       setOurStatusCol(guessCol(parsed.columns, ['status', 'статус']) || '');
     } else {
       setBankSourceFile(file);
-      setBankFile({ name: parsed.fileName, rows: parsed.rows, columns: parsed.columns });
+      setBankFile({
+        name: parsed.fileName,
+        rows: parsed.rows,
+        columns: parsed.columns,
+        rowCount: parsed.rowCount ?? parsed.rows.length,
+      });
       setBankSourceMeta(parsed);
       setBankSourceOptions(options);
       setDraftRestored(false);
@@ -446,7 +456,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
     setSourceParsingSide(isOur ? 'our' : 'bank');
     try {
-      const parsed = await parseFile(file, { headerRow: 1 });
+      const parsed = await parseFile(file, {
+        headerRow: 1,
+        serverPreviewModuleId: 'bank_rrn',
+      });
       applyParsedBankSource(file, parsed, isOur);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -468,7 +481,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
     setSourceParsingSide(isOur ? 'our' : 'bank');
     try {
-      const parsed = await parseFile(file, options);
+      const parsed = await parseFile(file, {
+        ...options,
+        serverPreviewModuleId: 'bank_rrn',
+      });
       applyParsedBankSource(file, parsed, isOur);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1378,7 +1394,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
           {ourFile && (
             <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
-              <span>Строк загружено: <strong className="text-slate-800">{ourFile.rows.length}</strong></span>
+              <span>Строк загружено: <strong className="text-slate-800">{(ourFile.rowCount ?? ourFile.rows.length).toLocaleString('ru-RU')}</strong></span>
               <span>Колонок: <strong className="text-slate-800">{ourFile.columns.length}</strong></span>
             </div>
           )}
@@ -1482,7 +1498,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
           {bankFile && (
             <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
-              <span>Строк загружено: <strong className="text-slate-800">{bankFile.rows.length}</strong></span>
+              <span>Строк загружено: <strong className="text-slate-800">{(bankFile.rowCount ?? bankFile.rows.length).toLocaleString('ru-RU')}</strong></span>
               <span>Колонок: <strong className="text-slate-800">{bankFile.columns.length}</strong></span>
             </div>
           )}
