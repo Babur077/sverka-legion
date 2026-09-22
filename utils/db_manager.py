@@ -208,9 +208,26 @@ def update_epos_terminal(tid: str, bank: str, mid: str, com_pct: float, is_activ
 
 
 def get_epos_registry() -> pd.DataFrame:
-    """Возвращает весь реестр в виде DataFrame для удобного отображения."""
-    with sqlite3.connect(DB_PATH) as conn:
-        return pd.read_sql_query("SELECT * FROM epos_registry", conn)
+    """Return the EPOS registry, or an empty registry before DB bootstrap."""
+    columns = [
+        "id",
+        "terminal_id",
+        "merchant_id",
+        "bank_acquirer",
+        "legal_entity",
+        "commission_pct",
+        "is_active",
+    ]
+    if not os.path.exists(DB_PATH):
+        return pd.DataFrame(columns=columns)
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            return pd.read_sql_query("SELECT * FROM epos_registry", conn)
+    except (sqlite3.OperationalError, pd.errors.DatabaseError) as exc:
+        if "no such table" in str(exc).lower():
+            return pd.DataFrame(columns=columns)
+        raise
 
 
 def delete_user(user_id: int):
