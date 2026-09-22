@@ -131,3 +131,52 @@ def test_dashboard_respects_module_filter_and_job_scope(tmp_path, monkeypatch):
         include_all_jobs=True,
     )
     assert len(manager["jobs"]) == 2
+
+
+def test_dashboard_does_not_require_full_archive_payload_json(tmp_path, monkeypatch):
+    db_path = tmp_path / "dashboard_light_payload.db"
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    monkeypatch.setattr(dashboard.db, "DB_PATH", str(db_path))
+    db.init_db()
+
+    month = datetime.now().strftime("%Y-%m")
+    ok, _, record_id = db.save_reconciliation_run(
+        "bank_rrn",
+        "alice",
+        {
+            "run_id": "large-run",
+            "period_month": month,
+            "bank_name": "Large Legacy Bank",
+            "summary": {
+                "matched_count": 10,
+                "discrepancy_count": 1,
+                "match_percentage": 90.91,
+            },
+        },
+    )
+    assert ok
+    assert record_id is not None
+
+    # A full json.loads() of payload_json would fail here. Dashboard must work
+    # from summary_json + a tiny bounded prefix only.
+    malformed_large_payload = (
+        '{"bank_name":"Large Legacy Bank","result_snapshot":"'
+        + ("x" * 200_000)
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE reconciliation_runs SET payload_json = ? WHERE id = ?",
+            (malformed_large_payload, record_id),
+        )
+        conn.commit()
+
+    data = dashboard.get_dashboard_data(
+        allowed_modules={"bank_rrn": "Bank RRN"},
+        username="alice",
+        months=1,
+    )
+
+    assert data["summary"]["runs"] == 1
+    assert data["recent_runs"][0]["bank_name"] == "Large Legacy Bank"
+    assert data["recent_runs"][0]["matched_count"] == 10
+
