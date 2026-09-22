@@ -447,10 +447,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       const parsed = await parseFile(file, { headerRow: 1 });
       applyParsedBankSource(file, parsed, isOur);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       setAlertState({
         isOpen: true,
         title: 'Ошибка чтения файла',
-        message: `Не удалось прочитать загруженный файл: ${err}`,
+        message: `Файл «${file.name}»: ${message}`,
         type: 'error',
       });
     } finally {
@@ -468,10 +469,11 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       const parsed = await parseFile(file, options);
       applyParsedBankSource(file, parsed, isOur);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       setAlertState({
         isOpen: true,
         title: 'Ошибка настроек источника',
-        message: `Не удалось прочитать выбранный лист/строку заголовков: ${err}`,
+        message: `Файл «${file.name}»: ${message}`,
         type: 'error',
       });
     } finally {
