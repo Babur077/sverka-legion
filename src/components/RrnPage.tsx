@@ -37,6 +37,32 @@ const REASON_OPTIONS = [
   'Другое',
 ];
 
+const REV_DELETE_APPROVED = 'Удалить approved';
+const REV_DELETE_BOTH = 'Удалить approved и reversed';
+
+const normalizeReversalAction = (value: unknown, fallback: string): string => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (
+    normalized.includes('approved и reversed')
+    || normalized.includes('approved + reversed')
+    || normalized.includes('rrn полностью')
+    || normalized.includes('💥')
+  ) return REV_DELETE_BOTH;
+  if (
+    normalized.includes('удалить approved')
+    || normalized.includes('удалить строк')
+    || normalized.includes('удалить возврат')
+    || normalized.includes('🗑')
+  ) return REV_DELETE_APPROVED;
+  if (
+    normalized.includes('минусовать')
+    || normalized.includes('изменить знак')
+    || normalized.includes('➖')
+  ) return 'Минусовать сумму';
+  if (normalized.includes('не обрабатывать') || normalized.includes('⚪')) return 'Не обрабатывать';
+  return fallback;
+};
+
 export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const canRun = hasPermission(user, 'bank_rrn.run');
   const canExport = hasPermission(user, 'bank_rrn.export');
@@ -106,7 +132,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   // Processing rules
   const [revInput, setRevInput] = useState('reversed, возврат, refund, отказ, ошибка');
   const [ourRev, setOurRev] = useState('Минусовать сумму');
-  const [bankRev, setBankRev] = useState('Удалить строку');
+  const [bankRev, setBankRev] = useState(REV_DELETE_APPROVED);
   const [dupAction, setDupAction] = useState('Ничего не делать (оставить все)');
   const [unbindMismatches, setUnbindMismatches] = useState(false);
   const [deductCommission, setDeductCommission] = useState(false);
@@ -243,8 +269,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     }
     if (savedDraft.rules) {
       setRevInput(savedDraft.rules.revInput || '');
-      setOurRev(savedDraft.rules.ourRev || 'Минусовать сумму');
-      setBankRev(savedDraft.rules.bankRev || 'Удалить строку');
+      setOurRev(normalizeReversalAction(savedDraft.rules.ourRev, 'Минусовать сумму'));
+      setBankRev(normalizeReversalAction(savedDraft.rules.bankRev, REV_DELETE_APPROVED));
       setDupAction(savedDraft.rules.dupAction || 'Ничего не делать (оставить все)');
       setUnbindMismatches(!!savedDraft.rules.unbindMismatches);
       setDeductCommission(!!savedDraft.rules.deductCommission);
@@ -336,6 +362,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [filterStatusOur, setFilterStatusOur] = useState('(Все)');
   const [filterDateBank, setFilterDateBank] = useState('(Все)');
   const [filterStatusBank, setFilterStatusBank] = useState('(Все)');
+  const [showCheckedOnlyOur, setShowCheckedOnlyOur] = useState(false);
+  const [showCheckedOnlyBank, setShowCheckedOnlyBank] = useState(false);
   const UNMATCHED_PAGE_SIZE = 100;
   const [unmatchedPageOur, setUnmatchedPageOur] = useState(1);
   const [unmatchedPageBank, setUnmatchedPageBank] = useState(1);
@@ -346,9 +374,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       .map((item, originalIndex) => ({ item, originalIndex }))
       .filter(({ item }) =>
         (filterDateOur === '(Все)' || item.date_str === filterDateOur) &&
-        (filterStatusOur === '(Все)' || (item.status || '') === filterStatusOur)
+        (filterStatusOur === '(Все)' || (item.status || '') === filterStatusOur) &&
+        (!showCheckedOnlyOur || item.checked)
       );
-  }, [reconData, activeTab, filterDateOur, filterStatusOur]);
+  }, [reconData, activeTab, filterDateOur, filterStatusOur, showCheckedOnlyOur]);
 
   const unmatchedBankFiltered = useMemo(() => {
     if (!reconData || activeTab !== 'unmatched') return [];
@@ -356,9 +385,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       .map((item, originalIndex) => ({ item, originalIndex }))
       .filter(({ item }) =>
         (filterDateBank === '(Все)' || item.date_str === filterDateBank) &&
-        (filterStatusBank === '(Все)' || (item.status || '') === filterStatusBank)
+        (filterStatusBank === '(Все)' || (item.status || '') === filterStatusBank) &&
+        (!showCheckedOnlyBank || item.checked)
       );
-  }, [reconData, activeTab, filterDateBank, filterStatusBank]);
+  }, [reconData, activeTab, filterDateBank, filterStatusBank, showCheckedOnlyBank]);
 
   const unmatchedOurPageCount = Math.max(1, Math.ceil(unmatchedOurFiltered.length / UNMATCHED_PAGE_SIZE));
   const unmatchedBankPageCount = Math.max(1, Math.ceil(unmatchedBankFiltered.length / UNMATCHED_PAGE_SIZE));
@@ -395,7 +425,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   useEffect(() => {
     setUnmatchedPageOur(1);
     setUnmatchedPageBank(1);
-  }, [filterDateOur, filterStatusOur, filterDateBank, filterStatusBank]);
+  }, [filterDateOur, filterStatusOur, filterDateBank, filterStatusBank, showCheckedOnlyOur, showCheckedOnlyBank]);
 
   useEffect(() => {
     if (unmatchedPageOur > unmatchedOurPageCount) setUnmatchedPageOur(unmatchedOurPageCount);
@@ -603,6 +633,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         },
       );
       setReconData(result);
+      setShowCheckedOnlyOur(false);
+      setShowCheckedOnlyBank(false);
       const detectedTerminalIds = Array.from(new Set(
         (result.terminal_summary || [])
           .map(item => String(item.terminal_id || '').trim())
