@@ -79,15 +79,27 @@ async def execute_module(module_id: str, request: Request, username: str):
         ) from exc
 
 
-def save_module_run(module_id: str, username: str, payload: dict[str, Any]) -> dict:
+def save_module_run(
+    module_id: str,
+    username: str,
+    payload: dict[str, Any],
+    *,
+    allow_owner_override: bool = False,
+) -> dict:
     require_module(module_id)
     normalized = dict(payload or {})
     if not normalized.get("period_month"):
         normalized["period_month"] = datetime.now().strftime("%Y-%m")
 
-    ok, message, record_id = save_run(module_id, username, normalized)
+    ok, message, record_id = save_run(
+        module_id,
+        username,
+        normalized,
+        allow_owner_override=allow_owner_override,
+    )
     if not ok:
-        raise HTTPException(status_code=500, detail=message)
+        status_code = 403 if "Нет прав на изменение архивной записи" in message else 500
+        raise HTTPException(status_code=status_code, detail=message)
 
     record_audit_event(
         user_id=username,
@@ -106,9 +118,20 @@ def list_module_runs(module_id: str) -> list[dict]:
     return list_runs(module_id)
 
 
-def remove_module_run(module_id: str, record_id: int, username: str) -> None:
+def remove_module_run(
+    module_id: str,
+    record_id: int,
+    username: str,
+    *,
+    allow_owner_override: bool = False,
+) -> None:
     require_module(module_id)
-    if not delete_run(module_id, record_id):
+    if not delete_run(
+        module_id,
+        record_id,
+        username,
+        allow_owner_override=allow_owner_override,
+    ):
         raise HTTPException(status_code=404, detail="Запись архива не найдена")
 
     record_audit_event(
