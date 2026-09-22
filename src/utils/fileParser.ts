@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { RawRow, DateSummaryRow, UnmatchedRow, AmountMismatchRow, TerminalSummaryItem } from '../types';
+import { resolveReadableWorkbookSheet } from './excelSheetUtils';
 
 export interface FileParseOptions {
   sheetName?: string;
@@ -64,17 +65,12 @@ function parseWorkbook(
 
   const headerRow = Math.max(1, Math.min(200, Math.floor(Number(options.headerRow) || 1)));
   const isCsv = /\.csv$/i.test(fileName);
-  const availableSheets = isCsv ? [] : workbook.SheetNames;
-  const selectedSheet = (
-    options.sheetName && workbook.SheetNames.includes(options.sheetName)
-      ? options.sheetName
-      : workbook.SheetNames[0]
-  ) || '';
-
-  const worksheet = workbook.Sheets[selectedSheet];
-  if (!worksheet) {
-    throw new Error('Не удалось найти выбранный лист Excel.');
-  }
+  const {
+    selectedSheet,
+    worksheet,
+    readableSheetNames,
+  } = resolveReadableWorkbookSheet(workbook, options.sheetName);
+  const availableSheets = isCsv ? [] : readableSheetNames;
 
   const jsonRows: RawRow[] = XLSX.utils.sheet_to_json(worksheet, {
     defval: '',
