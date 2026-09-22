@@ -444,8 +444,8 @@ def _json_prefix_value(prefix: str, key: str):
     if not prefix:
         return None
     token = (
-        r'"' + re.escape(key) + r'"\\s*:\\s*'
-        r'("(?:\\\\.|[^"\\\\])*"|null|true|false|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)'
+        r'"' + re.escape(key) + r'"\s*:\s*'
+        r'("(?:\\.|[^"\\])*"|null|true|false|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)'
     )
     match = re.search(token, prefix)
     if not match:
