@@ -1,10 +1,12 @@
 import * as XLSX from 'xlsx';
 import { RawRow, DateSummaryRow, UnmatchedRow, AmountMismatchRow, TerminalSummaryItem } from '../types';
 import { resolveReadableWorkbookSheet } from './excelSheetUtils';
+import { apiFetch } from './apiClient';
 
 export interface FileParseOptions {
   sheetName?: string;
   headerRow?: number;
+  serverPreviewModuleId?: string;
 }
 
 export interface ParsedFileResult {
@@ -15,6 +17,40 @@ export interface ParsedFileResult {
   selectedSheet: string;
   headerRow: number;
   previewRows: RawRow[];
+  rowCount?: number;
+  parser?: string;
+}
+
+async function parseFileViaServerPreview(
+  file: File,
+  options: FileParseOptions,
+): Promise<ParsedFileResult> {
+  const moduleId = String(options.serverPreviewModuleId || '').trim();
+  if (!moduleId) {
+    throw new Error('Серверный preview не настроен для этого модуля.');
+  }
+
+  const form = new FormData();
+  form.append('file', file, file.name);
+  if (options.sheetName) form.append('sheet_name', options.sheetName);
+  form.append('header_row', String(options.headerRow || 1));
+
+  const response = await apiFetch(
+    '/api/modules/' + encodeURIComponent(moduleId) + '/source-preview',
+    {
+      method: 'POST',
+      body: form,
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = typeof payload?.detail === 'string'
+      ? payload.detail
+      : 'Backend не смог построить preview файла.';
+    throw new Error(detail);
+  }
+
+  return payload as ParsedFileResult;
 }
 
 export function guessCol(cols: string[], keywords: string[]): string | null {
@@ -121,6 +157,8 @@ function parseWorkbook(
     selectedSheet,
     headerRow,
     previewRows: jsonRows.slice(0, 5),
+    rowCount: jsonRows.length,
+    parser: 'browser-sheetjs',
   };
 }
 
@@ -153,6 +191,59 @@ export async function parseFile(file: File, options: FileParseOptions = {}): Pro
 
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+
+    const rejectWithProgress = (message: string) => {
+      emitFileParseProgress({
+        status: 'error',
+        stage: 'error',
+        fileName: file.name,
+        sizeBytes: fileSize,
+        elapsedMs: performance.now() - startedAt,
+        error: message,
+      });
+      reject(new Error(message));
+    };
+
+    const fallbackToServer = async (browserError: unknown) => {
+      const browserMessage = browserError instanceof Error
+        ? browserError.message
+        : String(browserError || 'Ошибка браузерного parser-а.');
+
+      if (!options.serverPreviewModuleId) {
+        rejectWithProgress(browserMessage);
+        return;
+      }
+
+      try {
+        emitFileParseProgress({
+          status: 'loading',
+          stage: 'parsing',
+          fileName: file.name,
+          progress: 90,
+          sizeBytes: fileSize,
+          elapsedMs: performance.now() - startedAt,
+        });
+        const result = await parseFileViaServerPreview(file, options);
+        emitFileParseProgress({
+          status: 'success',
+          stage: 'ready',
+          fileName: file.name,
+          progress: 100,
+          rows: result.rowCount ?? result.rows.length,
+          columns: result.columns.length,
+          sizeBytes: fileSize,
+          elapsedMs: performance.now() - startedAt,
+        });
+        resolve(result);
+      } catch (serverError) {
+        const serverMessage = serverError instanceof Error
+          ? serverError.message
+          : String(serverError);
+        rejectWithProgress(
+          `Браузер не смог разобрать Excel (${browserMessage}). Серверный fallback тоже не сработал: ${serverMessage}`,
+        );
+      }
+    };
 
     reader.onprogress = (e) => {
       if (!e.lengthComputable) return;
@@ -200,23 +291,14 @@ export async function parseFile(file: File, options: FileParseOptions = {}): Pro
             stage: 'ready',
             fileName: file.name,
             progress: 100,
-            rows: result.rows.length,
+            rows: result.rowCount ?? result.rows.length,
             columns: result.columns.length,
             sizeBytes: fileSize,
             elapsedMs: performance.now() - startedAt,
           });
           resolve(result);
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          emitFileParseProgress({
-            status: 'error',
-            stage: 'error',
-            fileName: file.name,
-            sizeBytes: fileSize,
-            elapsedMs: performance.now() - startedAt,
-            error: message,
-          });
-          reject(err);
+          void fallbackToServer(err);
         }
         return;
       }
@@ -236,7 +318,7 @@ export async function parseFile(file: File, options: FileParseOptions = {}): Pro
               stage: 'ready',
               fileName: file.name,
               progress: 100,
-              rows: result.rows.length,
+              rows: result.rowCount ?? result.rows.length,
               columns: result.columns.length,
               sizeBytes: fileSize,
               elapsedMs: performance.now() - startedAt,
@@ -246,30 +328,14 @@ export async function parseFile(file: File, options: FileParseOptions = {}): Pro
           }
 
           const message = event.data.error || 'Не удалось обработать файл.';
-          emitFileParseProgress({
-            status: 'error',
-            stage: 'error',
-            fileName: file.name,
-            sizeBytes: fileSize,
-            elapsedMs: performance.now() - startedAt,
-            error: message,
-          });
-          reject(new Error(message));
+          void fallbackToServer(new Error(message));
         };
 
         worker.onerror = (event) => {
           worker?.terminate();
           worker = null;
           const message = event.message || 'Ошибка Web Worker при обработке файла.';
-          emitFileParseProgress({
-            status: 'error',
-            stage: 'error',
-            fileName: file.name,
-            sizeBytes: fileSize,
-            elapsedMs: performance.now() - startedAt,
-            error: message,
-          });
-          reject(new Error(message));
+          void fallbackToServer(new Error(message));
         };
 
         worker.postMessage({ buffer: data, fileName: file.name, options }, [data]);
@@ -283,23 +349,14 @@ export async function parseFile(file: File, options: FileParseOptions = {}): Pro
             stage: 'ready',
             fileName: file.name,
             progress: 100,
-            rows: result.rows.length,
+            rows: result.rowCount ?? result.rows.length,
             columns: result.columns.length,
             sizeBytes: fileSize,
             elapsedMs: performance.now() - startedAt,
           });
           resolve(result);
         } catch (fallbackErr) {
-          const message = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-          emitFileParseProgress({
-            status: 'error',
-            stage: 'error',
-            fileName: file.name,
-            sizeBytes: fileSize,
-            elapsedMs: performance.now() - startedAt,
-            error: message,
-          });
-          reject(fallbackErr);
+          void fallbackToServer(fallbackErr);
         }
       }
     };

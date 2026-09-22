@@ -4,6 +4,7 @@ import io
 
 from openpyxl import Workbook
 
+from backend.app.services.source_preview import preview_source_file
 from core.parsers import load_file_polars
 
 
@@ -58,3 +59,53 @@ def test_csv_header_row_is_applied_before_delimiter_detection():
     assert frame.columns == ["Дата", "RRN", "Сумма"]
     assert frame.height == 2
     assert frame["Дата"][0] == "31.08.2026"
+
+
+def test_server_preview_reads_named_sheet_and_real_row_count():
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Результат запроса."
+    sheet.append(["Дата", "RRN", "Summa"])
+    sheet.append(["01.09.2026", "030793201824", 1000])
+    sheet.append(["02.09.2026", "030793201825", 2000])
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+
+    preview = preview_source_file(
+        buffer.getvalue(),
+        "66000107 данные алифа.xlsx",
+        header_row=1,
+    )
+
+    assert preview["selectedSheet"] == "Результат запроса."
+    assert preview["sheetNames"] == ["Результат запроса."]
+    assert preview["columns"] == ["Дата", "RRN", "Summa"]
+    assert preview["rowCount"] == 2
+    assert preview["rows"][0]["RRN"] == "030793201824"
+    assert preview["parser"] == "server-openpyxl"
+
+
+def test_server_preview_matches_requested_sheet_after_trim_and_casefold():
+    workbook = Workbook()
+    first = workbook.active
+    first.title = "Cover"
+    first.append(["ignore"])
+
+    data = workbook.create_sheet("Результат запроса.")
+    data.append(["Дата", "RRN", "Summa"])
+    data.append(["01.09.2026", "030793201824", 1000])
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+
+    preview = preview_source_file(
+        buffer.getvalue(),
+        "sample.xlsx",
+        requested_sheet="  результат запроса.  ",
+        header_row=1,
+    )
+
+    assert preview["selectedSheet"] == "Результат запроса."
+    assert preview["columns"] == ["Дата", "RRN", "Summa"]
+

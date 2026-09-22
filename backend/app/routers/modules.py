@@ -6,6 +6,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from backend.app.http_utils import json_safe
 from backend.app.services.archive_authority import update_ravan_archive_match
+from backend.app.services.source_preview import preview_source_file
 from backend.app.services.reconciliation import (
     execute_module,
     list_module_runs,
@@ -24,6 +25,51 @@ async def get_modules(x_user: Optional[str] = Header("admin")):
     perms = get_user_permissions(x_user)
     manifests = module_registry.list_manifests(user_permissions=perms)
     return [manifest.model_dump() for manifest in manifests]
+
+
+@router.post("/{module_id}/source-preview")
+async def preview_module_source(
+    module_id: str,
+    request: Request,
+    x_user: Optional[str] = Header("admin"),
+):
+    perms = get_user_permissions(x_user)
+    if (
+        not has_permission(perms, f"{module_id}.view")
+        and not has_permission(perms, f"{module_id}.run")
+        and "*" not in perms
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=f"У вас нет прав на просмотр источников модуля '{module_id}'",
+        )
+
+    require_module(module_id)
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None or not hasattr(upload, "read"):
+        raise HTTPException(status_code=400, detail="Файл для preview не передан.")
+
+    max_bytes = 200 * 1024 * 1024
+    file_bytes = await upload.read(max_bytes + 1)
+    if len(file_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail="Файл слишком большой. Максимальный размер preview — 200 МБ.",
+        )
+
+    requested_sheet = str(form.get("sheet_name") or "").strip() or None
+    try:
+        header_row = int(str(form.get("header_row") or "1"))
+    except ValueError:
+        header_row = 1
+
+    return json_safe(preview_source_file(
+        file_bytes,
+        getattr(upload, "filename", "") or "source.xlsx",
+        requested_sheet=requested_sheet,
+        header_row=header_row,
+    ))
 
 
 @router.post("/{module_id}/run")
