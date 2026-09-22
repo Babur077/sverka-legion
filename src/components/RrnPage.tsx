@@ -3044,73 +3044,98 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
           {/* ─── TAB 4: DUPLICATES ─── */}
           {activeTab === 'dups' && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {[
-                { title: 'Наши данные', rows: reconData.dups_our, count: reconData.dup_our_c, side: 'our' as const },
-                { title: 'Данные банка', rows: reconData.dups_bank, count: reconData.dup_bank_c, side: 'bank' as const },
-              ].map(group => (
-                <div key={group.side} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Дубликаты RRN — {group.title}
-                      </h3>
-                      <p className="text-[11px] text-slate-500 mt-1">
-                        Повторяющиеся RRN показаны строками, как обычные транзакции.
-                      </p>
-                    </div>
-                    <span className="shrink-0 rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
-                      {group.count}
-                    </span>
-                  </div>
-
-                  {group.count === 0 ? (
-                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-xs text-emerald-700">
-                      Дубликатов не обнаружено
-                    </div>
-                  ) : (
-                    <div className="max-h-[420px] overflow-auto rounded-xl border border-slate-200">
-                      <table className="min-w-full text-[11px]">
-                        <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                          <tr>
-                            <th className="px-3 py-2 text-left">Дата</th>
-                            <th className="px-3 py-2 text-left">RRN</th>
-                            {group.side === 'bank' && <th className="px-3 py-2 text-left">TID</th>}
-                            <th className="px-3 py-2 text-left">Статус</th>
-                            <th className="px-3 py-2 text-right">Сумма</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white">
-                          {group.rows.map((row, idx) => {
-                            const rawDate = group.side === 'bank' ? (row.date_bank ?? row.date) : row.date;
-                            const dateText = rawDate == null ? '—' : String(rawDate).slice(0, 10).split('-').reverse().join('.');
-                            const amountValue = group.side === 'bank'
-                              ? Number(row.net_amount_bank ?? row.raw_amount ?? row.amount ?? 0)
-                              : Number(row.net_amount_our ?? row.amount ?? 0);
-                            const statusText = group.side === 'bank'
-                              ? String(row.status_bank ?? row.status ?? '—')
-                              : String(row.status_our ?? row.status ?? '—');
-
-                            return (
-                              <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
-                                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{dateText}</td>
-                                <td className="px-3 py-2 font-mono font-semibold text-slate-900">{String(row.RRN ?? '—')}</td>
-                                {group.side === 'bank' && (
-                                  <td className="px-3 py-2 font-mono text-slate-600">{String(row.terminal_id ?? '—')}</td>
-                                )}
-                                <td className="px-3 py-2 text-slate-600">{statusText}</td>
-                                <td className="px-3 py-2 text-right font-semibold text-slate-900 tabular-nums">
-                                  {fmt(Number.isFinite(amountValue) ? amountValue : 0)}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+            <div className="space-y-4">
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-xs text-indigo-900">
+                <div className="font-bold">Результат обработки дубликатов</div>
+                <div className="mt-1">{duplicateActionSummary}</div>
+                <div className="mt-1 text-[11px] text-indigo-700">
+                  Режим: <strong>{reconData.dup_action}</strong>. Таблицы ниже показывают дубликаты, обнаруженные
+                  <strong> до применения</strong> выбранного правила.
                 </div>
-              ))}
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {[
+                  {
+                    title: 'Наши данные',
+                    rows: reconData.dups_our,
+                    count: reconData.dup_our_c,
+                    rrnCount: reconData.dup_our_rrn_c || 0,
+                    removed: reconData.dup_removed_our_c || 0,
+                    side: 'our' as const,
+                  },
+                  {
+                    title: 'Данные банка',
+                    rows: reconData.dups_bank,
+                    count: reconData.dup_bank_c,
+                    rrnCount: reconData.dup_bank_rrn_c || 0,
+                    removed: reconData.dup_removed_bank_c || 0,
+                    side: 'bank' as const,
+                  },
+                ].map(group => (
+                  <div key={group.side} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                          Дубликаты RRN — {group.title}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          Обнаружено {group.count} строк в {group.rrnCount} повторяющихся RRN · удалено правилом: {group.removed}.
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
+                        {group.count}
+                      </span>
+                    </div>
+
+                    {group.count === 0 ? (
+                      <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-xs text-emerald-700">
+                        Дубликатов не обнаружено
+                      </div>
+                    ) : (
+                      <div className="max-h-[420px] overflow-auto rounded-xl border border-slate-200">
+                        <table className="min-w-full text-[11px]">
+                          <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                            <tr>
+                              <th className="px-3 py-2 text-left">Дата</th>
+                              <th className="px-3 py-2 text-left">RRN</th>
+                              {group.side === 'bank' && <th className="px-3 py-2 text-left">TID</th>}
+                              <th className="px-3 py-2 text-left">Статус</th>
+                              <th className="px-3 py-2 text-right">Сумма</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white">
+                            {group.rows.map((row, idx) => {
+                              const rawDate = group.side === 'bank' ? (row.date_bank ?? row.date) : row.date;
+                              const dateText = rawDate == null ? '—' : String(rawDate).slice(0, 10).split('-').reverse().join('.');
+                              const amountValue = group.side === 'bank'
+                                ? Number(row.net_amount_bank ?? row.raw_amount ?? row.amount ?? 0)
+                                : Number(row.net_amount_our ?? row.amount ?? 0);
+                              const statusText = group.side === 'bank'
+                                ? String(row.status_bank ?? row.status ?? '—')
+                                : String(row.status_our ?? row.status ?? '—');
+
+                              return (
+                                <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                                  <td className="px-3 py-2 whitespace-nowrap text-slate-600">{dateText}</td>
+                                  <td className="px-3 py-2 font-mono font-semibold text-slate-900">{String(row.RRN ?? '—')}</td>
+                                  {group.side === 'bank' && (
+                                    <td className="px-3 py-2 font-mono text-slate-600">{String(row.terminal_id ?? '—')}</td>
+                                  )}
+                                  <td className="px-3 py-2 text-slate-600">{statusText}</td>
+                                  <td className="px-3 py-2 text-right font-semibold text-slate-900 tabular-nums">
+                                    {fmt(Number.isFinite(amountValue) ? amountValue : 0)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
