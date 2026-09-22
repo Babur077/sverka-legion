@@ -314,7 +314,13 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     only_our = merged_pl.filter(pl.col("_merge") == "left_only").to_pandas()
     only_bank = merged_pl.filter(pl.col("_merge") == "right_only").to_pandas()
     amt_mismatches = amt_mismatches_pl.to_pandas()
-    merged = merged_pl.to_pandas()
+
+    # The React/FastAPI path never consumes the full merged transaction table.
+    # Converting hundreds of thousands of joined rows from Polars to Pandas here
+    # can dominate runtime and memory after the actual reconciliation is done.
+    # Keep it only for legacy/debug callers that explicitly need drilldown data.
+    include_merged = bool(cfg.get("include_merged", True))
+    merged = merged_pl.to_pandas() if include_merged else None
 
     # Keep the original RRN-presence metrics before optional unbinding turns
     # amount mismatches into two unmatched rows. These figures answer the
@@ -382,8 +388,9 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         bank_part["date_unified"] = bank_part["date_bank"]
         bank_part["_merge"] = "right_only"
 
-        merged = merged[~merged["_match_row_id"].isin(mismatched_row_ids)]
-        merged = pd.concat([merged, our_part, bank_part], ignore_index=True)
+        if merged is not None:
+            merged = merged[~merged["_match_row_id"].isin(mismatched_row_ids)]
+            merged = pd.concat([merged, our_part, bank_part], ignore_index=True)
         only_our = pd.concat([only_our, our_part], ignore_index=True)
         only_bank = pd.concat([only_bank, bank_part], ignore_index=True)
         amt_mismatches = pd.DataFrame(columns=amt_mismatches.columns)
@@ -424,8 +431,19 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     effective_commission_rate = 0.0
     detected_months = []
     if "date" in pl_bank.columns:
-        dates_series = pl_bank.select(pl.col("date").dt.strftime("%Y-%m").drop_nulls()).to_series().to_list()
-        detected_months = sorted(list(set(dates_series)), reverse=True)
+        detected_months = (
+            pl_bank
+            .select(
+                pl.col("date")
+                .dt.strftime("%Y-%m")
+                .drop_nulls()
+                .unique()
+                .sort(descending=True)
+                .alias("month")
+            )
+            .to_series()
+            .to_list()
+        )
     if "terminal_id" in pl_bank.columns:
         t_df = terminal_summary(pl_bank, "terminal_id")
         if not t_df.empty:
