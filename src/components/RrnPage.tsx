@@ -2627,7 +2627,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <h3 className="text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
-                      Отсутствуют в банке ({reconData.only_our.length})
+                      Отсутствуют в банке ({reconData.only_our.filter(item => item.checked).length} отмечено / {reconData.only_our.length})
                     </h3>
                   </div>
 
@@ -2662,16 +2662,27 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       </div>
                     </div>
 
-                    <div className="flex gap-2 pt-1">
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowCheckedOnlyOur(value => !value)}
+                        className={`py-1 px-2 border text-[11px] font-semibold rounded cursor-pointer ${
+                          showCheckedOnlyOur
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {showCheckedOnlyOur ? 'Показать все' : 'Только отмеченные'}
+                      </button>
                       <button
                         onClick={() => handleBulkToggle(false, true)}
-                        className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
+                        className="flex-1 min-w-[110px] py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
                         Снять галочки
                       </button>
                       <button
                         onClick={() => handleBulkToggle(true, true)}
-                        className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
+                        className="flex-1 min-w-[110px] py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
                         Вернуть галочки
                       </button>
@@ -2763,7 +2774,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <h3 className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
-                      Лишние данные банка ({reconData.only_bank.length})
+                      Лишние данные банка ({reconData.only_bank.filter(item => item.checked).length} отмечено / {reconData.only_bank.length})
                     </h3>
                   </div>
 
@@ -2798,16 +2809,27 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       </div>
                     </div>
 
-                    <div className="flex gap-2 pt-1">
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowCheckedOnlyBank(value => !value)}
+                        className={`py-1 px-2 border text-[11px] font-semibold rounded cursor-pointer ${
+                          showCheckedOnlyBank
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {showCheckedOnlyBank ? 'Показать все' : 'Только отмеченные'}
+                      </button>
                       <button
                         onClick={() => handleBulkToggle(false, false)}
-                        className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
+                        className="flex-1 min-w-[110px] py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
                         Снять галочки
                       </button>
                       <button
                         onClick={() => handleBulkToggle(true, false)}
-                        className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
+                        className="flex-1 min-w-[110px] py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
                         Вернуть галочки
                       </button>
