@@ -144,7 +144,7 @@ def test_generic_run_store_isolated_by_module(tmp_path, monkeypatch):
     assert one_c_runs[0]["module_id"] == "bank_1c"
     assert one_c_runs[0]["account"] == "20208000"
 
-    assert db.delete_reconciliation_run("bank_rrn", bank_id) is True
+    assert db.delete_reconciliation_run("bank_rrn", bank_id, "tester") is True
     assert db.get_reconciliation_runs("bank_rrn") == []
     assert len(db.get_reconciliation_runs("bank_1c")) == 1
 
@@ -316,3 +316,110 @@ def test_generic_run_preserves_full_result_snapshot(tmp_path, monkeypatch):
     assert runs[0]["result_snapshot"] == snapshot
     assert runs[0]["config_snapshot"]["amount_tolerance"] == 1
     assert runs[0]["archive_schema_version"] == 1
+
+
+def test_archive_owner_cannot_be_replaced_by_another_user(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive_owner.db"
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    db.init_db()
+
+    ok, _, record_id = db.save_reconciliation_run(
+        "bank_rrn",
+        "alice",
+        {"run_id": "shared-run", "total_bank": 100},
+    )
+    assert ok
+    assert record_id is not None
+
+    ok, message, attempted_id = db.save_reconciliation_run(
+        "bank_rrn",
+        "bob",
+        {"run_id": "shared-run", "total_bank": 999999},
+    )
+
+    assert ok is False
+    assert attempted_id == record_id
+    assert "Нет прав" in message
+
+    runs = db.get_reconciliation_runs("bank_rrn")
+    assert len(runs) == 1
+    assert runs[0]["created_by"] == "alice"
+    assert runs[0]["total_bank"] == 100
+
+
+def test_owner_can_update_own_archive_without_changing_created_by(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive_owner_update.db"
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    db.init_db()
+
+    ok, _, record_id = db.save_reconciliation_run(
+        "ravan_1c",
+        "alice",
+        {"run_id": "run-1", "summary": {"matched_count": 1}},
+    )
+    assert ok
+
+    ok, message, updated_id = db.save_reconciliation_run(
+        "ravan_1c",
+        "alice",
+        {"run_id": "run-1", "summary": {"matched_count": 2}},
+    )
+
+    assert ok
+    assert "обновлена" in message
+    assert updated_id == record_id
+    run = db.get_reconciliation_runs("ravan_1c")[0]
+    assert run["created_by"] == "alice"
+    assert run["summary"]["matched_count"] == 2
+
+
+def test_admin_override_can_update_but_does_not_take_ownership(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive_admin_override.db"
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    db.init_db()
+
+    ok, _, record_id = db.save_reconciliation_run(
+        "bank_rrn",
+        "alice",
+        {"run_id": "run-admin", "total_bank": 100},
+    )
+    assert ok
+
+    ok, _, updated_id = db.save_reconciliation_run(
+        "bank_rrn",
+        "admin",
+        {"run_id": "run-admin", "total_bank": 150},
+        allow_owner_override=True,
+    )
+
+    assert ok
+    assert updated_id == record_id
+    run = db.get_reconciliation_runs("bank_rrn")[0]
+    assert run["created_by"] == "alice"
+    assert run["total_bank"] == 150
+
+
+def test_archive_delete_is_restricted_to_owner_with_admin_override(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive_delete_owner.db"
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    db.init_db()
+
+    ok, _, record_id = db.save_reconciliation_run(
+        "ravan_1c",
+        "alice",
+        {"run_id": "delete-me"},
+    )
+    assert ok
+    assert record_id is not None
+
+    assert db.delete_reconciliation_run("ravan_1c", record_id, "bob") is False
+    assert len(db.get_reconciliation_runs("ravan_1c")) == 1
+
+    assert db.delete_reconciliation_run(
+        "ravan_1c",
+        record_id,
+        "admin",
+        allow_owner_override=True,
+    ) is True
+    assert db.get_reconciliation_runs("ravan_1c") == []
+
