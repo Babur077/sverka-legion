@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime
 from typing import Any, Dict
@@ -14,6 +15,9 @@ from modules.registry import module_registry
 from utils.permissions import record_audit_event
 
 
+logger = logging.getLogger("reconcilehub.performance")
+
+
 def require_module(module_id: str):
     module = module_registry.get_module(module_id)
     if not module:
@@ -22,6 +26,7 @@ def require_module(module_id: str):
 
 
 async def execute_module(module_id: str, request: Request, username: str):
+    request_started = time.perf_counter()
     module = require_module(module_id)
     if module.manifest.status != "active":
         raise HTTPException(
@@ -30,6 +35,7 @@ async def execute_module(module_id: str, request: Request, username: str):
         )
 
     form = await request.form()
+    form_ready_at = time.perf_counter()
     files_dict: Dict[str, bytes] = {}
     params_dict: Dict[str, Any] = {}
 
@@ -46,13 +52,20 @@ async def execute_module(module_id: str, request: Request, username: str):
         if not validation.is_valid:
             raise HTTPException(status_code=400, detail={"errors": validation.errors})
 
+        engine_started = time.perf_counter()
         result = module.run(files_dict, params_dict)
+        engine_finished = time.perf_counter()
+
+        dump_started = time.perf_counter()
         result_payload = result.model_dump()
+        dump_finished = time.perf_counter()
+
         source_files: list[str] = []
         for key, value in params_dict.items():
             filename = str(value or "").strip()
             if key.endswith("_filename") and filename and filename not in source_files:
                 source_files.append(filename)
+        cache_started = time.perf_counter()
         cache_run_result(
             module_id,
             result.run_id,
@@ -61,6 +74,32 @@ async def execute_module(module_id: str, request: Request, username: str):
             params=params_dict,
             source_files=source_files,
         )
+        cache_finished = time.perf_counter()
+
+        safe_started = time.perf_counter()
+        safe_payload = json_safe(result_payload)
+        safe_finished = time.perf_counter()
+
+        rrn_metrics = ((result_payload.get("custom_metrics") or {}).get("rrn") or {})
+        logger.info(
+            "module_run module=%s run_id=%s form_ms=%.1f engine_ms=%.1f "
+            "model_dump_ms=%.1f cache_ms=%.1f json_safe_ms=%.1f "
+            "only_our=%s only_bank=%s mismatches=%s dups_our=%s dups_bank=%s prepare_total_ms=%.1f",
+            module_id,
+            result.run_id,
+            (form_ready_at - request_started) * 1000,
+            (engine_finished - engine_started) * 1000,
+            (dump_finished - dump_started) * 1000,
+            (cache_finished - cache_started) * 1000,
+            (safe_finished - safe_started) * 1000,
+            len(rrn_metrics.get("only_our") or []),
+            len(rrn_metrics.get("only_bank") or []),
+            len(rrn_metrics.get("amt_mismatches") or []),
+            len(rrn_metrics.get("dups_our") or []),
+            len(rrn_metrics.get("dups_bank") or []),
+            (safe_finished - request_started) * 1000,
+        )
+
         duration = (time.time() - started) * 1000
         record_audit_event(
             user_id=username,
@@ -76,7 +115,7 @@ async def execute_module(module_id: str, request: Request, username: str):
                 f"Сходимость: {result.summary.match_percentage}%"
             ),
         )
-        return json_safe(result_payload)
+        return safe_payload
     except HTTPException:
         raise
     except Exception as exc:

@@ -40,9 +40,32 @@ def load_file_polars(
         header_row = 1
 
     if file_name.lower().endswith((".xlsx", ".xls")):
-        # For non-default source options pandas gives the most predictable
-        # behavior across engines (named sheet + arbitrary header row).
-        if header_row != 1 or sheet_name not in (0, None, "", "0"):
+        # Calamine is dramatically faster than openpyxl/pandas on large
+        # workbooks. Use it for named sheets and custom header rows too;
+        # pandas remains the compatibility fallback for unusual files.
+        read_options = {"header_row": header_row - 1}
+        requested_sheet = sheet_name if sheet_name not in (None, "", "0") else 0
+
+        try:
+            if isinstance(requested_sheet, str) and requested_sheet:
+                return pl.read_excel(
+                    io.BytesIO(file_bytes),
+                    sheet_name=requested_sheet,
+                    engine="calamine",
+                    read_options=read_options,
+                )
+
+            try:
+                sheet_index = int(requested_sheet)
+            except (TypeError, ValueError):
+                sheet_index = 0
+            return pl.read_excel(
+                io.BytesIO(file_bytes),
+                sheet_id=sheet_index + 1,
+                engine="calamine",
+                read_options=read_options,
+            )
+        except Exception:
             pdf = pd.read_excel(
                 io.BytesIO(file_bytes),
                 sheet_name=sheet_name if sheet_name not in (None, "") else 0,
@@ -53,24 +76,6 @@ def load_file_polars(
                 # Defensive fallback if a caller accidentally requested all sheets.
                 pdf = next(iter(pdf.values()), pd.DataFrame())
             return pl.from_pandas(pdf)
-
-        sheet_id = 1
-        try:
-            return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id, engine="calamine")
-        except Exception:
-            try:
-                return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id, engine="fastexcel")
-            except Exception:
-                try:
-                    return pl.read_excel(io.BytesIO(file_bytes), sheet_id=sheet_id)
-                except Exception:
-                    pdf = pd.read_excel(
-                        io.BytesIO(file_bytes),
-                        sheet_name=0,
-                        header=0,
-                        dtype=object,
-                    )
-                    return pl.from_pandas(pdf)
 
     # CSV exports in finance commonly arrive with semicolon, comma or tab
     # delimiters. A wrong delimiter often parses "successfully" as one huge

@@ -150,6 +150,9 @@ class BankRrnModule(BaseReconciliationModule):
             "unbind_mismatches": self._as_bool(params.get("unbind_mismatches", False)),
             "tolerance": max(0.0, float(params.get("tolerance", 0.01))),
             "deduct_commission": self._as_bool(params.get("deduct_commission", False)),
+            # The API response never exposes the full joined transaction table.
+            # Keeping it in Polars avoids a very expensive to_pandas() on large files.
+            "include_merged": False,
         }
 
         pl_our = load_file_polars(
