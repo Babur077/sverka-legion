@@ -49,6 +49,48 @@ def test_exact_rrn_match_and_normalization():
     assert result["only_bank"].empty
 
 
+def test_numeric_rrn_matches_when_bank_has_leading_zero_padding():
+    our = frame([
+        {
+            "date": "2026-09-01",
+            "rrn": "30793201824",
+            "amount": "1000",
+            "status": "OK",
+        },
+    ])
+    bank = frame([
+        {
+            "date": "2026-09-01",
+            "rrn": "030793201824",
+            "amount": "1000",
+            "status": "OK",
+        },
+    ])
+
+    result = run_rrn_reconciliation(our, bank, base_cfg())
+
+    assert result["rrn_found_count"] == 1
+    assert result["matched_count"] == 1
+    assert result["mismatch_count"] == 0
+    assert result["only_our"].empty
+    assert result["only_bank"].empty
+
+
+def test_alphanumeric_rrn_keeps_leading_zero_semantics():
+    our = frame([
+        {"date": "2026-09-01", "rrn": "0A123", "amount": "1000", "status": "OK"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "A123", "amount": "1000", "status": "OK"},
+    ])
+
+    result = run_rrn_reconciliation(our, bank, base_cfg())
+
+    assert result["rrn_found_count"] == 0
+    assert len(result["only_our"]) == 1
+    assert len(result["only_bank"]) == 1
+
+
 def test_amount_mismatch_is_reported():
     our = frame([
         {"date": "2026-09-01", "rrn": "A100", "amount": "1000", "status": "OK"},
