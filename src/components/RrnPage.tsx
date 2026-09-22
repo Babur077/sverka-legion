@@ -38,6 +38,7 @@ const REASON_OPTIONS = [
 ];
 
 const REV_DELETE_APPROVED = 'Удалить approved';
+const REV_DELETE_REVERSED = 'Удалить reversed';
 const REV_DELETE_BOTH = 'Удалить approved и reversed';
 
 const normalizeReversalAction = (value: unknown, fallback: string): string => {
@@ -48,6 +49,7 @@ const normalizeReversalAction = (value: unknown, fallback: string): string => {
     || normalized.includes('rrn полностью')
     || normalized.includes('💥')
   ) return REV_DELETE_BOTH;
+  if (normalized.includes('удалить reversed')) return REV_DELETE_REVERSED;
   if (
     normalized.includes('удалить approved')
     || normalized.includes('удалить строк')
@@ -1853,6 +1855,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                     >
                       <option value="Минусовать сумму">Минусовать сумму reversed</option>
                       <option value={REV_DELETE_APPROVED}>{REV_DELETE_APPROVED}</option>
+                      <option value={REV_DELETE_REVERSED}>{REV_DELETE_REVERSED}</option>
                       <option value={REV_DELETE_BOTH}>{REV_DELETE_BOTH}</option>
                       <option value="Не обрабатывать">Не обрабатывать</option>
                     </select>
@@ -1865,6 +1868,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       className="w-full py-1.5 px-2 border border-slate-200 rounded-lg text-xs"
                     >
                       <option value={REV_DELETE_APPROVED}>{REV_DELETE_APPROVED}</option>
+                      <option value={REV_DELETE_REVERSED}>{REV_DELETE_REVERSED}</option>
                       <option value="Минусовать сумму">Минусовать сумму reversed</option>
                       <option value={REV_DELETE_BOTH}>{REV_DELETE_BOTH}</option>
                       <option value="Не обрабатывать">Не обрабатывать</option>
@@ -1873,7 +1877,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                   <p className="col-span-2 text-[10px] leading-4 text-slate-500">
                     <strong>approved</strong> — обычная строка того же RRN, которая не попала под маркеры возврата;
                     <strong className="ml-1">reversed</strong> — строка, статус которой содержит один из маркеров выше.
-                    «Удалить approved» оставляет reversed, а «Удалить approved и reversed» полностью исключает этот RRN.
+                    «Удалить approved» оставляет reversed; «Удалить reversed» оставляет approved;
+                    «Удалить approved и reversed» полностью исключает этот RRN.
                   </p>
                 </div>
 

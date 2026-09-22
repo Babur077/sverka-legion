@@ -12,6 +12,8 @@ def _reversal_action_kind(action: str) -> str:
     Business semantics:
     - drop_approved: for an RRN with a reversal, remove normal/APPROVED rows
       and keep the reversal row(s);
+    - drop_reversed: remove only rows identified as reversals and keep the
+      normal/APPROVED row(s);
     - drop_rrn: remove both APPROVED and reversal rows for that RRN.
     Legacy labels map to the new semantics so saved drafts keep working.
     """
@@ -23,6 +25,8 @@ def _reversal_action_kind(action: str) -> str:
         or "💥" in normalized
     ):
         return "drop_rrn"
+    if "удалить reversed" in normalized:
+        return "drop_reversed"
     if (
         "удалить approved" in normalized
         or "удалить строк" in normalized
@@ -68,6 +72,10 @@ def apply_reversals(df: pl.DataFrame, status_col: str, action: str, amt_col: str
         # with a reversal. Normal rows for unrelated RRNs stay untouched.
         reversed_rrn_mask = pl.col("RRN").is_in(reversal_rrns["RRN"])
         return df.filter(rev_mask | ~reversed_rrn_mask)
+    if action_kind == "drop_reversed":
+        # Remove only rows whose status matches a configured reversal marker.
+        # The normal/APPROVED row for the same RRN remains in reconciliation.
+        return df.filter(~rev_mask)
     if action_kind == "negate":
         return df.with_columns(
             pl.when(rev_mask)

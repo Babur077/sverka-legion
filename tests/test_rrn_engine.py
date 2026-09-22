@@ -313,6 +313,36 @@ def test_delete_approved_keeps_reversal_and_unrelated_rows():
     assert result["summary"].iloc[-1]["Сумма_в_банке"] == 200
 
 
+def test_delete_reversed_keeps_approved_and_unrelated_rows():
+    our = frame([
+        {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "APPROVED"},
+        {"date": "2026-09-01", "rrn": "R100", "amount": "-500", "status": "REFUND"},
+        {"date": "2026-09-01", "rrn": "R101", "amount": "700", "status": "APPROVED"},
+    ])
+    bank = frame([
+        {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "APPROVED"},
+        {"date": "2026-09-01", "rrn": "R100", "amount": "-500", "status": "refund"},
+        {"date": "2026-09-01", "rrn": "R101", "amount": "700", "status": "APPROVED"},
+    ])
+
+    result = run_rrn_reconciliation(
+        our,
+        bank,
+        base_cfg(
+            our_rev="Удалить reversed",
+            bank_rev="Удалить reversed",
+            rev_words=["Refund"],
+        ),
+    )
+
+    assert result["matched_count"] == 2
+    assert result["mismatch_count"] == 0
+    assert result["summary"].iloc[-1]["Кол_во_у_нас"] == 2
+    assert result["summary"].iloc[-1]["Кол_во_в_банке"] == 2
+    assert result["summary"].iloc[-1]["Сумма_у_нас"] == 1200
+    assert result["summary"].iloc[-1]["Сумма_в_банке"] == 1200
+
+
 def test_delete_approved_and_reversed_removes_entire_reversal_rrn():
     our = frame([
         {"date": "2026-09-01", "rrn": "R100", "amount": "500", "status": "APPROVED"},
