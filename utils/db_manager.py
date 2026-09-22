@@ -10,7 +10,9 @@ import pandas as pd
 
 from backend.db.migrations.runner import run_migrations
 
-DB_PATH = os.getenv("RECONCILEHUB_DB_PATH", "database/reconcile_hub.db")
+_DEFAULT_RUNTIME_DB_PATH = "runtime/reconcile_hub.db"
+_LEGACY_DB_PATH = "database/reconcile_hub.db"
+DB_PATH = os.getenv("RECONCILEHUB_DB_PATH", _DEFAULT_RUNTIME_DB_PATH)
 
 # ─────────────────────────────────────────────────────────────
 # Пароли: PBKDF2-HMAC-SHA256 с уникальной солью на пользователя.
@@ -70,8 +72,31 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 
+def _ensure_runtime_database() -> None:
+    """Copy the legacy tracked SQLite DB to the local runtime path once.
+
+    This migration only applies when RECONCILEHUB_DB_PATH is not explicitly set.
+    It preserves all existing users, archives and settings while moving active
+    runtime state outside the Git-tracked database path.
+    """
+    if os.getenv("RECONCILEHUB_DB_PATH", "").strip():
+        return
+    if DB_PATH != _DEFAULT_RUNTIME_DB_PATH:
+        return
+    if os.path.exists(DB_PATH) or not os.path.exists(_LEGACY_DB_PATH):
+        return
+
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+
+    with sqlite3.connect(_LEGACY_DB_PATH) as source, sqlite3.connect(DB_PATH) as target:
+        source.backup(target)
+
+
 def init_db():
     """Apply versioned schema migrations and bootstrap reference data."""
+    _ensure_runtime_database()
     db_dir = os.path.dirname(DB_PATH)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
