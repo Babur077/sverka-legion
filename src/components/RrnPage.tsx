@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import { RawRow, ReconciliationConfig, ReconciliationResult, UnmatchedRow, AmountMismatchRow, DateSummaryRow, SystemSettings, User, EposTerminal } from '../types';
 import { hasPermission } from '../utils/permissions';
-import { FileParseOptions, ParsedFileResult, parseFile, guessCol, exportReconciliationToExcel } from '../utils/fileParser';
+import { FileParseOptions, ParsedFileResult, parseFile, guessCol, guessRrnCol, exportReconciliationToExcel } from '../utils/fileParser';
 import { runBankRrnViaApi } from '../utils/bankRrnApi';
 import { getStoredDraft, saveActiveDraft, clearActiveDraft } from '../utils/storage';
 import { createEposViaApi, getEposViaApi } from '../utils/eposApi';
@@ -42,6 +42,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const canExport = hasPermission(user, 'bank_rrn.export');
   const canManageEpos = hasPermission(user, 'epos.manage');
   const isReadOnly = !canRun;
+  const currency = settings.currency || 'UZS';
+  const tolerance = settings.amount_tolerance || 0.01;
 
   // Modal states
   const [alertState, setAlertState] = useState<{
@@ -418,7 +420,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       setOurSourceOptions(options);
       setDraftRestored(false);
       setOurDateCol(guessCol(parsed.columns, ['date', 'дата']) || parsed.columns[0] || '');
-      setOurRrnCol(guessCol(parsed.columns, ['rrn', 'ref']) || parsed.columns[1] || '');
+      setOurRrnCol(guessRrnCol(parsed.columns) || parsed.columns[1] || '');
       setOurAmtCol(guessCol(parsed.columns, ['amount', 'сумма']) || '');
       setOurStatusCol(guessCol(parsed.columns, ['status', 'статус']) || '');
     } else {
@@ -428,7 +430,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       setBankSourceOptions(options);
       setDraftRestored(false);
       setBankDateCol(guessCol(parsed.columns, ['date', 'дата']) || parsed.columns[0] || '');
-      setBankRrnCol(guessCol(parsed.columns, ['rrn', 'ref']) || parsed.columns[1] || '');
+      setBankRrnCol(guessRrnCol(parsed.columns) || parsed.columns[1] || '');
       setBankAmtCol(guessCol(parsed.columns, ['amount', 'сумма']) || '');
       setBankStatusCol(guessCol(parsed.columns, ['status', 'статус']) || '');
       setBankTidCol(guessCol(parsed.columns, ['tid', 'terminal', 'терминал']) || '');
@@ -744,6 +746,13 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       };
     });
 
+    const matchingDailyAggregateCount = adjustedSummary.filter(row =>
+      row.Кол_во_у_нас > 0
+      && row.Кол_во_в_банке > 0
+      && row['Δ кол-во'] === 0
+      && Math.abs(row['Δ суммы']) <= tolerance
+    ).length;
+
     const totalOurSum = adjustedSummary.reduce((a, b) => a + b.Сумма_у_нас, 0);
     const totalBankSum = adjustedSummary.reduce((a, b) => a + b.Сумма_в_банке, 0);
     const totalOurCount = adjustedSummary.reduce((a, b) => a + b.Кол_во_у_нас, 0);
@@ -855,9 +864,31 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       activeOnlyOurCount,
       activeOnlyBankCount,
       quality,
+      matchingDailyAggregateCount,
       sourceQualityIssueCount,
     };
-  }, [reconData]);
+  }, [reconData, tolerance]);
+
+  const rrnSelectionDiagnostic = useMemo(() => {
+    const sampleValues = (rows: RawRow[], column: string) => {
+      if (!column) return [];
+      const values: string[] = [];
+      for (const row of rows.slice(0, 200)) {
+        const value = String(row?.[column] ?? '').trim();
+        if (!value || values.includes(value)) continue;
+        values.push(value);
+        if (values.length >= 3) break;
+      }
+      return values;
+    };
+
+    return {
+      ourColumn: ourRrnCol,
+      bankColumn: bankRrnCol,
+      ourSamples: sampleValues(ourFile?.rows || [], ourRrnCol),
+      bankSamples: sampleValues(bankFile?.rows || [], bankRrnCol),
+    };
+  }, [ourFile, bankFile, ourRrnCol, bankRrnCol]);
 
   const handleGenerateAiSummary = async () => {
     if (!reconData || !dynamicCalculations) return;
@@ -1111,9 +1142,6 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       dynamicCalculations.adjustedTerminalSummary
     );
   };
-
-  const currency = settings.currency || 'UZS';
-  const tolerance = settings.amount_tolerance || 0.01;
 
   const fmt = (n: number | null | undefined) => {
     if (n == null || !Number.isFinite(Number(n))) return '—';
@@ -1843,9 +1871,31 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
 
           {/* Status Alert Banner */}
           {dynamicCalculations.quality.rrnMatched === 0 && dynamicCalculations.quality.scope > 0 ? (
-            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-3 text-rose-800 text-sm">
-              <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
-              <span><strong>Ни одного совпадения по RRN!</strong> Проверьте выбранные колонки и формат RRN.</span>
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-3 text-rose-800 text-sm">
+              <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="space-y-1.5">
+                <div>
+                  <strong>Совпадений именно по RRN не найдено.</strong>{' '}
+                  Сравниваются колонки <span className="font-mono font-semibold">{rrnSelectionDiagnostic.ourColumn || '—'}</span>
+                  {' '}↔{' '}
+                  <span className="font-mono font-semibold">{rrnSelectionDiagnostic.bankColumn || '—'}</span>.
+                </div>
+                {dynamicCalculations.matchingDailyAggregateCount > 0 && (
+                  <div className="text-xs text-rose-700">
+                    При этом на {dynamicCalculations.matchingDailyAggregateCount} дн. совпадают агрегаты
+                    (количество и общая сумма). Это совпадение дневных итогов, а не конкретных транзакций.
+                  </div>
+                )}
+                {(rrnSelectionDiagnostic.ourSamples.length > 0 || rrnSelectionDiagnostic.bankSamples.length > 0) && (
+                  <div className="text-[11px] text-rose-700">
+                    Пример значений: мы — {rrnSelectionDiagnostic.ourSamples.join(', ') || '—'};
+                    {' '}банк — {rrnSelectionDiagnostic.bankSamples.join(', ') || '—'}.
+                  </div>
+                )}
+                <div className="text-xs font-medium">
+                  Проверьте, что на нашей стороне выбрана именно колонка с банковским RRN, а не внутренний ref/reference номер.
+                </div>
+              </div>
             </div>
           ) : Math.abs(dynamicCalculations.totalDiff) <= tolerance && dynamicCalculations.quality.issueCount === 0 && dynamicCalculations.sourceQualityIssueCount === 0 ? (
             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3 text-emerald-800 text-sm">

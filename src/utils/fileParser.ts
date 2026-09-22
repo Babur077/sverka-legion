@@ -28,6 +28,41 @@ export function guessCol(cols: string[], keywords: string[]): string | null {
   return null;
 }
 
+export function guessRrnCol(cols: string[]): string | null {
+  if (!cols || cols.length === 0) return null;
+
+  const normalized = cols.map(col => ({
+    original: col,
+    value: String(col).toLowerCase().trim(),
+  }));
+
+  // Prefer an actual RRN field. Generic ref/reference columns are often
+  // internal transaction IDs and must only be a last-resort fallback.
+  const exactRrn = normalized.find(item => item.value === 'rrn');
+  if (exactRrn) return exactRrn.original;
+
+  const containsRrn = normalized.find(item => /(^|[^a-z0-9])rrn([^a-z0-9]|$)/i.test(item.value))
+    || normalized.find(item => item.value.includes('rrn'));
+  if (containsRrn) return containsRrn.original;
+
+  const commonAliases = [
+    'retrieval reference number',
+    'retrieval_ref_number',
+    'retrieval reference',
+    'reference rrn',
+  ];
+  const alias = normalized.find(item => commonAliases.some(value => item.value.includes(value)));
+  if (alias) return alias.original;
+
+  const genericReference = normalized.find(item =>
+    item.value === 'ref_number'
+    || item.value === 'reference_number'
+    || item.value === 'reference'
+    || item.value === 'ref',
+  );
+  return genericReference?.original || null;
+}
+
 type FileParseProgressStatus = 'loading' | 'success' | 'error';
 type FileParseProgressStage = 'reading' | 'parsing' | 'ready' | 'error';
 
