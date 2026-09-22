@@ -37,6 +37,32 @@ const REASON_OPTIONS = [
   'Другое',
 ];
 
+const REV_DELETE_APPROVED = 'Удалить approved';
+const REV_DELETE_BOTH = 'Удалить approved и reversed';
+
+const normalizeReversalAction = (value: unknown, fallback: string): string => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (
+    normalized.includes('approved и reversed')
+    || normalized.includes('approved + reversed')
+    || normalized.includes('rrn полностью')
+    || normalized.includes('💥')
+  ) return REV_DELETE_BOTH;
+  if (
+    normalized.includes('удалить approved')
+    || normalized.includes('удалить строк')
+    || normalized.includes('удалить возврат')
+    || normalized.includes('🗑')
+  ) return REV_DELETE_APPROVED;
+  if (
+    normalized.includes('минусовать')
+    || normalized.includes('изменить знак')
+    || normalized.includes('➖')
+  ) return 'Минусовать сумму';
+  if (normalized.includes('не обрабатывать') || normalized.includes('⚪')) return 'Не обрабатывать';
+  return fallback;
+};
+
 export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const canRun = hasPermission(user, 'bank_rrn.run');
   const canExport = hasPermission(user, 'bank_rrn.export');
@@ -106,7 +132,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   // Processing rules
   const [revInput, setRevInput] = useState('reversed, возврат, refund, отказ, ошибка');
   const [ourRev, setOurRev] = useState('Минусовать сумму');
-  const [bankRev, setBankRev] = useState('Удалить строку');
+  const [bankRev, setBankRev] = useState(REV_DELETE_APPROVED);
   const [dupAction, setDupAction] = useState('Ничего не делать (оставить все)');
   const [unbindMismatches, setUnbindMismatches] = useState(false);
   const [deductCommission, setDeductCommission] = useState(false);
@@ -243,8 +269,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     }
     if (savedDraft.rules) {
       setRevInput(savedDraft.rules.revInput || '');
-      setOurRev(savedDraft.rules.ourRev || 'Минусовать сумму');
-      setBankRev(savedDraft.rules.bankRev || 'Удалить строку');
+      setOurRev(normalizeReversalAction(savedDraft.rules.ourRev, 'Минусовать сумму'));
+      setBankRev(normalizeReversalAction(savedDraft.rules.bankRev, REV_DELETE_APPROVED));
       setDupAction(savedDraft.rules.dupAction || 'Ничего не делать (оставить все)');
       setUnbindMismatches(!!savedDraft.rules.unbindMismatches);
       setDeductCommission(!!savedDraft.rules.deductCommission);
@@ -336,6 +362,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const [filterStatusOur, setFilterStatusOur] = useState('(Все)');
   const [filterDateBank, setFilterDateBank] = useState('(Все)');
   const [filterStatusBank, setFilterStatusBank] = useState('(Все)');
+  const [showCheckedOnlyOur, setShowCheckedOnlyOur] = useState(false);
+  const [showCheckedOnlyBank, setShowCheckedOnlyBank] = useState(false);
   const UNMATCHED_PAGE_SIZE = 100;
   const [unmatchedPageOur, setUnmatchedPageOur] = useState(1);
   const [unmatchedPageBank, setUnmatchedPageBank] = useState(1);
@@ -346,9 +374,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       .map((item, originalIndex) => ({ item, originalIndex }))
       .filter(({ item }) =>
         (filterDateOur === '(Все)' || item.date_str === filterDateOur) &&
-        (filterStatusOur === '(Все)' || (item.status || '') === filterStatusOur)
+        (filterStatusOur === '(Все)' || (item.status || '') === filterStatusOur) &&
+        (!showCheckedOnlyOur || item.checked)
       );
-  }, [reconData, activeTab, filterDateOur, filterStatusOur]);
+  }, [reconData, activeTab, filterDateOur, filterStatusOur, showCheckedOnlyOur]);
 
   const unmatchedBankFiltered = useMemo(() => {
     if (!reconData || activeTab !== 'unmatched') return [];
@@ -356,9 +385,10 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       .map((item, originalIndex) => ({ item, originalIndex }))
       .filter(({ item }) =>
         (filterDateBank === '(Все)' || item.date_str === filterDateBank) &&
-        (filterStatusBank === '(Все)' || (item.status || '') === filterStatusBank)
+        (filterStatusBank === '(Все)' || (item.status || '') === filterStatusBank) &&
+        (!showCheckedOnlyBank || item.checked)
       );
-  }, [reconData, activeTab, filterDateBank, filterStatusBank]);
+  }, [reconData, activeTab, filterDateBank, filterStatusBank, showCheckedOnlyBank]);
 
   const unmatchedOurPageCount = Math.max(1, Math.ceil(unmatchedOurFiltered.length / UNMATCHED_PAGE_SIZE));
   const unmatchedBankPageCount = Math.max(1, Math.ceil(unmatchedBankFiltered.length / UNMATCHED_PAGE_SIZE));
@@ -395,7 +425,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   useEffect(() => {
     setUnmatchedPageOur(1);
     setUnmatchedPageBank(1);
-  }, [filterDateOur, filterStatusOur, filterDateBank, filterStatusBank]);
+  }, [filterDateOur, filterStatusOur, filterDateBank, filterStatusBank, showCheckedOnlyOur, showCheckedOnlyBank]);
 
   useEffect(() => {
     if (unmatchedPageOur > unmatchedOurPageCount) setUnmatchedPageOur(unmatchedOurPageCount);
@@ -603,6 +633,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
         },
       );
       setReconData(result);
+      setShowCheckedOnlyOur(false);
+      setShowCheckedOnlyBank(false);
       const detectedTerminalIds = Array.from(new Set(
         (result.terminal_summary || [])
           .map(item => String(item.terminal_id || '').trim())
@@ -884,6 +916,89 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       sourceQualityIssueCount,
     };
   }, [reconData, tolerance]);
+
+  const amountMismatchStats = useMemo(() => {
+    if (!reconData) {
+      return {
+        detectedCount: 0,
+        netDelta: 0,
+        absoluteDelta: 0,
+        positiveDelta: 0,
+        negativeDelta: 0,
+        invalidDeltaCount: 0,
+        compensation: 'none' as 'none' | 'partial' | 'full',
+      };
+    }
+
+    const deltas = reconData.amt_mismatches
+      .map(row => row['Δ сумма'])
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+    const localNet = deltas.reduce((sum, value) => sum + value, 0);
+    const localAbsolute = deltas.reduce((sum, value) => sum + Math.abs(value), 0);
+    const localPositive = deltas.filter(value => value > 0).reduce((sum, value) => sum + value, 0);
+    const localNegative = deltas.filter(value => value < 0).reduce((sum, value) => sum + value, 0);
+
+    const netDelta = Number.isFinite(Number(reconData.amount_mismatch_net_delta))
+      ? Number(reconData.amount_mismatch_net_delta)
+      : localNet;
+    const absoluteDelta = Number.isFinite(Number(reconData.amount_mismatch_abs_delta))
+      ? Number(reconData.amount_mismatch_abs_delta)
+      : localAbsolute;
+    const positiveDelta = Number.isFinite(Number(reconData.amount_mismatch_positive_delta))
+      ? Number(reconData.amount_mismatch_positive_delta)
+      : localPositive;
+    const negativeDelta = Number.isFinite(Number(reconData.amount_mismatch_negative_delta))
+      ? Number(reconData.amount_mismatch_negative_delta)
+      : localNegative;
+    const invalidDeltaCount = Number(
+      reconData.amount_mismatch_invalid_delta_count
+      ?? reconData.amt_mismatches.filter(row => row['Δ сумма'] == null).length,
+    );
+    const detectedCount = Number(
+      reconData.amount_mismatch_count_before_unbind
+      ?? reconData.mismatch_count
+      ?? reconData.amt_mismatches.length,
+    );
+
+    const hasOppositeSigns = positiveDelta > tolerance && negativeDelta < -tolerance;
+    const compensation = absoluteDelta <= tolerance
+      ? 'none'
+      : Math.abs(netDelta) <= tolerance && hasOppositeSigns
+        ? 'full'
+        : hasOppositeSigns
+          ? 'partial'
+          : 'none';
+
+    return {
+      detectedCount,
+      netDelta,
+      absoluteDelta,
+      positiveDelta,
+      negativeDelta,
+      invalidDeltaCount,
+      compensation,
+    };
+  }, [reconData, tolerance]);
+
+  const duplicateActionSummary = useMemo(() => {
+    if (!reconData) return '';
+    const action = String(reconData.dup_action || '').toLowerCase();
+    const removedOur = Number(reconData.dup_removed_our_c || 0);
+    const removedBank = Number(reconData.dup_removed_bank_c || 0);
+    const removedText = `Удалено строк: у нас ${removedOur}, у банка ${removedBank}.`;
+
+    if (action.includes('удалить все')) {
+      return `Все строки по дублирующимся RRN удалены из сверки, включая исходную строку. ${removedText}`;
+    }
+    if (action.includes('первую')) {
+      return `Для каждого дублирующегося RRN оставлена только первая строка. ${removedText}`;
+    }
+    if (action.includes('последнюю')) {
+      return `Для каждого дублирующегося RRN оставлена только последняя строка. ${removedText}`;
+    }
+    return 'Дубликаты не удалялись: все повторяющиеся строки были оставлены и сопоставлены между собой.';
+  }, [reconData]);
 
   const rrnSelectionDiagnostic = useMemo(() => {
     const sampleValues = (rows: RawRow[], column: string) => {
@@ -1736,9 +1851,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       onChange={(e) => setOurRev(e.target.value)}
                       className="w-full py-1.5 px-2 border border-slate-200 rounded-lg text-xs"
                     >
-                      <option value="Минусовать сумму">Минусовать сумму</option>
-                      <option value="Удалить строку">Удалить строку</option>
-                      <option value="Удалить RRN полностью">Удалить RRN полностью</option>
+                      <option value="Минусовать сумму">Минусовать сумму reversed</option>
+                      <option value={REV_DELETE_APPROVED}>{REV_DELETE_APPROVED}</option>
+                      <option value={REV_DELETE_BOTH}>{REV_DELETE_BOTH}</option>
                       <option value="Не обрабатывать">Не обрабатывать</option>
                     </select>
                   </div>
@@ -1749,12 +1864,17 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       onChange={(e) => setBankRev(e.target.value)}
                       className="w-full py-1.5 px-2 border border-slate-200 rounded-lg text-xs"
                     >
-                      <option value="Удалить строку">Удалить строку</option>
-                      <option value="Минусовать сумму">Минусовать сумму</option>
-                      <option value="Удалить RRN полностью">Удалить RRN полностью</option>
+                      <option value={REV_DELETE_APPROVED}>{REV_DELETE_APPROVED}</option>
+                      <option value="Минусовать сумму">Минусовать сумму reversed</option>
+                      <option value={REV_DELETE_BOTH}>{REV_DELETE_BOTH}</option>
                       <option value="Не обрабатывать">Не обрабатывать</option>
                     </select>
                   </div>
+                  <p className="col-span-2 text-[10px] leading-4 text-slate-500">
+                    <strong>approved</strong> — обычная строка того же RRN, которая не попала под маркеры возврата;
+                    <strong className="ml-1">reversed</strong> — строка, статус которой содержит один из маркеров выше.
+                    «Удалить approved» оставляет reversed, а «Удалить approved и reversed» полностью исключает этот RRN.
+                  </p>
                 </div>
 
                 <div className="border-t border-slate-100 pt-3">
@@ -2215,7 +2335,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 activeTab === 'mismatches' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              <div className="flex items-center gap-1.5"><AlertCircle className="w-4 h-4"/> Расхождения сумм ({reconData.mismatch_count})</div>
+              <div className="flex items-center gap-1.5"><AlertCircle className="w-4 h-4"/> Расхождения сумм ({amountMismatchStats.detectedCount})</div>
             </button>
             <button
               onClick={() => setActiveTab('dups')}
@@ -2507,7 +2627,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <h3 className="text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
-                      Отсутствуют в банке ({reconData.only_our.length})
+                      Отсутствуют в банке ({reconData.only_our.filter(item => item.checked).length} отмечено / {reconData.only_our.length})
                     </h3>
                   </div>
 
@@ -2542,16 +2662,27 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       </div>
                     </div>
 
-                    <div className="flex gap-2 pt-1">
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowCheckedOnlyOur(value => !value)}
+                        className={`py-1 px-2 border text-[11px] font-semibold rounded cursor-pointer ${
+                          showCheckedOnlyOur
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {showCheckedOnlyOur ? 'Показать все' : 'Только отмеченные'}
+                      </button>
                       <button
                         onClick={() => handleBulkToggle(false, true)}
-                        className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
+                        className="flex-1 min-w-[110px] py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
                         Снять галочки
                       </button>
                       <button
                         onClick={() => handleBulkToggle(true, true)}
-                        className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
+                        className="flex-1 min-w-[110px] py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
                         Вернуть галочки
                       </button>
@@ -2643,7 +2774,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <h3 className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
-                      Лишние данные банка ({reconData.only_bank.length})
+                      Лишние данные банка ({reconData.only_bank.filter(item => item.checked).length} отмечено / {reconData.only_bank.length})
                     </h3>
                   </div>
 
@@ -2678,16 +2809,27 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       </div>
                     </div>
 
-                    <div className="flex gap-2 pt-1">
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowCheckedOnlyBank(value => !value)}
+                        className={`py-1 px-2 border text-[11px] font-semibold rounded cursor-pointer ${
+                          showCheckedOnlyBank
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {showCheckedOnlyBank ? 'Показать все' : 'Только отмеченные'}
+                      </button>
                       <button
                         onClick={() => handleBulkToggle(false, false)}
-                        className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
+                        className="flex-1 min-w-[110px] py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
                         Снять галочки
                       </button>
                       <button
                         onClick={() => handleBulkToggle(true, false)}
-                        className="flex-1 py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
+                        className="flex-1 min-w-[110px] py-1 px-2 bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium rounded cursor-pointer"
                       >
                         Вернуть галочки
                       </button>
@@ -2781,121 +2923,219 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           {/* ─── TAB 3: AMOUNT MISMATCHES ─── */}
           {activeTab === 'mismatches' && (
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-              {reconData.amt_mismatches.length === 0 ? (
+              {amountMismatchStats.detectedCount === 0 ? (
                 <div className="p-4 rounded-xl bg-emerald-50 text-emerald-800 text-xs flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>Нет расхождений в суммах! Все сопоставленные RRN имеют одинаковые суммы.</span>
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-200 text-xs">
-                  <table className="min-w-full divide-y divide-slate-200">
-                    <thead className="bg-slate-50 font-bold text-slate-700">
-                      <tr>
-                        <th className="px-3 py-2 text-left">RRN</th>
-                        <th className="px-3 py-2 text-left">Дата (Мы)</th>
-                        <th className="px-3 py-2 text-left">Дата (Банк)</th>
-                        <th className="px-3 py-2 text-left">Статус (Мы)</th>
-                        <th className="px-3 py-2 text-left">Статус (Банк)</th>
-                        <th className="px-3 py-2 text-right">Сумма (Мы)</th>
-                        <th className="px-3 py-2 text-right">Сумма (Банк)</th>
-                        <th className="px-3 py-2 text-right">Δ Разница</th>
-                        <th className="px-3 py-2 text-left">Причина</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {reconData.amt_mismatches.map((m, i) => (
-                        <tr key={i} className="hover:bg-slate-50">
-                          <td className="px-3 py-2 font-mono text-slate-800">{m.RRN}</td>
-                          <td className="px-3 py-2 text-slate-600">{m.date_our}</td>
-                          <td className="px-3 py-2 text-slate-600">{m.date_bank}</td>
-                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{m.status_our || '—'}</td>
-                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{m.status_bank || '—'}</td>
-                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_our)}</td>
-                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_bank)}</td>
-                          <td className="px-3 py-2 text-right font-bold text-rose-600">
-                            {m['Δ сумма'] == null ? '—' : (m['Δ сумма'] > 0 ? `+${fmt(m['Δ сумма'])}` : fmt(m['Δ сумма']))}
-                          </td>
-                          <td className="px-3 py-2 text-left text-slate-600">
-                            {m.amount_issue || 'Расхождение суммы'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <>
+                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Общее Δ расхождений</div>
+                      <div className={`mt-1 text-base font-bold tabular-nums ${
+                        Math.abs(amountMismatchStats.netDelta) <= tolerance ? 'text-emerald-600' : 'text-rose-600'
+                      }`}>
+                        {amountMismatchStats.netDelta > 0 ? '+' : ''}{fmt(amountMismatchStats.netDelta)} {currency}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Плюсовые Δ</div>
+                      <div className="mt-1 text-base font-bold text-rose-600 tabular-nums">
+                        +{fmt(amountMismatchStats.positiveDelta)} {currency}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Минусовые Δ</div>
+                      <div className="mt-1 text-base font-bold text-indigo-600 tabular-nums">
+                        {fmt(amountMismatchStats.negativeDelta)} {currency}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Сумма модулей Δ</div>
+                      <div className="mt-1 text-base font-bold text-slate-900 tabular-nums">
+                        {fmt(amountMismatchStats.absoluteDelta)} {currency}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`rounded-xl border px-4 py-3 text-xs ${
+                    amountMismatchStats.compensation === 'full'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : amountMismatchStats.compensation === 'partial'
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-rose-200 bg-rose-50 text-rose-800'
+                  }`}>
+                    {amountMismatchStats.compensation === 'full' ? (
+                      <strong>Расхождения взаимно компенсируются: итоговое Δ находится в пределах допуска.</strong>
+                    ) : amountMismatchStats.compensation === 'partial' ? (
+                      <span>
+                        <strong>Есть встречные плюсовые и минусовые расхождения:</strong> они частично компенсируют друг друга,
+                        но остаётся итоговое Δ {amountMismatchStats.netDelta > 0 ? '+' : ''}{fmt(amountMismatchStats.netDelta)} {currency}.
+                      </span>
+                    ) : (
+                      <span>
+                        <strong>Расхождения не компенсируются между собой.</strong> Итоговое Δ:
+                        {' '}{amountMismatchStats.netDelta > 0 ? '+' : ''}{fmt(amountMismatchStats.netDelta)} {currency}.
+                      </span>
+                    )}
+                    {amountMismatchStats.invalidDeltaCount > 0 && (
+                      <span className="ml-1">
+                        Ещё {amountMismatchStats.invalidDeltaCount} строк(и) имеют невалидную сумму и не вошли в расчёт общего Δ.
+                      </span>
+                    )}
+                  </div>
+
+                  {reconData.amt_mismatches.length === 0 ? (
+                    <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs">
+                      Обнаружено {amountMismatchStats.detectedCount} расхождений сумм, но они были перенесены в
+                      «Несопоставленные» режимом разъединения расхождений. Общие показатели выше рассчитаны до разъединения.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 text-xs">
+                      <table className="min-w-full divide-y divide-slate-200">
+                        <thead className="bg-slate-50 font-bold text-slate-700">
+                          <tr>
+                            <th className="px-3 py-2 text-left">RRN</th>
+                            <th className="px-3 py-2 text-left">Дата (Мы)</th>
+                            <th className="px-3 py-2 text-left">Дата (Банк)</th>
+                            <th className="px-3 py-2 text-left">Статус (Мы)</th>
+                            <th className="px-3 py-2 text-left">Статус (Банк)</th>
+                            <th className="px-3 py-2 text-right">Сумма (Мы)</th>
+                            <th className="px-3 py-2 text-right">Сумма (Банк)</th>
+                            <th className="px-3 py-2 text-right">Δ Разница</th>
+                            <th className="px-3 py-2 text-left">Причина</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {reconData.amt_mismatches.map((m, i) => (
+                            <tr key={i} className="hover:bg-slate-50">
+                              <td className="px-3 py-2 font-mono text-slate-800">{m.RRN}</td>
+                              <td className="px-3 py-2 text-slate-600">{m.date_our}</td>
+                              <td className="px-3 py-2 text-slate-600">{m.date_bank}</td>
+                              <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{m.status_our || '—'}</td>
+                              <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{m.status_bank || '—'}</td>
+                              <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_our)}</td>
+                              <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_bank)}</td>
+                              <td className={`px-3 py-2 text-right font-bold ${
+                                m['Δ сумма'] == null
+                                  ? 'text-slate-400'
+                                  : Math.abs(m['Δ сумма']) <= tolerance
+                                    ? 'text-emerald-600'
+                                    : m['Δ сумма'] > 0
+                                      ? 'text-rose-600'
+                                      : 'text-indigo-600'
+                              }`}>
+                                {m['Δ сумма'] == null ? '—' : (m['Δ сумма'] > 0 ? `+${fmt(m['Δ сумма'])}` : fmt(m['Δ сумма']))}
+                              </td>
+                              <td className="px-3 py-2 text-left text-slate-600">
+                                {m.amount_issue || 'Расхождение суммы'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
 
           {/* ─── TAB 4: DUPLICATES ─── */}
           {activeTab === 'dups' && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {[
-                { title: 'Наши данные', rows: reconData.dups_our, count: reconData.dup_our_c, side: 'our' as const },
-                { title: 'Данные банка', rows: reconData.dups_bank, count: reconData.dup_bank_c, side: 'bank' as const },
-              ].map(group => (
-                <div key={group.side} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Дубликаты RRN — {group.title}
-                      </h3>
-                      <p className="text-[11px] text-slate-500 mt-1">
-                        Повторяющиеся RRN показаны строками, как обычные транзакции.
-                      </p>
-                    </div>
-                    <span className="shrink-0 rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
-                      {group.count}
-                    </span>
-                  </div>
-
-                  {group.count === 0 ? (
-                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-xs text-emerald-700">
-                      Дубликатов не обнаружено
-                    </div>
-                  ) : (
-                    <div className="max-h-[420px] overflow-auto rounded-xl border border-slate-200">
-                      <table className="min-w-full text-[11px]">
-                        <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                          <tr>
-                            <th className="px-3 py-2 text-left">Дата</th>
-                            <th className="px-3 py-2 text-left">RRN</th>
-                            {group.side === 'bank' && <th className="px-3 py-2 text-left">TID</th>}
-                            <th className="px-3 py-2 text-left">Статус</th>
-                            <th className="px-3 py-2 text-right">Сумма</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white">
-                          {group.rows.map((row, idx) => {
-                            const rawDate = group.side === 'bank' ? (row.date_bank ?? row.date) : row.date;
-                            const dateText = rawDate == null ? '—' : String(rawDate).slice(0, 10).split('-').reverse().join('.');
-                            const amountValue = group.side === 'bank'
-                              ? Number(row.net_amount_bank ?? row.raw_amount ?? row.amount ?? 0)
-                              : Number(row.net_amount_our ?? row.amount ?? 0);
-                            const statusText = group.side === 'bank'
-                              ? String(row.status_bank ?? row.status ?? '—')
-                              : String(row.status_our ?? row.status ?? '—');
-
-                            return (
-                              <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
-                                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{dateText}</td>
-                                <td className="px-3 py-2 font-mono font-semibold text-slate-900">{String(row.RRN ?? '—')}</td>
-                                {group.side === 'bank' && (
-                                  <td className="px-3 py-2 font-mono text-slate-600">{String(row.terminal_id ?? '—')}</td>
-                                )}
-                                <td className="px-3 py-2 text-slate-600">{statusText}</td>
-                                <td className="px-3 py-2 text-right font-semibold text-slate-900 tabular-nums">
-                                  {fmt(Number.isFinite(amountValue) ? amountValue : 0)}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+            <div className="space-y-4">
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-xs text-indigo-900">
+                <div className="font-bold">Результат обработки дубликатов</div>
+                <div className="mt-1">{duplicateActionSummary}</div>
+                <div className="mt-1 text-[11px] text-indigo-700">
+                  Режим: <strong>{reconData.dup_action}</strong>. Таблицы ниже показывают дубликаты, обнаруженные
+                  <strong> до применения</strong> выбранного правила.
                 </div>
-              ))}
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {[
+                  {
+                    title: 'Наши данные',
+                    rows: reconData.dups_our,
+                    count: reconData.dup_our_c,
+                    rrnCount: reconData.dup_our_rrn_c || 0,
+                    removed: reconData.dup_removed_our_c || 0,
+                    side: 'our' as const,
+                  },
+                  {
+                    title: 'Данные банка',
+                    rows: reconData.dups_bank,
+                    count: reconData.dup_bank_c,
+                    rrnCount: reconData.dup_bank_rrn_c || 0,
+                    removed: reconData.dup_removed_bank_c || 0,
+                    side: 'bank' as const,
+                  },
+                ].map(group => (
+                  <div key={group.side} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                          Дубликаты RRN — {group.title}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          Обнаружено {group.count} строк в {group.rrnCount} повторяющихся RRN · удалено правилом: {group.removed}.
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
+                        {group.count}
+                      </span>
+                    </div>
+
+                    {group.count === 0 ? (
+                      <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-xs text-emerald-700">
+                        Дубликатов не обнаружено
+                      </div>
+                    ) : (
+                      <div className="max-h-[420px] overflow-auto rounded-xl border border-slate-200">
+                        <table className="min-w-full text-[11px]">
+                          <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                            <tr>
+                              <th className="px-3 py-2 text-left">Дата</th>
+                              <th className="px-3 py-2 text-left">RRN</th>
+                              {group.side === 'bank' && <th className="px-3 py-2 text-left">TID</th>}
+                              <th className="px-3 py-2 text-left">Статус</th>
+                              <th className="px-3 py-2 text-right">Сумма</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white">
+                            {group.rows.map((row, idx) => {
+                              const rawDate = group.side === 'bank' ? (row.date_bank ?? row.date) : row.date;
+                              const dateText = rawDate == null ? '—' : String(rawDate).slice(0, 10).split('-').reverse().join('.');
+                              const amountValue = group.side === 'bank'
+                                ? Number(row.net_amount_bank ?? row.raw_amount ?? row.amount ?? 0)
+                                : Number(row.net_amount_our ?? row.amount ?? 0);
+                              const statusText = group.side === 'bank'
+                                ? String(row.status_bank ?? row.status ?? '—')
+                                : String(row.status_our ?? row.status ?? '—');
+
+                              return (
+                                <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                                  <td className="px-3 py-2 whitespace-nowrap text-slate-600">{dateText}</td>
+                                  <td className="px-3 py-2 font-mono font-semibold text-slate-900">{String(row.RRN ?? '—')}</td>
+                                  {group.side === 'bank' && (
+                                    <td className="px-3 py-2 font-mono text-slate-600">{String(row.terminal_id ?? '—')}</td>
+                                  )}
+                                  <td className="px-3 py-2 text-slate-600">{statusText}</td>
+                                  <td className="px-3 py-2 text-right font-semibold text-slate-900 tabular-nums">
+                                    {fmt(Number.isFinite(amountValue) ? amountValue : 0)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

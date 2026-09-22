@@ -159,6 +159,10 @@ export interface ReconciliationResult {
   dups_bank: RawRow[];
   dup_our_c: number;
   dup_bank_c: number;
+  dup_our_rrn_c?: number;
+  dup_bank_rrn_c?: number;
+  dup_removed_our_c?: number;
+  dup_removed_bank_c?: number;
   matched_count: number;
   mismatch_count: number;
   rrn_found_count?: number;
@@ -170,6 +174,11 @@ export interface ReconciliationResult {
   total_commission?: number;
   effective_commission_rate?: number;
   comm_only_diff_count?: number;
+  amount_mismatch_net_delta?: number;
+  amount_mismatch_abs_delta?: number;
+  amount_mismatch_positive_delta?: number;
+  amount_mismatch_negative_delta?: number;
+  amount_mismatch_invalid_delta_count?: number;
   deduct_commission?: boolean;
   data_quality?: {
     our?: { missing_date?: number; invalid_date?: number; empty_rrn?: number; missing_amount?: number; invalid_amount?: number };

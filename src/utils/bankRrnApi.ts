@@ -29,6 +29,10 @@ interface BankRrnApiResult {
       dups_bank?: RawRow[];
       dup_our_c?: number;
       dup_bank_c?: number;
+      dup_our_rrn_c?: number;
+      dup_bank_rrn_c?: number;
+      dup_removed_our_c?: number;
+      dup_removed_bank_c?: number;
       matched_count?: number;
       mismatch_count?: number;
       rrn_found_count?: number;
@@ -37,6 +41,11 @@ interface BankRrnApiResult {
       only_bank_count_before_unbind?: number;
       unbound_mismatch_count?: number;
       comm_only_diff_count?: number;
+      amount_mismatch_net_delta?: number;
+      amount_mismatch_abs_delta?: number;
+      amount_mismatch_positive_delta?: number;
+      amount_mismatch_negative_delta?: number;
+      amount_mismatch_invalid_delta_count?: number;
       deduct_commission?: boolean;
       terminal_summary?: RawRow[];
       total_commission?: number;
@@ -206,6 +215,10 @@ export async function runBankRrnViaApi(
     dups_bank: (rrn.dups_bank || []) as ReconciliationResult['dups_bank'],
     dup_our_c: Number(rrn.dup_our_c || 0),
     dup_bank_c: Number(rrn.dup_bank_c || 0),
+    dup_our_rrn_c: Number(rrn.dup_our_rrn_c || 0),
+    dup_bank_rrn_c: Number(rrn.dup_bank_rrn_c || 0),
+    dup_removed_our_c: Number(rrn.dup_removed_our_c || 0),
+    dup_removed_bank_c: Number(rrn.dup_removed_bank_c || 0),
     matched_count: Number(rrn.matched_count ?? apiResult.summary.matched_count ?? 0),
     mismatch_count: Number(rrn.mismatch_count ?? 0),
     rrn_found_count: Number(
@@ -232,6 +245,11 @@ export async function runBankRrnViaApi(
     total_commission: Number(rrn.total_commission || 0),
     effective_commission_rate: Number(rrn.effective_commission_rate || 0),
     comm_only_diff_count: Number(rrn.comm_only_diff_count || 0),
+    amount_mismatch_net_delta: Number(rrn.amount_mismatch_net_delta || 0),
+    amount_mismatch_abs_delta: Number(rrn.amount_mismatch_abs_delta || 0),
+    amount_mismatch_positive_delta: Number(rrn.amount_mismatch_positive_delta || 0),
+    amount_mismatch_negative_delta: Number(rrn.amount_mismatch_negative_delta || 0),
+    amount_mismatch_invalid_delta_count: Number(rrn.amount_mismatch_invalid_delta_count || 0),
     deduct_commission: Boolean(rrn.deduct_commission),
     data_quality: rrn.data_quality || {},
     detected_months: rrn.detected_months || [],
