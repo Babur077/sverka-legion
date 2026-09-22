@@ -42,6 +42,8 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
   const canExport = hasPermission(user, 'bank_rrn.export');
   const canManageEpos = hasPermission(user, 'epos.manage');
   const isReadOnly = !canRun;
+  const currency = settings.currency || 'UZS';
+  const tolerance = settings.amount_tolerance || 0.01;
 
   // Modal states
   const [alertState, setAlertState] = useState<{
@@ -1140,9 +1142,6 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
       dynamicCalculations.adjustedTerminalSummary
     );
   };
-
-  const currency = settings.currency || 'UZS';
-  const tolerance = settings.amount_tolerance || 0.01;
 
   const fmt = (n: number | null | undefined) => {
     if (n == null || !Number.isFinite(Number(n))) return '—';
