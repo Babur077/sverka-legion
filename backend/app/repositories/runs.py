@@ -9,13 +9,35 @@ from utils.db_manager import (
 )
 
 
-def save_run(module_id: str, username: str, payload: dict[str, Any]):
-    return save_reconciliation_run(module_id, username, payload)
+def save_run(
+    module_id: str,
+    username: str,
+    payload: dict[str, Any],
+    *,
+    allow_owner_override: bool = False,
+):
+    return save_reconciliation_run(
+        module_id,
+        username,
+        payload,
+        allow_owner_override=allow_owner_override,
+    )
 
 
 def list_runs(module_id: str) -> list[dict]:
     return get_reconciliation_runs(module_id)
 
 
-def delete_run(module_id: str, record_id: int) -> bool:
-    return delete_reconciliation_run(module_id, record_id)
+def delete_run(
+    module_id: str,
+    record_id: int,
+    username: str,
+    *,
+    allow_owner_override: bool = False,
+) -> bool:
+    return delete_reconciliation_run(
+        module_id,
+        record_id,
+        username,
+        allow_owner_override=allow_owner_override,
+    )
