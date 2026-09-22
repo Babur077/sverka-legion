@@ -3,6 +3,7 @@ import polars as pl
 import pytest
 
 from core.recon_engine import run_rrn_reconciliation
+from modules.bank_rrn.engine import BankRrnModule
 
 
 def base_cfg(**overrides):
@@ -432,3 +433,49 @@ def test_duplicate_rows_keep_transaction_statuses():
 
     assert set(result["dups_our"]["status_our"].tolist()) == {"SUCCESS", "DECLINED"}
     assert set(result["dups_bank"]["status_bank"].tolist()) == {"SETTLED", "REVERSED"}
+
+
+def test_bank_rrn_module_trims_selected_column_names(monkeypatch):
+    our = frame([
+        {"Date": "2026-09-01", "RRN": "W100", "Summa": "1000", "Status": "OK"},
+    ])
+    bank = frame([
+        {"Date": "2026-09-01", "RRN": "W100", "Summa": "1000", "Status": "OK"},
+    ])
+
+    def fake_loader(_file_bytes, file_name, **_kwargs):
+        return our if str(file_name).startswith("our") else bank
+
+    monkeypatch.setattr("modules.bank_rrn.engine.load_file_polars", fake_loader)
+    monkeypatch.setattr(
+        "modules.bank_rrn.engine.get_epos_registry",
+        lambda: pd.DataFrame(),
+    )
+
+    result = BankRrnModule().run(
+        {"our_file": b"our", "bank_file": b"bank"},
+        {
+            "our_filename": "our.xlsx",
+            "bank_filename": "bank.xlsx",
+            "our_date_col": "  Date  ",
+            "our_rrn_col": " RRN ",
+            "our_amt_col": " Summa ",
+            "our_status_col": " Status ",
+            "bank_date_col": " Date ",
+            "bank_rrn_col": "  RRN  ",
+            "bank_amt_col": " Summa ",
+            "bank_status_col": " Status ",
+            "bank_tid_col": "   ",
+            "rev_words": "",
+            "our_rev_action": "Ничего не делать",
+            "bank_rev_action": "Ничего не делать",
+            "dup_action": "Ничего не делать (оставить все)",
+            "unbind_mismatches": False,
+            "tolerance": 0.01,
+            "deduct_commission": False,
+        },
+    )
+
+    assert result.summary.matched_count == 1
+    assert result.summary.discrepancy_count == 0
+
