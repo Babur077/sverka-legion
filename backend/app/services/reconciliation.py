@@ -7,6 +7,7 @@ from typing import Any, Dict
 from fastapi import HTTPException, Request
 
 from backend.app.http_utils import json_safe
+from backend.app.repositories.run_results import cache_run_result
 from backend.app.repositories.runs import delete_run, list_runs, save_run
 from modules.registry import module_registry
 from utils.permissions import record_audit_event
@@ -45,6 +46,20 @@ async def execute_module(module_id: str, request: Request, username: str):
             raise HTTPException(status_code=400, detail={"errors": validation.errors})
 
         result = module.run(files_dict, params_dict)
+        result_payload = result.model_dump()
+        source_files = [
+            str(value)
+            for key, value in params_dict.items()
+            if key.endswith("_filename") and str(value or "").strip()
+        ]
+        cache_run_result(
+            module_id,
+            result.run_id,
+            username,
+            result_payload,
+            params=params_dict,
+            source_files=source_files,
+        )
         duration = (time.time() - started) * 1000
         record_audit_event(
             user_id=username,
@@ -60,7 +75,7 @@ async def execute_module(module_id: str, request: Request, username: str):
                 f"Сходимость: {result.summary.match_percentage}%"
             ),
         )
-        return json_safe(result.model_dump())
+        return json_safe(result_payload)
     except HTTPException:
         raise
     except Exception as exc:
