@@ -94,7 +94,8 @@ def get_dashboard_data(
         run_rows = conn.execute(
             f"""
             SELECT id, module_id, run_id, status, period_month, created_at,
-                   updated_at, created_by, summary_json, payload_json
+                   updated_at, created_by, summary_json,
+                   substr(payload_json, 1, 8192) AS payload_prefix
             FROM reconciliation_runs
             WHERE {where_runs}
             ORDER BY updated_at DESC, id DESC
@@ -134,7 +135,6 @@ def get_dashboard_data(
     for row in run_rows:
         raw = dict(row)
         summary = _json_dict(raw.get("summary_json"))
-        payload = _json_dict(raw.get("payload_json"))
         period = _month_key(raw.get("period_month") or raw.get("created_at"))
         if period not in month_set:
             continue
@@ -152,9 +152,18 @@ def get_dashboard_data(
             "matched_count": matched,
             "discrepancy_count": discrepancy,
             "match_percentage": round(rate, 2),
-            "definition_name": payload.get("definition_name"),
-            "definition_version_number": payload.get("definition_version_number"),
-            "bank_name": payload.get("bank_name"),
+            "definition_name": (
+                summary.get("definition_name")
+                or db._json_prefix_value(str(raw.get("payload_prefix") or ""), "definition_name")
+            ),
+            "definition_version_number": (
+                summary.get("definition_version_number")
+                or db._json_prefix_value(str(raw.get("payload_prefix") or ""), "definition_version_number")
+            ),
+            "bank_name": (
+                summary.get("bank_name")
+                or db._json_prefix_value(str(raw.get("payload_prefix") or ""), "bank_name")
+            ),
         })
 
     total_runs = len(relevant_runs)

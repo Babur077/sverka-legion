@@ -4,6 +4,8 @@ from typing import Any
 
 from utils.db_manager import (
     delete_reconciliation_run,
+    get_reconciliation_run,
+    get_reconciliation_run_summaries,
     get_reconciliation_runs,
     save_reconciliation_run,
 )
@@ -26,6 +28,14 @@ def save_run(
 
 def list_runs(module_id: str) -> list[dict]:
     return get_reconciliation_runs(module_id)
+
+
+def list_run_summaries(module_id: str) -> list[dict]:
+    return get_reconciliation_run_summaries(module_id)
+
+
+def get_run(module_id: str, record_id: int) -> dict | None:
+    return get_reconciliation_run(module_id, record_id)
 
 
 def delete_run(
