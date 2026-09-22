@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from backend.app.http_utils import json_safe
+from backend.app.services.archive_authority import update_ravan_archive_match
 from backend.app.services.reconciliation import (
     execute_module,
     list_module_runs,
@@ -56,6 +57,26 @@ async def save_module_archive(
         payload,
         allow_owner_override="*" in perms,
     )
+
+
+@router.patch("/ravan_1c/archive/{run_id}/matches/{row_id}")
+async def update_ravan_1c_archive_match(
+    run_id: str,
+    row_id: str,
+    payload: Dict[str, Any],
+    x_user: Optional[str] = Header("admin"),
+):
+    perms = get_user_permissions(x_user)
+    if not has_permission(perms, "ravan_1c.run") and "*" not in perms:
+        raise HTTPException(status_code=403, detail="Нет прав на изменение результата сверки")
+
+    return json_safe(update_ravan_archive_match(
+        x_user or "",
+        run_id,
+        row_id,
+        str(payload.get("decision") or ""),
+        allow_owner_override="*" in perms,
+    ))
 
 
 @router.get("/{module_id}/archive")
