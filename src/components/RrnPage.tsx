@@ -2335,7 +2335,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                 activeTab === 'mismatches' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              <div className="flex items-center gap-1.5"><AlertCircle className="w-4 h-4"/> Расхождения сумм ({reconData.mismatch_count})</div>
+              <div className="flex items-center gap-1.5"><AlertCircle className="w-4 h-4"/> Расхождения сумм ({amountMismatchStats.detectedCount})</div>
             </button>
             <button
               onClick={() => setActiveTab('dups')}
@@ -2923,48 +2923,121 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
           {/* ─── TAB 3: AMOUNT MISMATCHES ─── */}
           {activeTab === 'mismatches' && (
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-              {reconData.amt_mismatches.length === 0 ? (
+              {amountMismatchStats.detectedCount === 0 ? (
                 <div className="p-4 rounded-xl bg-emerald-50 text-emerald-800 text-xs flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>Нет расхождений в суммах! Все сопоставленные RRN имеют одинаковые суммы.</span>
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-200 text-xs">
-                  <table className="min-w-full divide-y divide-slate-200">
-                    <thead className="bg-slate-50 font-bold text-slate-700">
-                      <tr>
-                        <th className="px-3 py-2 text-left">RRN</th>
-                        <th className="px-3 py-2 text-left">Дата (Мы)</th>
-                        <th className="px-3 py-2 text-left">Дата (Банк)</th>
-                        <th className="px-3 py-2 text-left">Статус (Мы)</th>
-                        <th className="px-3 py-2 text-left">Статус (Банк)</th>
-                        <th className="px-3 py-2 text-right">Сумма (Мы)</th>
-                        <th className="px-3 py-2 text-right">Сумма (Банк)</th>
-                        <th className="px-3 py-2 text-right">Δ Разница</th>
-                        <th className="px-3 py-2 text-left">Причина</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {reconData.amt_mismatches.map((m, i) => (
-                        <tr key={i} className="hover:bg-slate-50">
-                          <td className="px-3 py-2 font-mono text-slate-800">{m.RRN}</td>
-                          <td className="px-3 py-2 text-slate-600">{m.date_our}</td>
-                          <td className="px-3 py-2 text-slate-600">{m.date_bank}</td>
-                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{m.status_our || '—'}</td>
-                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{m.status_bank || '—'}</td>
-                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_our)}</td>
-                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_bank)}</td>
-                          <td className="px-3 py-2 text-right font-bold text-rose-600">
-                            {m['Δ сумма'] == null ? '—' : (m['Δ сумма'] > 0 ? `+${fmt(m['Δ сумма'])}` : fmt(m['Δ сумма']))}
-                          </td>
-                          <td className="px-3 py-2 text-left text-slate-600">
-                            {m.amount_issue || 'Расхождение суммы'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <>
+                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Общее Δ расхождений</div>
+                      <div className={`mt-1 text-base font-bold tabular-nums ${
+                        Math.abs(amountMismatchStats.netDelta) <= tolerance ? 'text-emerald-600' : 'text-rose-600'
+                      }`}>
+                        {amountMismatchStats.netDelta > 0 ? '+' : ''}{fmt(amountMismatchStats.netDelta)} {currency}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Плюсовые Δ</div>
+                      <div className="mt-1 text-base font-bold text-rose-600 tabular-nums">
+                        +{fmt(amountMismatchStats.positiveDelta)} {currency}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Минусовые Δ</div>
+                      <div className="mt-1 text-base font-bold text-indigo-600 tabular-nums">
+                        {fmt(amountMismatchStats.negativeDelta)} {currency}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Сумма модулей Δ</div>
+                      <div className="mt-1 text-base font-bold text-slate-900 tabular-nums">
+                        {fmt(amountMismatchStats.absoluteDelta)} {currency}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`rounded-xl border px-4 py-3 text-xs ${
+                    amountMismatchStats.compensation === 'full'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : amountMismatchStats.compensation === 'partial'
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-rose-200 bg-rose-50 text-rose-800'
+                  }`}>
+                    {amountMismatchStats.compensation === 'full' ? (
+                      <strong>Расхождения взаимно компенсируются: итоговое Δ находится в пределах допуска.</strong>
+                    ) : amountMismatchStats.compensation === 'partial' ? (
+                      <span>
+                        <strong>Есть встречные плюсовые и минусовые расхождения:</strong> они частично компенсируют друг друга,
+                        но остаётся итоговое Δ {amountMismatchStats.netDelta > 0 ? '+' : ''}{fmt(amountMismatchStats.netDelta)} {currency}.
+                      </span>
+                    ) : (
+                      <span>
+                        <strong>Расхождения не компенсируются между собой.</strong> Итоговое Δ:
+                        {' '}{amountMismatchStats.netDelta > 0 ? '+' : ''}{fmt(amountMismatchStats.netDelta)} {currency}.
+                      </span>
+                    )}
+                    {amountMismatchStats.invalidDeltaCount > 0 && (
+                      <span className="ml-1">
+                        Ещё {amountMismatchStats.invalidDeltaCount} строк(и) имеют невалидную сумму и не вошли в расчёт общего Δ.
+                      </span>
+                    )}
+                  </div>
+
+                  {reconData.amt_mismatches.length === 0 ? (
+                    <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs">
+                      Обнаружено {amountMismatchStats.detectedCount} расхождений сумм, но они были перенесены в
+                      «Несопоставленные» режимом разъединения расхождений. Общие показатели выше рассчитаны до разъединения.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 text-xs">
+                      <table className="min-w-full divide-y divide-slate-200">
+                        <thead className="bg-slate-50 font-bold text-slate-700">
+                          <tr>
+                            <th className="px-3 py-2 text-left">RRN</th>
+                            <th className="px-3 py-2 text-left">Дата (Мы)</th>
+                            <th className="px-3 py-2 text-left">Дата (Банк)</th>
+                            <th className="px-3 py-2 text-left">Статус (Мы)</th>
+                            <th className="px-3 py-2 text-left">Статус (Банк)</th>
+                            <th className="px-3 py-2 text-right">Сумма (Мы)</th>
+                            <th className="px-3 py-2 text-right">Сумма (Банк)</th>
+                            <th className="px-3 py-2 text-right">Δ Разница</th>
+                            <th className="px-3 py-2 text-left">Причина</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {reconData.amt_mismatches.map((m, i) => (
+                            <tr key={i} className="hover:bg-slate-50">
+                              <td className="px-3 py-2 font-mono text-slate-800">{m.RRN}</td>
+                              <td className="px-3 py-2 text-slate-600">{m.date_our}</td>
+                              <td className="px-3 py-2 text-slate-600">{m.date_bank}</td>
+                              <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{m.status_our || '—'}</td>
+                              <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{m.status_bank || '—'}</td>
+                              <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_our)}</td>
+                              <td className="px-3 py-2 text-right text-slate-900 tabular-nums tracking-tight whitespace-nowrap">{fmt(m.net_amount_bank)}</td>
+                              <td className={`px-3 py-2 text-right font-bold ${
+                                m['Δ сумма'] == null
+                                  ? 'text-slate-400'
+                                  : Math.abs(m['Δ сумма']) <= tolerance
+                                    ? 'text-emerald-600'
+                                    : m['Δ сумма'] > 0
+                                      ? 'text-rose-600'
+                                      : 'text-indigo-600'
+                              }`}>
+                                {m['Δ сумма'] == null ? '—' : (m['Δ сумма'] > 0 ? `+${fmt(m['Δ сумма'])}` : fmt(m['Δ сумма']))}
+                              </td>
+                              <td className="px-3 py-2 text-left text-slate-600">
+                                {m.amount_issue || 'Расхождение суммы'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
