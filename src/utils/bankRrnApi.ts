@@ -31,6 +31,11 @@ interface BankRrnApiResult {
       dup_bank_c?: number;
       matched_count?: number;
       mismatch_count?: number;
+      rrn_found_count?: number;
+      amount_mismatch_count_before_unbind?: number;
+      only_our_count_before_unbind?: number;
+      only_bank_count_before_unbind?: number;
+      unbound_mismatch_count?: number;
       comm_only_diff_count?: number;
       deduct_commission?: boolean;
       terminal_summary?: RawRow[];
@@ -196,6 +201,26 @@ export async function runBankRrnViaApi(
     dup_bank_c: Number(rrn.dup_bank_c || 0),
     matched_count: Number(rrn.matched_count ?? apiResult.summary.matched_count ?? 0),
     mismatch_count: Number(rrn.mismatch_count ?? 0),
+    rrn_found_count: Number(
+      rrn.rrn_found_count
+      ?? rrn.matched_count
+      ?? apiResult.summary.matched_count
+      ?? 0
+    ),
+    amount_mismatch_count_before_unbind: Number(
+      rrn.amount_mismatch_count_before_unbind
+      ?? rrn.mismatch_count
+      ?? 0
+    ),
+    only_our_count_before_unbind: Number(
+      rrn.only_our_count_before_unbind
+      ?? (rrn.only_our || []).length
+    ),
+    only_bank_count_before_unbind: Number(
+      rrn.only_bank_count_before_unbind
+      ?? (rrn.only_bank || []).length
+    ),
+    unbound_mismatch_count: Number(rrn.unbound_mismatch_count ?? 0),
     terminal_summary: (rrn.terminal_summary || []) as ReconciliationResult['terminal_summary'],
     total_commission: Number(rrn.total_commission || 0),
     effective_commission_rate: Number(rrn.effective_commission_rate || 0),
