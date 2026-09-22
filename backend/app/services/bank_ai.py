@@ -220,6 +220,20 @@ def build_bank_ai_context(payload: dict[str, Any]) -> dict[str, Any]:
         else rrn.get("matched_count") or result.get("matched_count")
     )
     mismatch_count = len(mismatches)
+    rrn_found_count = _safe_int(
+        rrn.get("rrn_found_count")
+        or result.get("rrn_found_count")
+        or matched_count
+    )
+    detected_amount_mismatches = _safe_int(
+        rrn.get("amount_mismatch_count_before_unbind")
+        or result.get("amount_mismatch_count_before_unbind")
+        or mismatch_count
+    )
+    unbound_mismatch_count = _safe_int(
+        rrn.get("unbound_mismatch_count")
+        or result.get("unbound_mismatch_count")
+    )
     discrepancy_count = _safe_int(summary.get("discrepancy_count")) if summary else (
         len(only_our) + len(only_bank) + mismatch_count
     )
@@ -272,6 +286,11 @@ def build_bank_ai_context(payload: dict[str, Any]) -> dict[str, Any]:
             "total_our": round(total_our, 2),
             "total_bank": round(total_bank, 2),
             "difference_bank_minus_our": round(total_diff, 2),
+        },
+        "rrn_presence": {
+            "found_on_both_sides": rrn_found_count,
+            "amount_mismatches_before_unbind": detected_amount_mismatches,
+            "unbound_amount_mismatches": unbound_mismatch_count,
         },
         "unmatched": {
             "only_our": unmatched_our,
@@ -484,11 +503,22 @@ def _local_summary(
         ).replace(",", " ")
     ]
 
+    rrn_presence = context.get("rrn_presence") or {}
+    rrn_found = _safe_int(rrn_presence.get("found_on_both_sides"))
+    unbound = _safe_int(rrn_presence.get("unbound_amount_mismatches"))
+    if rrn_found:
+        rrn_text = f"RRN найдено с обеих сторон: {rrn_found}."
+        if unbound:
+            rrn_text += (
+                f" Из них {unbound} пар развязано настройкой из-за расхождения суммы."
+            )
+        parts.append(rrn_text)
+
     our_count = _safe_int(unmatched["only_our"].get("count"))
     bank_count = _safe_int(unmatched["only_bank"].get("count"))
     if our_count or bank_count:
         parts.append(
-            f"Несопоставлено: {our_count} только у нас и {bank_count} только у банка."
+            f"После применённых правил активно несопоставлено: {our_count} только у нас и {bank_count} только у банка."
         )
 
     if hypotheses:
