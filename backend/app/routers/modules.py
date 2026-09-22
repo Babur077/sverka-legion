@@ -9,6 +9,7 @@ from backend.app.services.archive_authority import update_ravan_archive_match
 from backend.app.services.source_preview import preview_source_file
 from backend.app.services.reconciliation import (
     execute_module,
+    get_module_run,
     list_module_runs,
     remove_module_run,
     require_module,
@@ -128,6 +129,7 @@ async def update_ravan_1c_archive_match(
 @router.get("/{module_id}/archive")
 async def fetch_module_archive(
     module_id: str,
+    summary_only: bool = False,
     x_user: Optional[str] = Header("admin"),
 ):
     perms = get_user_permissions(x_user)
@@ -137,7 +139,23 @@ async def fetch_module_archive(
         and "*" not in perms
     ):
         raise HTTPException(status_code=403, detail="Доступ к архиву ограничен")
-    return json_safe(list_module_runs(module_id))
+    return json_safe(list_module_runs(module_id, summary_only=summary_only))
+
+
+@router.get("/{module_id}/archive/{record_id}")
+async def fetch_module_archive_record(
+    module_id: str,
+    record_id: int,
+    x_user: Optional[str] = Header("admin"),
+):
+    perms = get_user_permissions(x_user)
+    if (
+        not has_permission(perms, f"{module_id}.view")
+        and not has_permission(perms, "archive.view")
+        and "*" not in perms
+    ):
+        raise HTTPException(status_code=403, detail="Доступ к архиву ограничен")
+    return json_safe(get_module_run(module_id, record_id))
 
 
 @router.delete("/{module_id}/archive/{record_id}")
