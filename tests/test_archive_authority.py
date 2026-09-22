@@ -97,6 +97,10 @@ def test_bank_archive_ignores_client_financial_totals_and_recalculates_reviews(
                 ],
                 "total_commission": 3.1,
                 "detected_months": ["2026-09"],
+                "data_quality": {
+                    "our": {"missing_date": 1},
+                    "bank": {},
+                },
             }
         },
     }
@@ -153,6 +157,7 @@ def test_bank_archive_ignores_client_financial_totals_and_recalculates_reviews(
     assert prepared["terminals_summary"][0]["tx_count"] == 1
     assert prepared["terminals_summary"][0]["total_volume"] == 200
     assert prepared["archive_schema_version"] == 3
+    assert prepared["status"] == "WARNING"
 
 
 def test_direct_archive_requires_a_server_owned_run(tmp_path, monkeypatch):
