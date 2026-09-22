@@ -7,12 +7,29 @@ from core.parsers import clean_amount_polars, parse_amount_polars, clean_date_po
 
 
 def _reversal_action_kind(action: str) -> str:
-    """Normalize UI and legacy reversal action labels to engine operations."""
+    """Normalize UI and legacy reversal action labels to engine operations.
+
+    Business semantics:
+    - drop_approved: for an RRN with a reversal, remove normal/APPROVED rows
+      and keep the reversal row(s);
+    - drop_rrn: remove both APPROVED and reversal rows for that RRN.
+    Legacy labels map to the new semantics so saved drafts keep working.
+    """
     normalized = str(action or "").strip().lower()
-    if "💥" in normalized or "rrn полностью" in normalized:
+    if (
+        "approved и reversed" in normalized
+        or "approved + reversed" in normalized
+        or "rrn полностью" in normalized
+        or "💥" in normalized
+    ):
         return "drop_rrn"
-    if "🗑" in normalized or "удалить строк" in normalized or "удалить возврат" in normalized:
-        return "drop_row"
+    if (
+        "удалить approved" in normalized
+        or "удалить строк" in normalized
+        or "удалить возврат" in normalized
+        or "🗑" in normalized
+    ):
+        return "drop_approved"
     if "➖" in normalized or "минусовать" in normalized or "изменить знак" in normalized:
         return "negate"
     return "none"
@@ -40,11 +57,17 @@ def apply_reversals(df: pl.DataFrame, status_col: str, action: str, amt_col: str
     ).fill_null(False)
 
     action_kind = _reversal_action_kind(action)
+    reversal_rrns = df.filter(rev_mask).select("RRN").unique()
+
     if action_kind == "drop_rrn":
-        bad_rrns = df.filter(rev_mask).select("RRN").unique()
-        return df.join(bad_rrns, on="RRN", how="anti")
-    if action_kind == "drop_row":
-        return df.filter(~rev_mask)
+        # A reversal means the whole business transaction is cancelled:
+        # remove both the APPROVED/normal row(s) and the reversal row(s).
+        return df.join(reversal_rrns, on="RRN", how="anti")
+    if action_kind == "drop_approved":
+        # Keep reversal row(s), but remove normal/APPROVED rows sharing an RRN
+        # with a reversal. Normal rows for unrelated RRNs stay untouched.
+        reversed_rrn_mask = pl.col("RRN").is_in(reversal_rrns["RRN"])
+        return df.filter(rev_mask | ~reversed_rrn_mask)
     if action_kind == "negate":
         return df.with_columns(
             pl.when(rev_mask)
@@ -272,6 +295,11 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
 
     dups_our_pl = pl_our.filter(pl.col("RRN").is_duplicated())
     dups_bank_pl = pl_bank.filter(pl.col("RRN").is_duplicated())
+    dup_our_rrn_c = dups_our_pl.select(pl.col("RRN").n_unique()).item() if dups_our_pl.height else 0
+    dup_bank_rrn_c = dups_bank_pl.select(pl.col("RRN").n_unique()).item() if dups_bank_pl.height else 0
+    rows_before_dup_our = pl_our.height
+    rows_before_dup_bank = pl_bank.height
+
     if "первую" in cfg["dup_action"]:
         pl_our = pl_our.unique(subset=["RRN"], keep="first", maintain_order=True)
         pl_bank = pl_bank.unique(subset=["RRN"], keep="first", maintain_order=True)
@@ -284,6 +312,9 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     else:
         pl_our = _assign_duplicate_index(pl_our, "net_amount_our", "_our_source_idx")
         pl_bank = _assign_duplicate_index(pl_bank, "net_amount_bank", "_bank_source_idx")
+
+    dup_removed_our_c = max(0, rows_before_dup_our - pl_our.height)
+    dup_removed_bank_c = max(0, rows_before_dup_bank - pl_bank.height)
 
     if "_dup_idx" in pl_our.columns:
         merged_pl = pl_our.join(pl_bank, on=["RRN", "_dup_idx"], how="full", coalesce=True, suffix="_bank")
@@ -332,6 +363,11 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
     only_bank_count_before_unbind = len(only_bank)
 
     comm_only_diff_count = 0
+    amount_mismatch_net_delta = 0.0
+    amount_mismatch_abs_delta = 0.0
+    amount_mismatch_positive_delta = 0.0
+    amount_mismatch_negative_delta = 0.0
+    amount_mismatch_invalid_delta_count = 0
     if not amt_mismatches.empty:
         our_valid = amt_mismatches["_our_amount_valid"].fillna(False).astype(bool)
         bank_valid = amt_mismatches["_bank_amount_valid"].fillna(False).astype(bool)
@@ -355,6 +391,13 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
             ],
             default="Расхождение суммы",
         )
+
+        valid_deltas = pd.to_numeric(amt_mismatches["Δ сумма"], errors="coerce").dropna()
+        amount_mismatch_net_delta = float(valid_deltas.sum()) if len(valid_deltas) else 0.0
+        amount_mismatch_abs_delta = float(valid_deltas.abs().sum()) if len(valid_deltas) else 0.0
+        amount_mismatch_positive_delta = float(valid_deltas[valid_deltas > 0].sum()) if len(valid_deltas) else 0.0
+        amount_mismatch_negative_delta = float(valid_deltas[valid_deltas < 0].sum()) if len(valid_deltas) else 0.0
+        amount_mismatch_invalid_delta_count = int(amt_mismatches["Δ сумма"].isna().sum())
 
         if "raw_amount" in amt_mismatches.columns:
             amt_mismatches["raw_delta"] = np.where(
@@ -461,6 +504,10 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         "dups_bank": dups_bank_pl.to_pandas(),
         "dup_our_c": dups_our_pl.height,
         "dup_bank_c": dups_bank_pl.height,
+        "dup_our_rrn_c": int(dup_our_rrn_c),
+        "dup_bank_rrn_c": int(dup_bank_rrn_c),
+        "dup_removed_our_c": int(dup_removed_our_c),
+        "dup_removed_bank_c": int(dup_removed_bank_c),
         "matched_count": rrn_found_count - unbound_count,
         "mismatch_count": 0 if cfg["unbind_mismatches"] else amount_mismatch_count_before_unbind,
         "rrn_found_count": rrn_found_count,
@@ -469,6 +516,11 @@ def run_rrn_reconciliation(pl_our_raw: pl.DataFrame, pl_bank_raw: pl.DataFrame, 
         "only_bank_count_before_unbind": only_bank_count_before_unbind,
         "unbound_mismatch_count": unbound_count,
         "comm_only_diff_count": comm_only_diff_count,
+        "amount_mismatch_net_delta": amount_mismatch_net_delta,
+        "amount_mismatch_abs_delta": amount_mismatch_abs_delta,
+        "amount_mismatch_positive_delta": amount_mismatch_positive_delta,
+        "amount_mismatch_negative_delta": amount_mismatch_negative_delta,
+        "amount_mismatch_invalid_delta_count": amount_mismatch_invalid_delta_count,
         "deduct_commission": deduct_comm,
         "terminal_summary": terminal_summary_list,
         "total_commission": total_commission,
