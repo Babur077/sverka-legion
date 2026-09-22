@@ -1,5 +1,6 @@
 import pandas as pd
 import polars as pl
+import pytest
 
 from core.recon_engine import run_rrn_reconciliation
 
@@ -85,6 +86,60 @@ def test_reversal_status_can_zero_out_transaction():
 
     assert result["matched_count"] == 2
     assert result["mismatch_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("commission_pct", "expected_commission", "expected_net"),
+    [
+        (0.36, 360.0, 99640.0),
+        (0.363, 363.0, 99637.0),
+    ],
+)
+def test_fractional_epos_commission_keeps_precision_in_reconciliation(
+    commission_pct,
+    expected_commission,
+    expected_net,
+):
+    epos_registry = pd.DataFrame([
+        {
+            "terminal_id": "T-PRECISE",
+            "legal_entity": "LLC Precision",
+            "commission_pct": commission_pct,
+            "is_active": 1,
+        },
+    ])
+    our = frame([
+        {
+            "date": "2026-09-01",
+            "rrn": "P100",
+            "amount": str(expected_net),
+            "status": "OK",
+        },
+    ])
+    bank = frame([
+        {
+            "date": "2026-09-01",
+            "rrn": "P100",
+            "amount": "100000",
+            "terminal": "T-PRECISE",
+            "status": "OK",
+        },
+    ])
+
+    result = run_rrn_reconciliation(
+        our,
+        bank,
+        base_cfg(bank_tid="terminal", deduct_commission=True),
+        epos_registry=epos_registry,
+    )
+
+    assert result["matched_count"] == 1
+    assert result["mismatch_count"] == 0
+    assert result["total_commission"] == pytest.approx(expected_commission)
+    terminal = result["terminal_summary"][0]
+    assert terminal["commission_pct"] == pytest.approx(commission_pct)
+    assert terminal["commission_amount"] == pytest.approx(expected_commission)
+    assert terminal["net_volume"] == pytest.approx(expected_net)
 
 
 def test_epos_commission_is_joined_and_can_be_deducted():
