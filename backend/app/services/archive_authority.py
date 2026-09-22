@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from backend.app.repositories.run_results import get_run_result
 from backend.app.repositories.runs import list_runs, save_run
+from utils.permissions import record_audit_event
 
 
 def _text(value: Any, limit: int = 300) -> str:
@@ -261,9 +262,18 @@ def _bank_authoritative_payload(
         "diff_sum": difference,
         "match_percentage": match_percentage,
     }
+    data_quality = rrn.get("data_quality") or {}
+    data_quality_issue_count = sum(
+        int(value or 0)
+        for side in ("our", "bank")
+        for value in ((data_quality.get(side) or {}).values())
+    )
     result["status"] = (
         "COMPLETED"
-        if mismatch_count == 0 and active_only_our == 0 and active_only_bank == 0
+        if mismatch_count == 0
+        and active_only_our == 0
+        and active_only_bank == 0
+        and data_quality_issue_count == 0
         else "WARNING"
     )
 
@@ -519,6 +529,16 @@ def update_ravan_archive_match(
     )
     if not ok:
         raise HTTPException(status_code=500, detail=message)
+
+    record_audit_event(
+        user_id=username,
+        action="ARCHIVE_REVIEW",
+        module_id="ravan_1c",
+        object_type="ReconciliationRun",
+        object_id=str(record_id or ""),
+        status="SUCCESS",
+        details=f"Run {run_id}: {normalized_decision} fuzzy match {row_id}",
+    )
 
     return {
         "success": True,
