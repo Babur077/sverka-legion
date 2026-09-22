@@ -344,6 +344,8 @@ def save_reconciliation_run(
         "source_our_name",
         "source_bank_name",
         "archive_schema_version",
+        "definition_name",
+        "definition_version_number",
         "producer",
         "sum_tolerance",
     ):
