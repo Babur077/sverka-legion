@@ -157,16 +157,16 @@ export async function runBankRrnViaApi(
     body: form,
   });
 
-  const rawBody = await response.text();
-  let payload: any = null;
-  try {
-    payload = rawBody ? JSON.parse(rawBody) : null;
-  } catch {
-    payload = null;
-  }
-
   if (!response.ok) {
-    const detail = payload?.detail;
+    const rawBody = await response.text();
+    let errorPayload: any = null;
+    try {
+      errorPayload = rawBody ? JSON.parse(rawBody) : null;
+    } catch {
+      errorPayload = null;
+    }
+
+    const detail = errorPayload?.detail;
     const validationErrors = Array.isArray(detail)
       ? detail
           .map((item: any) => item?.msg || item?.message || String(item))
@@ -179,6 +179,13 @@ export async function runBankRrnViaApi(
         || (rawBody && rawBody !== 'Internal Server Error' ? rawBody : '')
         || `FastAPI не смог выполнить сверку (HTTP ${response.status}).`;
     throw new Error(message);
+  }
+
+  let payload: any = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
   }
 
   if (!payload) {
