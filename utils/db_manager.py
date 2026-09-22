@@ -324,6 +324,31 @@ def save_reconciliation_run(
             )
             if key in payload
         }
+    else:
+        summary = dict(summary)
+
+    # Keep frequently listed archive metadata in the small summary_json column.
+    # This lets Dashboard/archive lists avoid reading multi-megabyte payload_json
+    # snapshots on every navigation.
+    for key in (
+        "bank_name",
+        "assigned_terminal_id",
+        "total_our",
+        "total_bank",
+        "difference",
+        "matched_count",
+        "mismatch_count",
+        "only_our_count",
+        "only_bank_count",
+        "total_commission",
+        "source_our_name",
+        "source_bank_name",
+        "archive_schema_version",
+        "producer",
+        "sum_tolerance",
+    ):
+        if key in payload and key not in summary:
+            summary[key] = payload.get(key)
 
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
@@ -405,6 +430,195 @@ def save_reconciliation_run(
             return True, message, record_id
         except Exception as exc:
             return False, f"Ошибка при сохранении: {exc}", None
+
+
+def get_reconciliation_run_summaries(module_id: str | None = None) -> list[dict]:
+    """Return lightweight archive rows without loading full payload_json snapshots."""
+    query = """
+        SELECT id, module_id, run_id, status, period_month, created_at, updated_at,
+               created_by, source_files_json, summary_json, review_status,
+               json_extract(
+                   payload_json,
+                   '$.bank_name',
+                   '$.assigned_terminal_id',
+                   '$.total_our',
+                   '$.total_bank',
+                   '$.difference',
+                   '$.matched_count',
+                   '$.mismatch_count',
+                   '$.only_our_count',
+                   '$.only_bank_count',
+                   '$.total_commission',
+                   '$.source_our_name',
+                   '$.source_bank_name',
+                   '$.archive_schema_version',
+                   '$.producer',
+                   '$.sum_tolerance'
+               ) AS legacy_meta_json
+        FROM reconciliation_runs
+    """
+    params: tuple = ()
+    if module_id:
+        query += " WHERE module_id = ?"
+        params = (str(module_id),)
+    query += " ORDER BY updated_at DESC, id DESC"
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+
+    legacy_keys = [
+        "bank_name",
+        "assigned_terminal_id",
+        "total_our",
+        "total_bank",
+        "difference",
+        "matched_count",
+        "mismatch_count",
+        "only_our_count",
+        "only_bank_count",
+        "total_commission",
+        "source_our_name",
+        "source_bank_name",
+        "archive_schema_version",
+        "producer",
+        "sum_tolerance",
+    ]
+
+    records: list[dict] = []
+    for row in rows:
+        raw = dict(row)
+        try:
+            summary = json.loads(raw.get("summary_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            summary = {}
+        if not isinstance(summary, dict):
+            summary = {}
+
+        try:
+            source_files = json.loads(raw.get("source_files_json") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            source_files = []
+        if not isinstance(source_files, list):
+            source_files = []
+
+        legacy_values = []
+        try:
+            parsed_legacy = json.loads(raw.get("legacy_meta_json") or "[]")
+            if isinstance(parsed_legacy, list):
+                legacy_values = parsed_legacy
+        except (TypeError, json.JSONDecodeError):
+            legacy_values = []
+        legacy = {
+            key: legacy_values[index] if index < len(legacy_values) else None
+            for index, key in enumerate(legacy_keys)
+        }
+
+        def pick(name: str, *fallback_names: str, default=None):
+            for candidate in (name, *fallback_names):
+                value = summary.get(candidate)
+                if value is not None:
+                    return value
+            value = legacy.get(name)
+            return default if value is None else value
+
+        total_our = pick("total_our", "total_sum_a", default=0)
+        total_bank = pick("total_bank", "total_sum_b", default=0)
+        difference = pick("difference", "diff_sum", default=0)
+        matched_count = pick("matched_count", default=0)
+        mismatch_count = pick("mismatch_count", default=0)
+        only_our_count = pick("only_our_count", default=0)
+        only_bank_count = pick("only_bank_count", default=0)
+        total_commission = pick("total_commission", default=0)
+
+        records.append({
+            "id": raw["id"],
+            "module_id": raw["module_id"],
+            "run_id": raw["run_id"],
+            "status": raw["status"],
+            "period_month": raw["period_month"],
+            "timestamp": raw["updated_at"],
+            "created_at": raw["created_at"],
+            "updated_at": raw["updated_at"],
+            "username": raw["created_by"],
+            "created_by": raw["created_by"],
+            "source_files": source_files,
+            "review_status": raw["review_status"],
+            "summary": summary,
+            "bank_name": pick("bank_name", default="Банк"),
+            "assigned_terminal_id": pick("assigned_terminal_id"),
+            "total_our": float(total_our or 0),
+            "total_bank": float(total_bank or 0),
+            "difference": float(difference or 0),
+            "matched_count": int(matched_count or 0),
+            "mismatch_count": int(mismatch_count or 0),
+            "only_our_count": int(only_our_count or 0),
+            "only_bank_count": int(only_bank_count or 0),
+            "total_commission": float(total_commission or 0),
+            "source_our_name": pick(
+                "source_our_name",
+                default=source_files[0] if len(source_files) > 0 else "",
+            ),
+            "source_bank_name": pick(
+                "source_bank_name",
+                default=source_files[1] if len(source_files) > 1 else "",
+            ),
+            "archive_schema_version": int(pick("archive_schema_version", default=0) or 0),
+            "producer": pick("producer"),
+            "sum_tolerance": pick("sum_tolerance"),
+        })
+
+    return records
+
+
+def get_reconciliation_run(module_id: str, record_id: int) -> dict | None:
+    """Return one full archive record, including its payload snapshot."""
+    query = """
+        SELECT id, module_id, run_id, status, period_month, created_at, updated_at,
+               created_by, source_files_json, summary_json, payload_json,
+               review_status
+        FROM reconciliation_runs
+        WHERE module_id = ? AND id = ?
+        LIMIT 1
+    """
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(query, (str(module_id), int(record_id))).fetchone()
+
+    if not row:
+        return None
+
+    raw = dict(row)
+    try:
+        payload = json.loads(raw.get("payload_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        payload = {}
+    try:
+        source_files = json.loads(raw.get("source_files_json") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        source_files = []
+    try:
+        summary = json.loads(raw.get("summary_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        summary = {}
+
+    record = dict(payload) if isinstance(payload, dict) else {}
+    record.update({
+        "id": raw["id"],
+        "module_id": raw["module_id"],
+        "run_id": raw["run_id"] or record.get("run_id"),
+        "status": raw["status"],
+        "period_month": raw["period_month"] or record.get("period_month"),
+        "timestamp": raw["updated_at"],
+        "created_at": raw["created_at"],
+        "updated_at": raw["updated_at"],
+        "username": raw["created_by"],
+        "created_by": raw["created_by"],
+        "source_files": source_files,
+        "summary": summary,
+        "review_status": raw["review_status"],
+    })
+    return record
 
 
 def get_reconciliation_runs(module_id: str | None = None) -> list[dict]:
