@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import utils.db_manager as db
+import utils.permissions as permissions
 from backend.app.repositories import jobs
 from backend.app.services import job_worker
 
@@ -9,6 +10,7 @@ from backend.app.services import job_worker
 def _prepare_db(tmp_path, monkeypatch):
     db_path = tmp_path / "reconcile_hub.db"
     monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    monkeypatch.setattr(permissions, "DB_PATH", str(db_path))
     db.init_db()
     return db_path
 

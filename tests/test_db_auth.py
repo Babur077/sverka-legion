@@ -80,3 +80,34 @@ def test_epos_registry_preserves_fractional_commission_precision(tmp_path, monke
     row = registry.loc[registry["terminal_id"] == "T-PRECISE"].iloc[0]
     assert float(row["commission_pct"]) == pytest.approx(0.363)
 
+
+def test_legacy_database_is_copied_once_to_runtime_path(tmp_path, monkeypatch):
+    legacy_path = tmp_path / "database" / "reconcile_hub.db"
+    runtime_path = tmp_path / "runtime" / "reconcile_hub.db"
+    legacy_path.parent.mkdir(parents=True)
+
+    with sqlite3.connect(legacy_path) as conn:
+        conn.execute("CREATE TABLE marker (value TEXT NOT NULL)")
+        conn.execute("INSERT INTO marker (value) VALUES ('legacy-data')")
+        conn.commit()
+
+    monkeypatch.delenv("RECONCILEHUB_DB_PATH", raising=False)
+    monkeypatch.setattr(db_manager, "_LEGACY_DB_PATH", str(legacy_path))
+    monkeypatch.setattr(db_manager, "_DEFAULT_RUNTIME_DB_PATH", str(runtime_path))
+    monkeypatch.setattr(db_manager, "DB_PATH", str(runtime_path))
+
+    db_manager._ensure_runtime_database()
+
+    assert runtime_path.exists()
+    with sqlite3.connect(runtime_path) as conn:
+        assert conn.execute("SELECT value FROM marker").fetchone()[0] == "legacy-data"
+
+    with sqlite3.connect(runtime_path) as conn:
+        conn.execute("UPDATE marker SET value = 'runtime-data'")
+        conn.commit()
+
+    db_manager._ensure_runtime_database()
+
+    with sqlite3.connect(runtime_path) as conn:
+        assert conn.execute("SELECT value FROM marker").fetchone()[0] == "runtime-data"
+
