@@ -188,8 +188,26 @@ class BankRrnModule(BaseReconciliationModule):
         only_our_count = len(result.get("only_our", []))
         only_bank_count = len(result.get("only_bank", []))
         matched_count = int(result.get("matched_count", 0))
-        exact_matched_count = max(0, matched_count - mismatch_count)
-        reconciliation_scope = matched_count + only_our_count + only_bank_count
+        rrn_found_count = int(result.get("rrn_found_count", matched_count))
+        amount_mismatch_count_before_unbind = int(
+            result.get("amount_mismatch_count_before_unbind", mismatch_count)
+        )
+        only_our_count_before_unbind = int(
+            result.get("only_our_count_before_unbind", only_our_count)
+        )
+        only_bank_count_before_unbind = int(
+            result.get("only_bank_count_before_unbind", only_bank_count)
+        )
+        unbound_mismatch_count = int(result.get("unbound_mismatch_count", 0))
+        exact_matched_count = max(
+            0,
+            rrn_found_count - amount_mismatch_count_before_unbind,
+        )
+        reconciliation_scope = (
+            rrn_found_count
+            + only_our_count_before_unbind
+            + only_bank_count_before_unbind
+        )
         diff_sum = round(total_bank - total_our, 2)
         match_percentage = round(
             (exact_matched_count / reconciliation_scope) * 100,
@@ -213,6 +231,11 @@ class BankRrnModule(BaseReconciliationModule):
             "dup_bank_c": int(result.get("dup_bank_c", 0)),
             "matched_count": matched_count,
             "mismatch_count": mismatch_count,
+            "rrn_found_count": rrn_found_count,
+            "amount_mismatch_count_before_unbind": amount_mismatch_count_before_unbind,
+            "only_our_count_before_unbind": only_our_count_before_unbind,
+            "only_bank_count_before_unbind": only_bank_count_before_unbind,
+            "unbound_mismatch_count": unbound_mismatch_count,
             "comm_only_diff_count": int(result.get("comm_only_diff_count", 0)),
             "deduct_commission": bool(result.get("deduct_commission", False)),
             "terminal_summary": self._records(result.get("terminal_summary")),
