@@ -1768,9 +1768,9 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       onChange={(e) => setOurRev(e.target.value)}
                       className="w-full py-1.5 px-2 border border-slate-200 rounded-lg text-xs"
                     >
-                      <option value="Минусовать сумму">Минусовать сумму</option>
-                      <option value="Удалить строку">Удалить строку</option>
-                      <option value="Удалить RRN полностью">Удалить RRN полностью</option>
+                      <option value="Минусовать сумму">Минусовать сумму reversed</option>
+                      <option value={REV_DELETE_APPROVED}>{REV_DELETE_APPROVED}</option>
+                      <option value={REV_DELETE_BOTH}>{REV_DELETE_BOTH}</option>
                       <option value="Не обрабатывать">Не обрабатывать</option>
                     </select>
                   </div>
@@ -1781,12 +1781,17 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
                       onChange={(e) => setBankRev(e.target.value)}
                       className="w-full py-1.5 px-2 border border-slate-200 rounded-lg text-xs"
                     >
-                      <option value="Удалить строку">Удалить строку</option>
-                      <option value="Минусовать сумму">Минусовать сумму</option>
-                      <option value="Удалить RRN полностью">Удалить RRN полностью</option>
+                      <option value={REV_DELETE_APPROVED}>{REV_DELETE_APPROVED}</option>
+                      <option value="Минусовать сумму">Минусовать сумму reversed</option>
+                      <option value={REV_DELETE_BOTH}>{REV_DELETE_BOTH}</option>
                       <option value="Не обрабатывать">Не обрабатывать</option>
                     </select>
                   </div>
+                  <p className="col-span-2 text-[10px] leading-4 text-slate-500">
+                    <strong>approved</strong> — обычная строка того же RRN, которая не попала под маркеры возврата;
+                    <strong className="ml-1">reversed</strong> — строка, статус которой содержит один из маркеров выше.
+                    «Удалить approved» оставляет reversed, а «Удалить approved и reversed» полностью исключает этот RRN.
+                  </p>
                 </div>
 
                 <div className="border-t border-slate-100 pt-3">
