@@ -181,7 +181,7 @@ export const Ravan1CArchive: React.FC<Props> = ({
         <div>
           <div className="flex items-center gap-2">
             <FolderOpen className="h-4 w-4 text-indigo-500" />
-            <h2 className="text-sm font-bold text-slate-900">Архив сверок погашений</h2>
+            <h2 className="text-sm font-bold text-slate-900">Архив сверки 2910</h2>
           </div>
           <p className="mt-1 text-xs text-slate-500">
             Поиск, фильтры, суммы и повторное открытие сохранённых результатов.
