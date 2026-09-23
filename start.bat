@@ -62,7 +62,16 @@ echo.
 echo   http://localhost:8000
 echo   Swagger: http://localhost:8000/docs
 echo.
-start "" http://localhost:8000
+
+rem Browser must wait until FastAPI finishes startup and /api/ready returns 200.
+rem This avoids the first page load racing the backend startup.
+start "" /B powershell -NoProfile -WindowStyle Hidden -Command ^
+  "$ready='http://127.0.0.1:8000/api/ready'; $app='http://localhost:8000';" ^
+  "for($i=0; $i -lt 120; $i++) {" ^
+  "  try { $r=Invoke-WebRequest -UseBasicParsing -Uri $ready -TimeoutSec 1; if($r.StatusCode -eq 200){ Start-Process $app; exit 0 } } catch {};" ^
+  "  Start-Sleep -Milliseconds 500" ^
+  "}; exit 1"
+
 %PYTHON_BIN% api.py
 
 pause
