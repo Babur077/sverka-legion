@@ -22,6 +22,17 @@ export interface RepaymentRow {
   'Δ суммы': number;
 }
 
+export interface RepaymentReview {
+  row_key: string;
+  comment: string;
+  reviewed: boolean;
+  created_by?: string;
+  created_at?: string;
+  updated_by?: string;
+  updated_at?: string;
+  deleted?: boolean;
+}
+
 export interface RepaymentsRunResult {
   run_id: string;
   module_id: 'repayments';
@@ -139,6 +150,36 @@ export async function deleteRepaymentsArchive(
   id: number,
 ): Promise<void> {
   await deleteModuleArchive(username, 'repayments', id);
+}
+
+export async function getRepaymentReviews(
+  runId: string,
+): Promise<RepaymentReview[]> {
+  const response = await apiFetch(
+    '/api/modules/repayments/reviews/' + encodeURIComponent(runId),
+  );
+  return readJson(response) as Promise<RepaymentReview[]>;
+}
+
+export async function saveRepaymentReview(
+  runId: string,
+  rowKey: string,
+  comment: string,
+  reviewed: boolean,
+): Promise<RepaymentReview> {
+  const response = await apiFetch(
+    '/api/modules/repayments/reviews/' + encodeURIComponent(runId),
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        row_key: rowKey,
+        comment,
+        reviewed,
+      }),
+    },
+  );
+  return readJson(response) as Promise<RepaymentReview>;
 }
 
 function safeCell(value: unknown): string | number {
