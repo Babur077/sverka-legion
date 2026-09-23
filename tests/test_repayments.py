@@ -80,6 +80,74 @@ def test_repayments_status_priority_and_business_rules():
     assert result.status == "WARNING"
 
 
+def test_payment_purpose_is_collected_from_1c_without_affecting_reconciliation():
+    one_c = _csv(
+        "Вх.номер,Дата,Сумма,Назначение платежа\n"
+        "100,01.09.2026,600,Оплата по договору №1\n"
+        "100,01.09.2026,400,Комиссия по договору №1\n"
+    )
+    meta = _csv(
+        "withdraw_unique_id,bank_date,bank_amount,our_system_date,our_system_amount_success,contract_number\n"
+        "100,01.09.2026,1000,01.09.2026,1000,C-100\n"
+    )
+
+    result = RepaymentsModule().run(
+        {"one_c_file": one_c, "meta_file": meta},
+        {
+            "one_c_file_filename": "1c.csv",
+            "meta_file_filename": "meta.csv",
+        },
+    )
+
+    row = _rows(result)[0]
+    assert row["Комментарий"] == "Правильно"
+    assert row["Назначение платежа"] == (
+        "Оплата по договору №1\nКомиссия по договору №1"
+    )
+    assert result.custom_metrics["repayments"]["payment_purpose_source"] == (
+        "1C:Назначение платежа"
+    )
+
+
+def test_payment_purpose_supports_1c_alias_and_meta_fallback():
+    one_c_alias = _csv(
+        "Вх.номер,Дата,Сумма,Детали платежа\n"
+        "200,02.09.2026,200,Погашение задолженности\n"
+    )
+    meta_plain = _csv(
+        "withdraw_unique_id,bank_date,bank_amount,our_system_date,our_system_amount_success,contract_number\n"
+        "200,02.09.2026,200,02.09.2026,200,C-200\n"
+    )
+    alias_result = RepaymentsModule().run(
+        {"one_c_file": one_c_alias, "meta_file": meta_plain},
+        {
+            "one_c_file_filename": "1c.csv",
+            "meta_file_filename": "meta.csv",
+        },
+    )
+    assert _rows(alias_result)[0]["Назначение платежа"] == "Погашение задолженности"
+
+    one_c_plain = _csv(
+        "Вх.номер,Дата,Сумма\n"
+        "300,03.09.2026,300\n"
+    )
+    meta_with_purpose = _csv(
+        "withdraw_unique_id,bank_date,bank_amount,our_system_date,our_system_amount_success,contract_number,payment_purpose\n"
+        "300,03.09.2026,300,03.09.2026,300,C-300,Meta purpose text\n"
+    )
+    fallback_result = RepaymentsModule().run(
+        {"one_c_file": one_c_plain, "meta_file": meta_with_purpose},
+        {
+            "one_c_file_filename": "1c.csv",
+            "meta_file_filename": "meta.csv",
+        },
+    )
+    assert _rows(fallback_result)[0]["Назначение платежа"] == "Meta purpose text"
+    assert fallback_result.custom_metrics["repayments"]["payment_purpose_source"] == (
+        "Meta:payment_purpose"
+    )
+
+
 def test_amount_tolerance_is_fixed_at_one():
     one_c = _csv(
         "Вх.номер,Дата,Сумма\n"
