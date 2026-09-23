@@ -530,3 +530,90 @@ def test_lightweight_archive_reads_legacy_metadata_from_bounded_prefix(tmp_path,
     assert summaries[0]["total_bank"] == 490
     assert summaries[0]["only_bank_count"] == 3
 
+
+def test_row_reviews_are_persistent_and_removed_with_archive(tmp_path, monkeypatch):
+    db_path = tmp_path / "reviews.db"
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    db.init_db()
+
+    ok, _, record_id = db.save_reconciliation_run(
+        "repayments",
+        "alice",
+        {
+            "run_id": "review-run",
+            "summary": {"matched_count": 0, "discrepancy_count": 1},
+            "result_snapshot": {"run_id": "review-run"},
+        },
+    )
+    assert ok
+    assert record_id is not None
+
+    saved = db.save_reconciliation_run_review(
+        "repayments",
+        "review-run",
+        "PAY-001",
+        "Проверено вручную",
+        False,
+        "alice",
+    )
+    assert saved["comment"] == "Проверено вручную"
+    assert saved["reviewed"] is False
+
+    saved = db.save_reconciliation_run_review(
+        "repayments",
+        "review-run",
+        "PAY-001",
+        "Проверено вручную",
+        True,
+        "bob",
+    )
+    assert saved["reviewed"] is True
+    assert saved["created_by"] == "alice"
+    assert saved["updated_by"] == "bob"
+
+    reviews = db.get_reconciliation_run_reviews("repayments", "review-run")
+    assert len(reviews) == 1
+    assert reviews[0]["row_key"] == "PAY-001"
+    assert reviews[0]["comment"] == "Проверено вручную"
+    assert reviews[0]["reviewed"] is True
+
+    assert db.delete_reconciliation_run(
+        "repayments",
+        record_id,
+        "alice",
+    )
+    assert db.get_reconciliation_run_reviews("repayments", "review-run") == []
+
+
+def test_clearing_review_deletes_empty_review_row(tmp_path, monkeypatch):
+    db_path = tmp_path / "review_clear.db"
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+    db.init_db()
+
+    ok, _, _ = db.save_reconciliation_run(
+        "repayments",
+        "alice",
+        {"run_id": "clear-run"},
+    )
+    assert ok
+
+    db.save_reconciliation_run_review(
+        "repayments",
+        "clear-run",
+        "PAY-1",
+        "Комментарий",
+        False,
+        "alice",
+    )
+    cleared = db.save_reconciliation_run_review(
+        "repayments",
+        "clear-run",
+        "PAY-1",
+        "",
+        False,
+        "alice",
+    )
+
+    assert cleared["deleted"] is True
+    assert db.get_reconciliation_run_reviews("repayments", "clear-run") == []
+
