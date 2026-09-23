@@ -51,6 +51,9 @@ def save_run_review(
     comment: str,
     reviewed: bool,
     username: str,
+    *,
+    smart_match_decision: str | None = None,
+    smart_match_candidate: str | None = None,
 ) -> dict:
     return save_reconciliation_run_review(
         module_id,
@@ -59,6 +62,8 @@ def save_run_review(
         comment,
         reviewed,
         username,
+        smart_match_decision=smart_match_decision,
+        smart_match_candidate=smart_match_candidate,
     )
 
 

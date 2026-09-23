@@ -18,8 +18,15 @@ export interface RepaymentRow {
   'Сумма опознание': number;
   'Номер договора опознание'?: string | null;
   'Назначение платежа'?: string | null;
+  'Назначения 1С'?: string[];
+  'Назначения Meta'?: string[];
+  'Количество назначений 1С'?: number;
+  'Количество назначений Meta'?: number;
   'Комментарий': string;
   'Δ суммы': number;
+  'Smart Match кандидат'?: string | null;
+  'Smart Match уверенность'?: number | null;
+  'Smart Match причина'?: string | null;
 }
 
 export interface RepaymentReview {
@@ -30,6 +37,8 @@ export interface RepaymentReview {
   created_at?: string;
   updated_by?: string;
   updated_at?: string;
+  smart_match_decision?: 'accepted' | 'rejected' | null;
+  smart_match_candidate?: string | null;
   deleted?: boolean;
 }
 
@@ -67,6 +76,13 @@ export interface RepaymentsRunResult {
         meta?: number;
       };
       payment_purpose_source?: string | null;
+      payment_purpose_sources?: {
+        one_c?: string | null;
+        meta?: string | null;
+      };
+      smart_match_version?: string;
+      smart_match_pair_count?: number;
+      smart_match_row_count?: number;
     };
   };
 }
@@ -166,6 +182,8 @@ export async function saveRepaymentReview(
   rowKey: string,
   comment: string,
   reviewed: boolean,
+  smartMatchDecision?: 'accepted' | 'rejected' | null,
+  smartMatchCandidate?: string | null,
 ): Promise<RepaymentReview> {
   const response = await apiFetch(
     '/api/modules/repayments/reviews/' + encodeURIComponent(runId),
@@ -176,6 +194,12 @@ export async function saveRepaymentReview(
         row_key: rowKey,
         comment,
         reviewed,
+        ...(smartMatchDecision !== undefined
+          ? { smart_match_decision: smartMatchDecision }
+          : {}),
+        ...(smartMatchCandidate !== undefined
+          ? { smart_match_candidate: smartMatchCandidate }
+          : {}),
       }),
     },
   );
@@ -222,6 +246,10 @@ export function exportRepaymentsToExcel(result: RepaymentsRunResult): void {
     const output: Record<string, string | number> = {};
     Object.entries(row).forEach(([key, value]) => {
       if (key === 'Назначение платежа') return;
+      if (Array.isArray(value)) {
+        output[key] = safeCell(value.join('\n'));
+        return;
+      }
       output[key] = safeCell(value);
     });
     return output;

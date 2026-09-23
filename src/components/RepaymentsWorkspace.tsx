@@ -14,8 +14,10 @@ import {
   Save,
   RefreshCcw,
   Search,
+  Sparkles,
   Trash2,
   Upload,
+  XCircle,
 } from 'lucide-react';
 
 import { User } from '../types';
@@ -81,6 +83,20 @@ function statusClass(status: string): string {
   return 'bg-amber-50 text-amber-700 border-amber-200';
 }
 
+function purposeList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(item => String(item || '').trim())
+    .filter(Boolean);
+}
+
+function legacyPurposeList(value: unknown): string[] {
+  return String(value || '')
+    .split(/\r?\n/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
 export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
   const canRun = hasPermission(user, 'repayments.run');
   const canExport = hasPermission(user, 'repayments.export');
@@ -102,6 +118,8 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
   const [reviewedDrafts, setReviewedDrafts] = useState<Record<string, boolean>>({});
   const [savingReviewKey, setSavingReviewKey] = useState<string | null>(null);
+  const [expandedSmartMatches, setExpandedSmartMatches] = useState<Set<string>>(() => new Set());
+  const [savingSmartMatchKey, setSavingSmartMatchKey] = useState<string | null>(null);
 
   const [archive, setArchive] = useState<RepaymentsArchiveRecord[]>([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
@@ -146,6 +164,10 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
         row['Номер платежа'],
         row['Номер договора опознание'],
         row['Назначение платежа'],
+        purposeList(row['Назначения 1С']).join(' '),
+        purposeList(row['Назначения Meta']).join(' '),
+        row['Smart Match кандидат'],
+        row['Smart Match причина'],
         row['Комментарий'],
         review?.comment,
       ].some(value => String(value || '').toLowerCase().includes(needle));
@@ -202,6 +224,69 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
       }
       return next;
     });
+  };
+
+  const toggleSmartMatch = (rowKey: string) => {
+    setExpandedSmartMatches(current => {
+      const next = new Set(current);
+      if (next.has(rowKey)) next.delete(rowKey);
+      else next.add(rowKey);
+      return next;
+    });
+  };
+
+  const persistSmartMatchDecision = async (
+    row: RepaymentRow,
+    decision: 'accepted' | 'rejected',
+  ) => {
+    if (!result?.run_id || !canRun || savingSmartMatchKey) return;
+
+    const rowKey = String(row['Номер платежа'] || '');
+    const candidate = String(row['Smart Match кандидат'] || '').trim();
+    if (!rowKey || !candidate) return;
+
+    setSavingSmartMatchKey(rowKey);
+    try {
+      const currentReview = reviews[rowKey];
+      const candidateReview = reviews[candidate];
+
+      const savedCurrent = await saveRepaymentReview(
+        result.run_id,
+        rowKey,
+        reviewDrafts[rowKey] ?? currentReview?.comment ?? '',
+        reviewedDrafts[rowKey] ?? Boolean(currentReview?.reviewed),
+        decision,
+        candidate,
+      );
+
+      const savedCandidate = await saveRepaymentReview(
+        result.run_id,
+        candidate,
+        reviewDrafts[candidate] ?? candidateReview?.comment ?? '',
+        reviewedDrafts[candidate] ?? Boolean(candidateReview?.reviewed),
+        decision,
+        rowKey,
+      );
+
+      setReviews(current => ({
+        ...current,
+        [rowKey]: savedCurrent,
+        [candidate]: savedCandidate,
+      }));
+      setMessage({
+        type: 'success',
+        text: decision === 'accepted'
+          ? `Smart Match подтверждён: ${rowKey} ↔ ${candidate}.`
+          : `Smart Match отклонён: ${rowKey} ↔ ${candidate}.`,
+      });
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: error?.message || 'Не удалось сохранить решение Smart Match.',
+      });
+    } finally {
+      setSavingSmartMatchKey(null);
+    }
   };
 
   const persistReview = async (rowKey: string) => {
@@ -271,6 +356,7 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
       setQuery('');
       setExpandedPayments(new Set());
       setExpandedReviews(new Set());
+      setExpandedSmartMatches(new Set());
       setReviewFilter('all');
       applyReviews([]);
 
@@ -303,6 +389,7 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
       setQuery('');
       setExpandedPayments(new Set());
       setExpandedReviews(new Set());
+      setExpandedSmartMatches(new Set());
       setReviewFilter('all');
       try {
         applyReviews(await getRepaymentReviews(full.result_snapshot.run_id));
@@ -528,6 +615,12 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                     {item.label} · {item.count}
                   </button>
                 ))}
+                {Number(result?.custom_metrics?.repayments?.smart_match_pair_count || 0) > 0 && (
+                  <span className="ml-auto inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Smart Match · {result?.custom_metrics?.repayments?.smart_match_pair_count} пар
+                  </span>
+                )}
               </div>
 
               <div className="overflow-x-auto">
@@ -549,11 +642,29 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                   <tbody className="divide-y divide-slate-100">
                     {pageRows.map((row: RepaymentRow, index) => {
                       const paymentNumber = String(row['Номер платежа'] || '');
-                      const paymentPurpose = String(row['Назначение платежа'] || '').trim();
+                      const oneCPurposes = purposeList(row['Назначения 1С']);
+                      const metaPurposes = purposeList(row['Назначения Meta']);
+                      const legacyPurposes = (
+                        oneCPurposes.length === 0 && metaPurposes.length === 0
+                          ? legacyPurposeList(row['Назначение платежа'])
+                          : []
+                      );
+                      const purposeCount = oneCPurposes.length + metaPurposes.length + legacyPurposes.length;
+                      const hasPaymentPurpose = purposeCount > 0;
                       const isExpanded = expandedPayments.has(paymentNumber);
                       const review = reviews[paymentNumber];
                       const isReviewExpanded = expandedReviews.has(paymentNumber);
                       const isMismatch = row['Комментарий'] !== 'Правильно';
+                      const smartMatchCandidate = String(row['Smart Match кандидат'] || '').trim();
+                      const smartMatchScore = Number(row['Smart Match уверенность'] || 0);
+                      const smartMatchReason = String(row['Smart Match причина'] || '').trim();
+                      const hasSmartMatch = Boolean(smartMatchCandidate && smartMatchScore > 0);
+                      const isSmartMatchExpanded = expandedSmartMatches.has(paymentNumber);
+                      const smartMatchDecision = (
+                        review?.smart_match_candidate === smartMatchCandidate
+                          ? review.smart_match_decision
+                          : null
+                      );
 
                       return (
                         <React.Fragment key={`${paymentNumber}-${index}`}>
@@ -563,13 +674,28 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                                 <button
                                   type="button"
                                   onClick={() => togglePaymentPurpose(paymentNumber)}
-                                  disabled={!paymentPurpose}
+                                  disabled={!hasPaymentPurpose}
                                   className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-default disabled:opacity-20"
-                                  title={paymentPurpose ? (isExpanded ? 'Скрыть назначение платежа' : 'Показать назначение платежа') : 'Назначение платежа отсутствует'}
+                                  title={hasPaymentPurpose ? (isExpanded ? 'Скрыть назначения платежа' : 'Показать назначения платежа') : 'Назначение платежа отсутствует'}
                                 >
                                   <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                 </button>
                                 <span>{paymentNumber}</span>
+                                {purposeCount > 1 && (
+                                  <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                                    Назн. ×{purposeCount}
+                                  </span>
+                                )}
+                                {oneCPurposes.length > 1 && (
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
+                                    1С ×{oneCPurposes.length}
+                                  </span>
+                                )}
+                                {metaPurposes.length > 1 && (
+                                  <span className="rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">
+                                    Meta ×{metaPurposes.length}
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td className="px-3 py-2 text-slate-600">{row['Дата'] || '—'}</td>
@@ -613,19 +739,168 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                                         : 'Добавить комментарий'}
                                   </button>
                                 )}
+                                {hasSmartMatch && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleSmartMatch(paymentNumber)}
+                                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold ${
+                                      smartMatchDecision === 'accepted'
+                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                        : smartMatchDecision === 'rejected'
+                                          ? 'border-rose-200 bg-rose-50 text-rose-700'
+                                          : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                                    }`}
+                                  >
+                                    {smartMatchDecision === 'accepted'
+                                      ? <CheckCircle2 className="h-3 w-3" />
+                                      : smartMatchDecision === 'rejected'
+                                        ? <XCircle className="h-3 w-3" />
+                                        : <Sparkles className="h-3 w-3" />}
+                                    Smart Match {Math.round(smartMatchScore)}%
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
 
-                          {isExpanded && paymentPurpose && (
-                            <tr className="bg-indigo-50/50">
+                          {isExpanded && hasPaymentPurpose && (
+                            <tr className="bg-indigo-50/40">
                               <td colSpan={10} className="px-10 py-3">
-                                <div className="rounded-xl border border-indigo-100 bg-white px-4 py-3">
-                                  <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-indigo-500">
-                                    Назначение платежа
+                                <div className="space-y-3 rounded-xl border border-indigo-100 bg-white p-4">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="text-[10px] font-bold uppercase tracking-wide text-indigo-500">
+                                      Назначения платежа
+                                    </div>
+                                    {purposeCount > 1 && (
+                                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
+                                        Найдено назначений: {purposeCount}
+                                      </span>
+                                    )}
                                   </div>
-                                  <div className="whitespace-pre-wrap break-words text-xs leading-5 text-slate-700">
-                                    {paymentPurpose}
+
+                                  {(oneCPurposes.length > 0 || metaPurposes.length > 0) && (
+                                    <div className="grid gap-3 lg:grid-cols-2">
+                                      <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                                        <div className="mb-2 flex items-center justify-between">
+                                          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">1С</span>
+                                          <span className="text-[10px] font-semibold text-slate-400">
+                                            {oneCPurposes.length} {oneCPurposes.length === 1 ? 'назначение' : 'назначения'}
+                                          </span>
+                                        </div>
+                                        {oneCPurposes.length > 0 ? (
+                                          <div className="space-y-2">
+                                            {oneCPurposes.map((purpose, purposeIndex) => (
+                                              <div key={`1c-${purposeIndex}-${purpose}`} className="flex gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-600">
+                                                  {purposeIndex + 1}
+                                                </span>
+                                                <div className="min-w-0 break-words text-xs leading-5 text-slate-700">{purpose}</div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="text-xs text-slate-400">В 1С назначение не найдено.</div>
+                                        )}
+                                      </div>
+
+                                      <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-3">
+                                        <div className="mb-2 flex items-center justify-between">
+                                          <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">Meta · bank_purpose_of_payment</span>
+                                          <span className="text-[10px] font-semibold text-indigo-400">
+                                            {metaPurposes.length} {metaPurposes.length === 1 ? 'назначение' : 'назначения'}
+                                          </span>
+                                        </div>
+                                        {metaPurposes.length > 0 ? (
+                                          <div className="space-y-2">
+                                            {metaPurposes.map((purpose, purposeIndex) => (
+                                              <div key={`meta-${purposeIndex}-${purpose}`} className="flex gap-2 rounded-lg border border-indigo-100 bg-white p-2.5">
+                                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[10px] font-bold text-indigo-700">
+                                                  {purposeIndex + 1}
+                                                </span>
+                                                <div className="min-w-0 break-words text-xs leading-5 text-slate-700">{purpose}</div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="text-xs text-slate-400">В Meta назначение не найдено.</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {legacyPurposes.length > 0 && (
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                      <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                        Назначение платежа · старый архив
+                                      </div>
+                                      <div className="space-y-2">
+                                        {legacyPurposes.map((purpose, purposeIndex) => (
+                                          <div key={`legacy-${purposeIndex}-${purpose}`} className="flex gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-600">
+                                              {purposeIndex + 1}
+                                            </span>
+                                            <div className="min-w-0 break-words text-xs leading-5 text-slate-700">{purpose}</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+
+                          {isSmartMatchExpanded && hasSmartMatch && (
+                            <tr className="bg-indigo-50/30">
+                              <td colSpan={10} className="px-10 py-3">
+                                <div className="rounded-xl border border-indigo-200 bg-white p-4">
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                      <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                                        <Sparkles className="h-4 w-4 text-indigo-600" />
+                                        Smart Match
+                                      </div>
+                                      <div className="mt-2 text-xs text-slate-600">
+                                        Возможная пара: <span className="font-mono font-bold text-slate-900">{smartMatchCandidate}</span>
+                                      </div>
+                                      {smartMatchReason && (
+                                        <div className="mt-1 text-xs leading-5 text-slate-500">{smartMatchReason}</div>
+                                      )}
+                                    </div>
+                                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-center">
+                                      <div className="text-[9px] font-bold uppercase tracking-wide text-indigo-400">Уверенность</div>
+                                      <div className="mt-0.5 text-lg font-black text-indigo-700">{Math.round(smartMatchScore)}%</div>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                                    <div className="text-[10px] text-slate-400">
+                                      Рекомендация не меняет результат сверки, пока сотрудник её не подтверждает.
+                                    </div>
+                                    {canRun && (
+                                      <div className="flex gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => void persistSmartMatchDecision(row, 'rejected')}
+                                          disabled={savingSmartMatchKey != null}
+                                          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[11px] font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-40"
+                                        >
+                                          <XCircle className="h-3.5 w-3.5" />
+                                          Отклонить
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void persistSmartMatchDecision(row, 'accepted')}
+                                          disabled={savingSmartMatchKey != null}
+                                          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-bold text-white hover:bg-slate-800 disabled:opacity-40"
+                                        >
+                                          {savingSmartMatchKey === paymentNumber
+                                            ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                                            : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                          Подтвердить пару
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </td>

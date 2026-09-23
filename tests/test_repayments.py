@@ -80,15 +80,17 @@ def test_repayments_status_priority_and_business_rules():
     assert result.status == "WARNING"
 
 
-def test_payment_purpose_is_collected_from_1c_without_affecting_reconciliation():
+def test_payment_purposes_are_collected_from_both_sources_separately():
     one_c = _csv(
         "Вх.номер,Дата,Сумма,Назначение платежа\n"
         "100,01.09.2026,600,Оплата по договору №1\n"
         "100,01.09.2026,400,Комиссия по договору №1\n"
     )
     meta = _csv(
-        "withdraw_unique_id,bank_date,bank_amount,our_system_date,our_system_amount_success,contract_number\n"
-        "100,01.09.2026,1000,01.09.2026,1000,C-100\n"
+        "withdraw_unique_id,bank_date,bank_amount,our_system_date,"
+        "our_system_amount_success,contract_number,bank_purpose_of_payment\n"
+        "100,01.09.2026,600,01.09.2026,600,C-100,Meta назначение A\n"
+        "100,01.09.2026,400,01.09.2026,400,C-100,Meta назначение B\n"
     )
 
     result = RepaymentsModule().run(
@@ -101,51 +103,114 @@ def test_payment_purpose_is_collected_from_1c_without_affecting_reconciliation()
 
     row = _rows(result)[0]
     assert row["Комментарий"] == "Правильно"
+    assert row["Назначения 1С"] == [
+        "Оплата по договору №1",
+        "Комиссия по договору №1",
+    ]
+    assert row["Назначения Meta"] == [
+        "Meta назначение A",
+        "Meta назначение B",
+    ]
+    assert row["Количество назначений 1С"] == 2
+    assert row["Количество назначений Meta"] == 2
     assert row["Назначение платежа"] == (
-        "Оплата по договору №1\nКомиссия по договору №1"
+        "Оплата по договору №1\n"
+        "Комиссия по договору №1\n"
+        "Meta назначение A\n"
+        "Meta назначение B"
     )
     assert result.custom_metrics["repayments"]["payment_purpose_source"] == (
-        "1C:Назначение платежа"
+        "1C:Назначение платежа | Meta:bank_purpose_of_payment"
     )
+    assert result.custom_metrics["repayments"]["payment_purpose_sources"] == {
+        "one_c": "Назначение платежа",
+        "meta": "bank_purpose_of_payment",
+    }
 
 
-def test_payment_purpose_supports_1c_alias_and_meta_fallback():
-    one_c_alias = _csv(
+def test_payment_purpose_supports_1c_alias_and_meta_bank_field():
+    one_c = _csv(
         "Вх.номер,Дата,Сумма,Детали платежа\n"
         "200,02.09.2026,200,Погашение задолженности\n"
     )
-    meta_plain = _csv(
-        "withdraw_unique_id,bank_date,bank_amount,our_system_date,our_system_amount_success,contract_number\n"
-        "200,02.09.2026,200,02.09.2026,200,C-200\n"
+    meta = _csv(
+        "withdraw_unique_id,bank_date,bank_amount,our_system_date,"
+        "our_system_amount_success,contract_number,bank_purpose_of_payment\n"
+        "200,02.09.2026,200,02.09.2026,200,C-200,Meta погашение\n"
     )
-    alias_result = RepaymentsModule().run(
-        {"one_c_file": one_c_alias, "meta_file": meta_plain},
+    result = RepaymentsModule().run(
+        {"one_c_file": one_c, "meta_file": meta},
         {
             "one_c_file_filename": "1c.csv",
             "meta_file_filename": "meta.csv",
         },
     )
-    assert _rows(alias_result)[0]["Назначение платежа"] == "Погашение задолженности"
 
-    one_c_plain = _csv(
+    row = _rows(result)[0]
+    assert row["Назначения 1С"] == ["Погашение задолженности"]
+    assert row["Назначения Meta"] == ["Meta погашение"]
+    assert result.custom_metrics["repayments"]["payment_purpose_source"] == (
+        "1C:Детали платежа | Meta:bank_purpose_of_payment"
+    )
+
+
+def test_meta_purposes_are_visible_when_payment_is_missing_in_1c():
+    one_c = _csv(
         "Вх.номер,Дата,Сумма\n"
-        "300,03.09.2026,300\n"
+        "100,01.09.2026,100\n"
     )
-    meta_with_purpose = _csv(
-        "withdraw_unique_id,bank_date,bank_amount,our_system_date,our_system_amount_success,contract_number,payment_purpose\n"
-        "300,03.09.2026,300,03.09.2026,300,C-300,Meta purpose text\n"
+    meta = _csv(
+        "withdraw_unique_id,bank_date,bank_amount,our_system_date,"
+        "our_system_amount_success,contract_number,bank_purpose_of_payment\n"
+        "700,07.09.2026,400,07.09.2026,400,C-700,Первое назначение Meta\n"
+        "700,07.09.2026,300,07.09.2026,300,C-700,Второе назначение Meta\n"
     )
-    fallback_result = RepaymentsModule().run(
-        {"one_c_file": one_c_plain, "meta_file": meta_with_purpose},
+
+    result = RepaymentsModule().run(
+        {"one_c_file": one_c, "meta_file": meta},
         {
             "one_c_file_filename": "1c.csv",
             "meta_file_filename": "meta.csv",
         },
     )
-    assert _rows(fallback_result)[0]["Назначение платежа"] == "Meta purpose text"
-    assert fallback_result.custom_metrics["repayments"]["payment_purpose_source"] == (
-        "Meta:payment_purpose"
+    row = _by_payment(result)["700"]
+
+    assert row["Комментарий"] == "Нет в 1С"
+    assert row["Назначения 1С"] == []
+    assert row["Назначения Meta"] == [
+        "Первое назначение Meta",
+        "Второе назначение Meta",
+    ]
+    assert row["Количество назначений Meta"] == 2
+
+
+def test_smart_match_suggests_conservative_pair_for_missing_ids():
+    one_c = _csv(
+        "Вх.номер,Дата,Сумма,Назначение платежа\n"
+        "A100,01.09.2026,1000,Погашение договора 77\n"
     )
+    meta = _csv(
+        "withdraw_unique_id,bank_date,bank_amount,our_system_date,"
+        "our_system_amount_success,contract_number,bank_purpose_of_payment\n"
+        "B100,02.09.2026,1000,02.09.2026,1000,C-77,Погашение договора 77\n"
+    )
+
+    result = RepaymentsModule().run(
+        {"one_c_file": one_c, "meta_file": meta},
+        {
+            "one_c_file_filename": "1c.csv",
+            "meta_file_filename": "meta.csv",
+        },
+    )
+    rows = _by_payment(result)
+
+    assert rows["A100"]["Комментарий"] == "Нет в системе"
+    assert rows["B100"]["Комментарий"] == "Нет в 1С"
+    assert rows["A100"]["Smart Match кандидат"] == "B100"
+    assert rows["B100"]["Smart Match кандидат"] == "A100"
+    assert rows["A100"]["Smart Match уверенность"] >= 70
+    assert "сумма совпадает" in rows["A100"]["Smart Match причина"]
+    assert result.custom_metrics["repayments"]["smart_match_pair_count"] == 1
 
 
 def test_amount_tolerance_is_fixed_at_one():

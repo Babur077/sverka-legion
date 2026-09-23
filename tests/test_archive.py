@@ -566,16 +566,22 @@ def test_row_reviews_are_persistent_and_removed_with_archive(tmp_path, monkeypat
         "Проверено вручную",
         True,
         "bob",
+        smart_match_decision="accepted",
+        smart_match_candidate="PAY-002",
     )
     assert saved["reviewed"] is True
     assert saved["created_by"] == "alice"
     assert saved["updated_by"] == "bob"
+    assert saved["smart_match_decision"] == "accepted"
+    assert saved["smart_match_candidate"] == "PAY-002"
 
     reviews = db.get_reconciliation_run_reviews("repayments", "review-run")
     assert len(reviews) == 1
     assert reviews[0]["row_key"] == "PAY-001"
     assert reviews[0]["comment"] == "Проверено вручную"
     assert reviews[0]["reviewed"] is True
+    assert reviews[0]["smart_match_decision"] == "accepted"
+    assert reviews[0]["smart_match_candidate"] == "PAY-002"
 
     assert db.delete_reconciliation_run(
         "repayments",
