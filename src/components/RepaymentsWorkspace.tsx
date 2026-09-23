@@ -7,8 +7,11 @@ import {
   Download,
   FileSpreadsheet,
   FolderOpen,
+  CheckCircle2,
   LoaderCircle,
+  MessageSquareText,
   Play,
+  Save,
   RefreshCcw,
   Search,
   Trash2,
@@ -20,12 +23,15 @@ import { hasPermission } from '../utils/permissions';
 import {
   deleteRepaymentsArchive,
   exportRepaymentsToExcel,
+  getRepaymentReviews,
   getRepaymentsArchive,
   getRepaymentsArchiveRecord,
+  RepaymentReview,
   RepaymentRow,
   RepaymentsArchiveRecord,
   RepaymentsRunResult,
   runRepayments,
+  saveRepaymentReview,
   saveRepaymentsRun,
 } from '../utils/repaymentsApi';
 
@@ -90,6 +96,12 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [expandedPayments, setExpandedPayments] = useState<Set<string>>(() => new Set());
+  const [expandedReviews, setExpandedReviews] = useState<Set<string>>(() => new Set());
+  const [reviews, setReviews] = useState<Record<string, RepaymentReview>>({});
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'uncommented' | 'commented' | 'reviewed'>('all');
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
+  const [reviewedDrafts, setReviewedDrafts] = useState<Record<string, boolean>>({});
+  const [savingReviewKey, setSavingReviewKey] = useState<string | null>(null);
 
   const [archive, setArchive] = useState<RepaymentsArchiveRecord[]>([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
@@ -99,23 +111,50 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
   const rows = result?.custom_metrics?.repayments?.rows || [];
   const statusCounts = result?.custom_metrics?.repayments?.status_counts || {};
 
+  const reviewStats = useMemo(() => {
+    const mismatches = rows.filter(row => row['Комментарий'] !== 'Правильно');
+    const commented = mismatches.filter(row => {
+      const review = reviews[String(row['Номер платежа'] || '')];
+      return Boolean(review?.comment?.trim());
+    }).length;
+    const reviewed = mismatches.filter(row => {
+      const review = reviews[String(row['Номер платежа'] || '')];
+      return Boolean(review?.reviewed);
+    }).length;
+    return {
+      total: mismatches.length,
+      commented,
+      reviewed,
+      uncommented: Math.max(0, mismatches.length - commented),
+    };
+  }, [rows, reviews]);
+
   const filteredRows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return rows.filter(row => {
       if (statusFilter !== 'Все' && row['Комментарий'] !== statusFilter) return false;
+
+      const rowKey = String(row['Номер платежа'] || '');
+      const review = reviews[rowKey];
+      const isMismatch = row['Комментарий'] !== 'Правильно';
+      if (reviewFilter === 'uncommented' && (!isMismatch || Boolean(review?.comment?.trim()))) return false;
+      if (reviewFilter === 'commented' && (!isMismatch || !review?.comment?.trim())) return false;
+      if (reviewFilter === 'reviewed' && (!isMismatch || !review?.reviewed)) return false;
+
       if (!needle) return true;
       return [
         row['Номер платежа'],
         row['Номер договора опознание'],
         row['Назначение платежа'],
         row['Комментарий'],
+        review?.comment,
       ].some(value => String(value || '').toLowerCase().includes(needle));
     });
-  }, [rows, query, statusFilter]);
+  }, [rows, query, statusFilter, reviewFilter, reviews]);
 
   useEffect(() => {
     setPage(1);
-  }, [query, statusFilter, rows.length]);
+  }, [query, statusFilter, reviewFilter, rows.length]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -131,6 +170,65 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
       else next.add(paymentNumber);
       return next;
     });
+  };
+
+  const applyReviews = (items: RepaymentReview[]) => {
+    const nextReviews: Record<string, RepaymentReview> = {};
+    const nextDrafts: Record<string, string> = {};
+    const nextReviewedDrafts: Record<string, boolean> = {};
+    items.forEach(item => {
+      nextReviews[item.row_key] = item;
+      nextDrafts[item.row_key] = item.comment || '';
+      nextReviewedDrafts[item.row_key] = Boolean(item.reviewed);
+    });
+    setReviews(nextReviews);
+    setReviewDrafts(nextDrafts);
+    setReviewedDrafts(nextReviewedDrafts);
+  };
+
+  const toggleReview = (rowKey: string) => {
+    setExpandedReviews(current => {
+      const next = new Set(current);
+      if (next.has(rowKey)) {
+        next.delete(rowKey);
+      } else {
+        next.add(rowKey);
+        if (!(rowKey in reviewDrafts)) {
+          setReviewDrafts(drafts => ({ ...drafts, [rowKey]: reviews[rowKey]?.comment || '' }));
+        }
+        if (!(rowKey in reviewedDrafts)) {
+          setReviewedDrafts(drafts => ({ ...drafts, [rowKey]: Boolean(reviews[rowKey]?.reviewed) }));
+        }
+      }
+      return next;
+    });
+  };
+
+  const persistReview = async (rowKey: string) => {
+    if (!result?.run_id || !canRun || savingReviewKey) return;
+    setSavingReviewKey(rowKey);
+    try {
+      const saved = await saveRepaymentReview(
+        result.run_id,
+        rowKey,
+        reviewDrafts[rowKey] || '',
+        Boolean(reviewedDrafts[rowKey]),
+      );
+      setReviews(current => {
+        const next = { ...current };
+        if (saved.deleted) delete next[rowKey];
+        else next[rowKey] = saved;
+        return next;
+      });
+      setMessage({
+        type: 'success',
+        text: saved.deleted ? 'Комментарий и отметка удалены.' : 'Разбор строки сохранён.',
+      });
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error?.message || 'Не удалось сохранить комментарий.' });
+    } finally {
+      setSavingReviewKey(null);
+    }
   };
 
   const loadArchive = async () => {
@@ -172,6 +270,9 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
       setStatusFilter('Все');
       setQuery('');
       setExpandedPayments(new Set());
+      setExpandedReviews(new Set());
+      setReviewFilter('all');
+      applyReviews([]);
 
       try {
         const archiveMessage = await saveRepaymentsRun(user.username, next);
@@ -201,6 +302,13 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
       setStatusFilter('Все');
       setQuery('');
       setExpandedPayments(new Set());
+      setExpandedReviews(new Set());
+      setReviewFilter('all');
+      try {
+        applyReviews(await getRepaymentReviews(full.result_snapshot.run_id));
+      } catch {
+        applyReviews([]);
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
       setMessage({
         type: 'info',
@@ -399,6 +507,29 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                 </label>
               </div>
 
+              <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-3">
+                <span className="mr-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Разбор:</span>
+                {[
+                  { key: 'all' as const, label: 'Все', count: reviewStats.total },
+                  { key: 'uncommented' as const, label: 'Без комментария', count: reviewStats.uncommented },
+                  { key: 'commented' as const, label: 'Прокомментировано', count: reviewStats.commented },
+                  { key: 'reviewed' as const, label: 'Проверено', count: reviewStats.reviewed },
+                ].map(item => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setReviewFilter(item.key)}
+                    className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold ${
+                      reviewFilter === item.key
+                        ? 'border-slate-800 bg-slate-800 text-white'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {item.label} · {item.count}
+                  </button>
+                ))}
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="min-w-[1400px] w-full text-xs">
                   <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
@@ -420,6 +551,9 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                       const paymentNumber = String(row['Номер платежа'] || '');
                       const paymentPurpose = String(row['Назначение платежа'] || '').trim();
                       const isExpanded = expandedPayments.has(paymentNumber);
+                      const review = reviews[paymentNumber];
+                      const isReviewExpanded = expandedReviews.has(paymentNumber);
+                      const isMismatch = row['Комментарий'] !== 'Правильно';
 
                       return (
                         <React.Fragment key={`${paymentNumber}-${index}`}>
@@ -453,9 +587,33 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                               {row['Номер договора опознание'] || '—'}
                             </td>
                             <td className="px-3 py-2">
-                              <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(row['Комментарий'])}`}>
-                                {row['Комментарий']}
-                              </span>
+                              <div className="flex flex-col items-start gap-1.5">
+                                <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(row['Комментарий'])}`}>
+                                  {row['Комментарий']}
+                                </span>
+                                {isMismatch && (canRun || review) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleReview(paymentNumber)}
+                                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold ${
+                                      review?.reviewed
+                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                        : review?.comment?.trim()
+                                          ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                                          : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    {review?.reviewed
+                                      ? <CheckCircle2 className="h-3 w-3" />
+                                      : <MessageSquareText className="h-3 w-3" />}
+                                    {review?.reviewed
+                                      ? 'Проверено'
+                                      : review?.comment?.trim()
+                                        ? 'Прокомментировано'
+                                        : 'Добавить комментарий'}
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
 
@@ -468,6 +626,74 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                                   </div>
                                   <div className="whitespace-pre-wrap break-words text-xs leading-5 text-slate-700">
                                     {paymentPurpose}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+
+                          {isReviewExpanded && isMismatch && (
+                            <tr className="bg-slate-50">
+                              <td colSpan={10} className="px-10 py-3">
+                                <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                      <div className="text-xs font-bold text-slate-800">Разбор несовпавшей строки</div>
+                                      {review?.updated_at && (
+                                        <div className="mt-0.5 text-[10px] text-slate-400">
+                                          Последнее изменение: {formatDateTime(review.updated_at)}
+                                          {review.updated_by ? ` · ${review.updated_by}` : ''}
+                                        </div>
+                                      )}
+                                    </div>
+                                    {review?.comment?.trim() && (
+                                      <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700">
+                                        Прокомментировано
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <textarea
+                                    value={reviewDrafts[paymentNumber] ?? review?.comment ?? ''}
+                                    onChange={event => setReviewDrafts(current => ({
+                                      ...current,
+                                      [paymentNumber]: event.target.value,
+                                    }))}
+                                    readOnly={!canRun}
+                                    maxLength={5000}
+                                    rows={3}
+                                    placeholder="Например: проверено вручную, ожидаем корректировку Meta…"
+                                    className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-xs leading-5 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 read-only:bg-slate-50"
+                                  />
+
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                      <input
+                                        type="checkbox"
+                                        checked={reviewedDrafts[paymentNumber] ?? Boolean(review?.reviewed)}
+                                        onChange={event => setReviewedDrafts(current => ({
+                                          ...current,
+                                          [paymentNumber]: event.target.checked,
+                                        }))}
+                                        disabled={!canRun}
+                                        className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                                      />
+                                      Проверено / кейс разобран
+                                    </label>
+
+                                    {canRun && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void persistReview(paymentNumber)}
+                                        disabled={savingReviewKey != null}
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-bold text-white hover:bg-slate-800 disabled:opacity-40"
+                                      >
+                                        {savingReviewKey === paymentNumber
+                                          ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                                          : <Save className="h-3.5 w-3.5" />}
+                                        Сохранить
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               </td>
