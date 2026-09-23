@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { User } from '../types';
+import { FileDropZone } from './FileDropZone';
 import { hasPermission } from '../utils/permissions';
 import {
   deleteRepaymentsArchive,
@@ -487,21 +488,24 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                 <h2 className="text-sm font-bold text-slate-900">{source.title}</h2>
               </div>
 
-              <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 hover:bg-slate-100">
-                <div className="min-w-0">
-                  <div className="truncate text-xs font-semibold text-slate-700">
-                    {source.file?.name || 'Выберите Excel или CSV'}
-                  </div>
-                  <div className="mt-1 text-[10px] text-slate-400">Обязательные колонки: {source.columns}</div>
-                </div>
-                <Upload className="h-5 w-5 shrink-0 text-indigo-500" />
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  className="hidden"
-                  onChange={event => source.setFile(event.target.files?.[0] || null)}
-                />
-              </label>
+              <FileDropZone
+                accept=".xlsx,.xls,.csv"
+                onFile={file => source.setFile(file)}
+                className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 transition-all hover:bg-slate-100"
+                activeClassName="border-indigo-400 bg-indigo-50 ring-2 ring-indigo-100"
+              >
+                {isDragging => (
+                  <>
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-semibold text-slate-700">
+                        {source.file?.name || (isDragging ? 'Отпустите файл здесь' : 'Перетащите файл сюда или нажмите для выбора')}
+                      </div>
+                      <div className="mt-1 text-[10px] text-slate-400">Обязательные колонки: {source.columns}</div>
+                    </div>
+                    <Upload className={`h-5 w-5 shrink-0 ${isDragging ? 'text-indigo-700' : 'text-indigo-500'}`} />
+                  </>
+                )}
+              </FileDropZone>
 
               <label className="mt-3 flex items-center gap-3 text-xs text-slate-600">
                 <span className="font-semibold">Строка заголовков</span>
