@@ -46,6 +46,20 @@ META_REQUIRED_COLUMNS = (
     "contract_number",
 )
 
+ONE_C_PURPOSE_ALIASES = (
+    "Назначение платежа",
+    "Назначение",
+    "Детали платежа",
+    "Содержание",
+)
+META_PURPOSE_ALIASES = (
+    "payment_purpose",
+    "purpose",
+    "payment_details",
+    "payment_description",
+    "details",
+)
+
 
 def _read_source(
     content: bytes,
@@ -160,6 +174,32 @@ def _records(frame: pd.DataFrame) -> list[dict[str, Any]]:
     ]
 
 
+def _find_optional_column(frame: pd.DataFrame, aliases: tuple[str, ...]) -> str | None:
+    normalized = {
+        str(column).replace("\u00a0", " ").strip().casefold(): str(column)
+        for column in frame.columns
+    }
+    for alias in aliases:
+        match = normalized.get(alias.replace("\u00a0", " ").strip().casefold())
+        if match:
+            return match
+    return None
+
+
+def _unique_text(values: pd.Series) -> str:
+    items: list[str] = []
+    for raw in values:
+        try:
+            if pd.isna(raw):
+                continue
+        except (TypeError, ValueError):
+            pass
+        text = str(raw).replace("\u00a0", " ").strip()
+        if text and text not in items:
+            items.append(text)
+    return "\n".join(items)
+
+
 def _header_row(params: Dict[str, Any], key: str) -> int:
     try:
         return max(1, min(200, int(params.get(key) or 1)))
@@ -248,6 +288,9 @@ class RepaymentsModule(BaseReconciliationModule):
                 + ", ".join(missing_meta)
             )
 
+        one_c_purpose_column = _find_optional_column(one_c, ONE_C_PURPOSE_ALIASES)
+        meta_purpose_column = _find_optional_column(meta, META_PURPOSE_ALIASES)
+
         one_c = one_c.rename(columns={
             "Вх.номер": "Номер платежа",
             "Дата": "Дата",
@@ -301,6 +344,11 @@ class RepaymentsModule(BaseReconciliationModule):
                 "bank_dates": bank_dates,
                 "system_date": max(system_dates) if system_dates else pd.NaT,
                 "contracts": ", ".join(contracts),
+                "payment_purpose": (
+                    _unique_text(group[meta_purpose_column])
+                    if meta_purpose_column and meta_purpose_column in group.columns
+                    else ""
+                ),
             }
 
         one_c_data: dict[str, dict[str, Any]] = {}
@@ -309,6 +357,11 @@ class RepaymentsModule(BaseReconciliationModule):
             one_c_data[str(payment_number)] = {
                 "date": min(dates) if dates else pd.NaT,
                 "amount": float(group["Сумма"].sum()),
+                "payment_purpose": (
+                    _unique_text(group[one_c_purpose_column])
+                    if one_c_purpose_column and one_c_purpose_column in group.columns
+                    else ""
+                ),
             }
 
         numbers_1c = set(one_c_data)
@@ -323,9 +376,11 @@ class RepaymentsModule(BaseReconciliationModule):
             if in_1c:
                 date_1c = one_c_data[payment_number]["date"]
                 amount_1c = float(one_c_data[payment_number]["amount"])
+                payment_purpose_1c = str(one_c_data[payment_number].get("payment_purpose") or "")
             else:
                 date_1c = pd.NaT
                 amount_1c = 0.0
+                payment_purpose_1c = ""
 
             if in_meta:
                 meta_info = meta_data[payment_number]
@@ -334,12 +389,16 @@ class RepaymentsModule(BaseReconciliationModule):
                 bank_dates = list(meta_info["bank_dates"])
                 system_date = meta_info["system_date"]
                 contracts = str(meta_info["contracts"])
+                payment_purpose_meta = str(meta_info.get("payment_purpose") or "")
             else:
                 bank_amount = 0.0
                 recognition_amount = 0.0
                 bank_dates = []
                 system_date = pd.NaT
                 contracts = ""
+                payment_purpose_meta = ""
+
+            payment_purpose = payment_purpose_1c or payment_purpose_meta
 
             comparison_date = pd.NaT
             if bank_dates:
@@ -380,6 +439,7 @@ class RepaymentsModule(BaseReconciliationModule):
                 "Дата в системе": system_date,
                 "Сумма опознание": round(recognition_amount, 2),
                 "Номер договора опознание": contracts,
+                "Назначение платежа": payment_purpose,
                 "Комментарий": comment,
                 "Δ суммы": round(bank_amount - amount_1c, 2),
             })
@@ -395,6 +455,7 @@ class RepaymentsModule(BaseReconciliationModule):
                 "Дата в системе",
                 "Сумма опознание",
                 "Номер договора опознание",
+                "Назначение платежа",
                 "Комментарий",
                 "Δ суммы",
             ])
@@ -471,6 +532,15 @@ class RepaymentsModule(BaseReconciliationModule):
                         "one_c": one_c_header,
                         "meta": meta_header,
                     },
+                    "payment_purpose_source": (
+                        f"1C:{one_c_purpose_column}"
+                        if one_c_purpose_column
+                        else (
+                            f"Meta:{meta_purpose_column}"
+                            if meta_purpose_column
+                            else None
+                        )
+                    ),
                 }
             },
         )
