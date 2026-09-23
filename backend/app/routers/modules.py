@@ -194,6 +194,8 @@ async def update_module_row_review(
         str(payload.get("comment") or ""),
         bool(payload.get("reviewed", False)),
         x_user or "",
+        smart_match_decision=payload.get("smart_match_decision"),
+        smart_match_candidate=payload.get("smart_match_candidate"),
     ))
 
 
