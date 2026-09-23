@@ -17,6 +17,7 @@ import { getStoredDraft, saveActiveDraft, clearActiveDraft } from '../utils/stor
 import { createEposViaApi, getEposViaApi } from '../utils/eposApi';
 import { DEFAULT_BANKS, getBanksViaApi } from '../utils/banksApi';
 import { AlertModal, ConfirmModal } from './Modal';
+import { FileDropZone } from './FileDropZone';
 import { saveBankRrnArchive } from '../utils/archiveApi';
 import { getReconciliationQuality } from '../utils/reconciliationMetrics';
 import { BankAiSummary, analyzeBankRrnWithAi } from '../utils/bankAiApi';
@@ -482,8 +483,7 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
     setAiError(null);
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isOur: boolean) => {
-    const file = e.target.files?.[0];
+  const handleFileUpload = async (file: File | null, isOur: boolean) => {
     if (!file) return;
 
     setSourceParsingSide(isOur ? 'our' : 'bank');
@@ -1495,19 +1495,29 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             )}
           </div>
 
-          <label className="border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-50/50 hover:bg-indigo-50/20">
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={(e) => handleFileUpload(e, true)}
-              className="hidden"
-            />
-            <FileSpreadsheet className="w-8 h-8 text-slate-400 mb-1.5" />
-            <span className="text-xs font-medium text-slate-700">
-              {ourFile ? ourFile.name : 'Нажмите для выбора файла'}
-            </span>
-            <span className="text-[11px] text-slate-400 mt-0.5">.xlsx, .xls или .csv (до 200 МБ)</span>
-          </label>
+          <FileDropZone
+            accept=".xlsx,.xls,.csv"
+            onFile={file => handleFileUpload(file, true)}
+            disabled={sourceParsingSide === 'our'}
+            className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 p-4 transition-all hover:border-indigo-400 hover:bg-indigo-50/20"
+            activeClassName="border-indigo-500 bg-indigo-50 ring-2 ring-indigo-100"
+          >
+            {isDragging => (
+              <>
+                <FileSpreadsheet className={`mb-1.5 h-8 w-8 ${isDragging ? 'text-indigo-500' : 'text-slate-400'}`} />
+                <span className="text-xs font-medium text-slate-700">
+                  {sourceParsingSide === 'our'
+                    ? 'Чтение файла…'
+                    : ourFile
+                      ? ourFile.name
+                      : isDragging
+                        ? 'Отпустите файл здесь'
+                        : 'Перетащите файл сюда или нажмите для выбора'}
+                </span>
+                <span className="mt-0.5 text-[11px] text-slate-400">.xlsx, .xls или .csv (до 200 МБ)</span>
+              </>
+            )}
+          </FileDropZone>
 
           {ourFile && (
             <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
@@ -1599,19 +1609,29 @@ export const RrnPage: React.FC<RrnPageProps> = ({ user, settings }) => {
             )}
           </div>
 
-          <label className="border-2 border-dashed border-slate-200 hover:border-emerald-400 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-50/50 hover:bg-emerald-50/20">
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={(e) => handleFileUpload(e, false)}
-              className="hidden"
-            />
-            <FileSpreadsheet className="w-8 h-8 text-slate-400 mb-1.5" />
-            <span className="text-xs font-medium text-slate-700">
-              {bankFile ? bankFile.name : 'Нажмите для выбора файла'}
-            </span>
-            <span className="text-[11px] text-slate-400 mt-0.5">.xlsx, .xls или .csv (до 200 МБ)</span>
-          </label>
+          <FileDropZone
+            accept=".xlsx,.xls,.csv"
+            onFile={file => handleFileUpload(file, false)}
+            disabled={sourceParsingSide === 'bank'}
+            className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 p-4 transition-all hover:border-emerald-400 hover:bg-emerald-50/20"
+            activeClassName="border-emerald-500 bg-emerald-50 ring-2 ring-emerald-100"
+          >
+            {isDragging => (
+              <>
+                <FileSpreadsheet className={`mb-1.5 h-8 w-8 ${isDragging ? 'text-emerald-500' : 'text-slate-400'}`} />
+                <span className="text-xs font-medium text-slate-700">
+                  {sourceParsingSide === 'bank'
+                    ? 'Чтение файла…'
+                    : bankFile
+                      ? bankFile.name
+                      : isDragging
+                        ? 'Отпустите файл здесь'
+                        : 'Перетащите файл сюда или нажмите для выбора'}
+                </span>
+                <span className="mt-0.5 text-[11px] text-slate-400">.xlsx, .xls или .csv (до 200 МБ)</span>
+              </>
+            )}
+          </FileDropZone>
 
           {bankFile && (
             <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">

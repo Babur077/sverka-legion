@@ -17,6 +17,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { User } from '../types';
+import { FileDropZone } from './FileDropZone';
 import { ReconciliationBuilderRunArchiveModal } from './ReconciliationBuilderRunArchiveModal';
 import { ReconciliationDefinitionHistoryModal } from './ReconciliationDefinitionHistoryModal';
 import { FileParseOptions, ParsedFileResult, parseFile } from '../utils/fileParser';
@@ -949,30 +950,34 @@ export const ReconciliationBuilderWorkspace: React.FC<Props> = ({ user, onBack }
                     key={item.side}
                     className="rounded-xl border border-slate-200 bg-slate-50 p-4"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold uppercase tracking-wider text-slate-400">{item.label}</div>
-                        <div className="mt-1 truncate font-semibold text-slate-900">
-                          {item.file?.name || 'Файл не выбран'}
-                        </div>
-                        <div className="mt-1 text-xs text-slate-500">
-                          {loadingFile === item.side
-                            ? 'Чтение файла…'
-                            : item.file
-                              ? `${item.rows.toLocaleString('ru-RU')} строк · ${item.columns.length} колонок`
-                              : 'После загрузки настройте лист и строку заголовков.'}
-                        </div>
-                      </div>
-                      <label className="shrink-0 cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-                        {item.file ? 'Заменить' : 'Выбрать файл'}
-                        <input
-                          type="file"
-                          accept=".xlsx,.xls,.csv"
-                          className="hidden"
-                          onChange={event => void handleFile(item.side, event.target.files?.[0] || null)}
-                        />
-                      </label>
-                    </div>
+                    <FileDropZone
+                      accept=".xlsx,.xls,.csv"
+                      onFile={file => handleFile(item.side, file)}
+                      disabled={loadingFile === item.side}
+                      className="flex cursor-pointer items-start justify-between gap-3 rounded-lg border border-dashed border-transparent p-2 -m-2 transition-all hover:border-slate-300 hover:bg-white/70"
+                      activeClassName="border-indigo-400 bg-indigo-50 ring-2 ring-indigo-100"
+                    >
+                      {isDragging => (
+                        <>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">{item.label}</div>
+                            <div className="mt-1 truncate font-semibold text-slate-900">
+                              {item.file?.name || (isDragging ? 'Отпустите файл здесь' : 'Перетащите файл сюда')}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {loadingFile === item.side
+                                ? 'Чтение файла…'
+                                : item.file
+                                  ? `${item.rows.toLocaleString('ru-RU')} строк · ${item.columns.length} колонок`
+                                  : 'Перетащите Excel/CSV или нажмите для выбора. После загрузки настройте лист и строку заголовков.'}
+                            </div>
+                          </div>
+                          <span className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                            {isDragging ? 'Отпустить' : item.file ? 'Заменить' : 'Выбрать файл'}
+                          </span>
+                        </>
+                      )}
+                    </FileDropZone>
 
                     {item.file && (
                       <>
