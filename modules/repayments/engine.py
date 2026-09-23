@@ -222,9 +222,9 @@ def _header_row(params: Dict[str, Any], key: str) -> int:
 def _normalized_similarity(left: Any, right: Any) -> float:
     """Return a conservative 0..1 similarity for identifiers or payment text."""
     def normalize(value: Any) -> str:
-        text = str(value or "").replace("\\u00a0", " ").casefold()
-        text = re.sub(r"[^\\w\\s]+", " ", text, flags=re.UNICODE)
-        return re.sub(r"\\s+", " ", text).strip()
+        text = str(value or "").replace("\u00a0", " ").casefold()
+        text = re.sub(r"[^\w\s]+", " ", text, flags=re.UNICODE)
+        return re.sub(r"\s+", " ", text).strip()
 
     left_text = normalize(left)
     right_text = normalize(right)
