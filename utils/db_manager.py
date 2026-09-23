@@ -664,7 +664,7 @@ def get_reconciliation_run_reviews(module_id: str, run_id: str) -> list[dict]:
         rows = conn.execute(
             """
             SELECT row_key, comment, is_reviewed, created_by, created_at,
-                   updated_by, updated_at
+                   updated_by, updated_at, smart_match_decision, smart_match_candidate
             FROM reconciliation_row_reviews
             WHERE module_id = ? AND run_id = ?
             ORDER BY updated_at DESC, id DESC
@@ -681,6 +681,12 @@ def get_reconciliation_run_reviews(module_id: str, run_id: str) -> list[dict]:
             "created_at": str(row["created_at"] or ""),
             "updated_by": str(row["updated_by"] or ""),
             "updated_at": str(row["updated_at"] or ""),
+            "smart_match_decision": (
+                str(row["smart_match_decision"] or "") or None
+            ),
+            "smart_match_candidate": (
+                str(row["smart_match_candidate"] or "") or None
+            ),
         }
         for row in rows
     ]
@@ -693,6 +699,9 @@ def save_reconciliation_run_review(
     comment: str,
     reviewed: bool,
     user: str,
+    *,
+    smart_match_decision: str | None = None,
+    smart_match_candidate: str | None = None,
 ) -> dict:
     """Create/update one collaborative review note without mutating run payload."""
     normalized_module_id = str(module_id or "").strip()
@@ -700,6 +709,26 @@ def save_reconciliation_run_review(
     normalized_row_key = str(row_key or "").strip()
     normalized_comment = str(comment or "").strip()
     normalized_user = str(user or "").strip()
+
+    requested_decision = (
+        None
+        if smart_match_decision is None
+        else str(smart_match_decision or "").strip().lower()
+    )
+    requested_candidate = (
+        None
+        if smart_match_candidate is None
+        else str(smart_match_candidate or "").strip()
+    )
+
+    if requested_decision not in {None, "", "accepted", "rejected"}:
+        raise ValueError("Некорректное решение Smart Match")
+    if requested_decision and normalized_module_id != "repayments":
+        raise ValueError("Smart Match доступен только для Сверки Погашений")
+    if requested_decision and not requested_candidate:
+        raise ValueError("Для решения Smart Match нужен кандидат")
+    if requested_candidate is not None and len(requested_candidate) > 512:
+        raise ValueError("Smart Match кандидат слишком длинный")
 
     if not normalized_module_id or not normalized_run_id or not normalized_row_key:
         raise ValueError("module_id, run_id и row_key обязательны")
@@ -723,7 +752,39 @@ def save_reconciliation_run_review(
         if not run_exists:
             raise LookupError("Архивная сверка не найдена")
 
-        if not normalized_comment and not reviewed:
+        existing = cursor.execute(
+            """
+            SELECT created_by, created_at, smart_match_decision, smart_match_candidate
+            FROM reconciliation_row_reviews
+            WHERE module_id = ? AND run_id = ? AND row_key = ?
+            LIMIT 1
+            """,
+            (normalized_module_id, normalized_run_id, normalized_row_key),
+        ).fetchone()
+
+        created_by = str(existing[0] or "") if existing else normalized_user
+        created_at = str(existing[1] or "") if existing else now
+        current_decision = str(existing[2] or "") if existing else ""
+        current_candidate = str(existing[3] or "") if existing else ""
+        resolved_decision = (
+            current_decision
+            if requested_decision is None
+            else requested_decision
+        )
+        resolved_candidate = (
+            current_candidate
+            if requested_candidate is None
+            else requested_candidate
+        )
+        if not resolved_decision:
+            resolved_candidate = ""
+
+        if (
+            not normalized_comment
+            and not reviewed
+            and not resolved_decision
+            and not resolved_candidate
+        ):
             cursor.execute(
                 """
                 DELETE FROM reconciliation_row_reviews
@@ -740,34 +801,26 @@ def save_reconciliation_run_review(
                 "created_at": "",
                 "updated_by": normalized_user,
                 "updated_at": now,
+                "smart_match_decision": None,
+                "smart_match_candidate": None,
                 "deleted": True,
             }
-
-        existing = cursor.execute(
-            """
-            SELECT created_by, created_at
-            FROM reconciliation_row_reviews
-            WHERE module_id = ? AND run_id = ? AND row_key = ?
-            LIMIT 1
-            """,
-            (normalized_module_id, normalized_run_id, normalized_row_key),
-        ).fetchone()
-
-        created_by = str(existing[0] or "") if existing else normalized_user
-        created_at = str(existing[1] or "") if existing else now
 
         cursor.execute(
             """
             INSERT INTO reconciliation_row_reviews (
                 module_id, run_id, row_key, comment, is_reviewed,
-                created_by, created_at, updated_by, updated_at
+                created_by, created_at, updated_by, updated_at,
+                smart_match_decision, smart_match_candidate
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(module_id, run_id, row_key) DO UPDATE SET
                 comment = excluded.comment,
                 is_reviewed = excluded.is_reviewed,
                 updated_by = excluded.updated_by,
-                updated_at = excluded.updated_at
+                updated_at = excluded.updated_at,
+                smart_match_decision = excluded.smart_match_decision,
+                smart_match_candidate = excluded.smart_match_candidate
             """,
             (
                 normalized_module_id,
@@ -779,6 +832,8 @@ def save_reconciliation_run_review(
                 created_at,
                 normalized_user,
                 now,
+                resolved_decision or None,
+                resolved_candidate or None,
             ),
         )
         conn.commit()
@@ -791,6 +846,8 @@ def save_reconciliation_run_review(
         "created_at": created_at,
         "updated_by": normalized_user,
         "updated_at": now,
+        "smart_match_decision": resolved_decision or None,
+        "smart_match_candidate": resolved_candidate or None,
         "deleted": False,
     }
 
