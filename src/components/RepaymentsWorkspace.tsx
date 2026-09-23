@@ -681,6 +681,11 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                                   <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                 </button>
                                 <span>{paymentNumber}</span>
+                                {purposeCount > 1 && (
+                                  <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                                    Назн. ×{purposeCount}
+                                  </span>
+                                )}
                                 {oneCPurposes.length > 1 && (
                                   <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
                                     1С ×{oneCPurposes.length}
