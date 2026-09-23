@@ -53,13 +53,8 @@ META_REQUIRED_COLUMNS = (
     "contract_number",
 )
 
-ONE_C_PURPOSE_ALIASES = (
-    "Назначение платежа",
-    "Назначение",
-    "Детали платежа",
-    "Содержание",
-)
 META_PURPOSE_ALIASES = (
+    "bank_purpose_of_payment",
     "payment_purpose",
     "purpose",
     "payment_details",
@@ -497,7 +492,8 @@ class RepaymentsModule(BaseReconciliationModule):
                 + ", ".join(missing_meta)
             )
 
-        one_c_purpose_column = _find_optional_column(one_c, ONE_C_PURPOSE_ALIASES)
+        # Назначение платежа для этого модуля берём только из Meta.
+        # В рабочем файле поле называется bank_purpose_of_payment.
         meta_purpose_column = _find_optional_column(meta, META_PURPOSE_ALIASES)
 
         one_c = one_c.rename(columns={
@@ -566,11 +562,8 @@ class RepaymentsModule(BaseReconciliationModule):
             one_c_data[str(payment_number)] = {
                 "date": min(dates) if dates else pd.NaT,
                 "amount": float(group["Сумма"].sum()),
-                "payment_purpose": (
-                    _unique_text(group[one_c_purpose_column])
-                    if one_c_purpose_column and one_c_purpose_column in group.columns
-                    else ""
-                ),
+                # В 1С назначения платежа нет; источник назначения — Meta.
+                "payment_purpose": "",
             }
 
         numbers_1c = set(one_c_data)
@@ -608,7 +601,7 @@ class RepaymentsModule(BaseReconciliationModule):
                 contracts = ""
                 payment_purpose_meta = ""
 
-            payment_purpose = payment_purpose_1c or payment_purpose_meta
+            payment_purpose = payment_purpose_meta
 
             comparison_date = pd.NaT
             if bank_dates:
@@ -760,13 +753,9 @@ class RepaymentsModule(BaseReconciliationModule):
                         "meta": meta_header,
                     },
                     "payment_purpose_source": (
-                        f"1C:{one_c_purpose_column}"
-                        if one_c_purpose_column
-                        else (
-                            f"Meta:{meta_purpose_column}"
-                            if meta_purpose_column
-                            else None
-                        )
+                        f"Meta:{meta_purpose_column}"
+                        if meta_purpose_column
+                        else None
                     ),
                 }
             },
