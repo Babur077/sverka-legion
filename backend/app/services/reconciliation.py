@@ -206,6 +206,9 @@ def save_module_run_review(
     comment: str,
     reviewed: bool,
     username: str,
+    *,
+    smart_match_decision: str | None = None,
+    smart_match_candidate: str | None = None,
 ) -> dict:
     require_module(module_id)
     try:
@@ -216,6 +219,8 @@ def save_module_run_review(
             comment,
             reviewed,
             username,
+            smart_match_decision=smart_match_decision,
+            smart_match_candidate=smart_match_candidate,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -230,9 +235,13 @@ def save_module_run_review(
         object_id=f"{run_id}:{row_key}",
         status="SUCCESS",
         details=(
-            "reviewed"
-            if reviewed
-            else ("commented" if str(comment or "").strip() else "review_cleared")
+            f"smart_match_{smart_match_decision}"
+            if smart_match_decision
+            else (
+                "reviewed"
+                if reviewed
+                else ("commented" if str(comment or "").strip() else "review_cleared")
+            )
         ),
     )
     return saved
