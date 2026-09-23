@@ -226,10 +226,10 @@ class Ravan1CModule(BaseReconciliationModule):
     def manifest(self) -> ModuleManifest:
         return ModuleManifest(
             id="ravan_1c",
-            name="Сверка погашений",
+            name="Сверка 2910",
             version="1.0.1",
             description=(
-                "Сверка погашений Ravan с 1C по очищенному названию контрагента, количеству "
+                "Сверка 2910: Ravan с 1C по очищенному названию контрагента, количеству "
                 "и скорректированной сумме с учетом NDS."
             ),
             category="Бухгалтерия",
