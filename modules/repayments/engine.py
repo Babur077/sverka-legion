@@ -113,7 +113,7 @@ def clean_payment_number(value: Any) -> Optional[str]:
         try:
             number = Decimal(text)
             if number.is_finite() and number == number.to_integral_value():
-                return format(number.quantize(Decimal("1")), "f")
+                return format(number.to_integral_value(), "f")
         except (InvalidOperation, ValueError):
             pass
 
