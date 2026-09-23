@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 
 import { User } from '../types';
+import { FileDropZone } from './FileDropZone';
 import { hasPermission } from '../utils/permissions';
 import { Ravan1CArchive } from './Ravan1CArchive';
 import {
@@ -317,53 +318,55 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
           </div>
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <label className="cursor-pointer rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 p-5 hover:bg-indigo-50">
-              <div className="flex items-start gap-3">
-                <div className="rounded-lg bg-white p-2 text-indigo-600 shadow-xs">
-                  <Upload className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold uppercase tracking-wider text-indigo-500">Ravan</div>
-                  <div className="mt-1 truncate text-sm font-semibold text-slate-900">
-                    {ravanFile?.name || 'Выберите Ravan.xlsx'}
+            <FileDropZone
+              accept=".xlsx,.xls,.csv"
+              onFile={file => {
+                setRavanFile(file);
+                setResult(null);
+              }}
+              className="cursor-pointer rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 p-5 transition-all hover:bg-indigo-50"
+              activeClassName="border-indigo-400 bg-indigo-100/70 ring-2 ring-indigo-100"
+            >
+              {isDragging => (
+                <div className="flex items-start gap-3">
+                  <div className="rounded-lg bg-white p-2 text-indigo-600 shadow-xs">
+                    <Upload className="h-4 w-4" />
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">Ожидаются Partner / NDS / Kolvo / Summ.</div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold uppercase tracking-wider text-indigo-500">Ravan</div>
+                    <div className="mt-1 truncate text-sm font-semibold text-slate-900">
+                      {ravanFile?.name || (isDragging ? 'Отпустите файл здесь' : 'Перетащите Ravan сюда или нажмите для выбора')}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">Ожидаются Partner / NDS / Kolvo / Summ.</div>
+                  </div>
                 </div>
-              </div>
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-                onChange={event => {
-                  setRavanFile(event.target.files?.[0] || null);
-                  setResult(null);
-                }}
-              />
-            </label>
+              )}
+            </FileDropZone>
 
-            <label className="cursor-pointer rounded-xl border border-dashed border-emerald-200 bg-emerald-50/40 p-5 hover:bg-emerald-50">
-              <div className="flex items-start gap-3">
-                <div className="rounded-lg bg-white p-2 text-emerald-600 shadow-xs">
-                  <FileSpreadsheet className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold uppercase tracking-wider text-emerald-600">1C</div>
-                  <div className="mt-1 truncate text-sm font-semibold text-slate-900">
-                    {cFile?.name || 'Выберите файл 1C'}
+            <FileDropZone
+              accept=".xlsx,.xls,.csv"
+              onFile={file => {
+                setCFile(file);
+                setResult(null);
+              }}
+              className="cursor-pointer rounded-xl border border-dashed border-emerald-200 bg-emerald-50/40 p-5 transition-all hover:bg-emerald-50"
+              activeClassName="border-emerald-400 bg-emerald-100/70 ring-2 ring-emerald-100"
+            >
+              {isDragging => (
+                <div className="flex items-start gap-3">
+                  <div className="rounded-lg bg-white p-2 text-emerald-600 shadow-xs">
+                    <FileSpreadsheet className="h-4 w-4" />
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">Без строки заголовков: Partner / Kolvo / Summ.</div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold uppercase tracking-wider text-emerald-600">1C</div>
+                    <div className="mt-1 truncate text-sm font-semibold text-slate-900">
+                      {cFile?.name || (isDragging ? 'Отпустите файл здесь' : 'Перетащите файл 1C сюда или нажмите для выбора')}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">Без строки заголовков: Partner / Kolvo / Summ.</div>
+                  </div>
                 </div>
-              </div>
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-                onChange={event => {
-                  setCFile(event.target.files?.[0] || null);
-                  setResult(null);
-                }}
-              />
-            </label>
+              )}
+            </FileDropZone>
           </div>
 
           <div className="mt-4 flex flex-col gap-3 rounded-xl bg-slate-50 p-4 sm:flex-row sm:items-end sm:justify-between">
