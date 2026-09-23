@@ -285,7 +285,7 @@ export const Ravan1CWorkspace: React.FC<Props> = ({ user, onBack }) => {
               <div className="text-[10px] font-bold tracking-[0.18em] text-indigo-600">
                 produced by Sayfulloh Abdusalomov
               </div>
-              <h1 className="truncate text-xl font-black text-slate-900">Сверка погашений</h1>
+              <h1 className="truncate text-xl font-black text-slate-900">Сверка 2910</h1>
               <p className="mt-0.5 text-xs text-slate-500">
                 Ravan ↔ 1C: сверка контрагентов, количества и суммы с корректировкой по NDS.
               </p>
