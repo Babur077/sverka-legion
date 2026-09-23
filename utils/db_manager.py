@@ -657,6 +657,144 @@ def get_reconciliation_runs(module_id: str | None = None) -> list[dict]:
     return records
 
 
+def get_reconciliation_run_reviews(module_id: str, run_id: str) -> list[dict]:
+    """Return shared row-level review notes for one archived reconciliation run."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT row_key, comment, is_reviewed, created_by, created_at,
+                   updated_by, updated_at
+            FROM reconciliation_row_reviews
+            WHERE module_id = ? AND run_id = ?
+            ORDER BY updated_at DESC, id DESC
+            """,
+            (str(module_id), str(run_id)),
+        ).fetchall()
+
+    return [
+        {
+            "row_key": str(row["row_key"]),
+            "comment": str(row["comment"] or ""),
+            "reviewed": bool(row["is_reviewed"]),
+            "created_by": str(row["created_by"] or ""),
+            "created_at": str(row["created_at"] or ""),
+            "updated_by": str(row["updated_by"] or ""),
+            "updated_at": str(row["updated_at"] or ""),
+        }
+        for row in rows
+    ]
+
+
+def save_reconciliation_run_review(
+    module_id: str,
+    run_id: str,
+    row_key: str,
+    comment: str,
+    reviewed: bool,
+    user: str,
+) -> dict:
+    """Create/update one collaborative review note without mutating run payload."""
+    normalized_module_id = str(module_id or "").strip()
+    normalized_run_id = str(run_id or "").strip()
+    normalized_row_key = str(row_key or "").strip()
+    normalized_comment = str(comment or "").strip()
+    normalized_user = str(user or "").strip()
+
+    if not normalized_module_id or not normalized_run_id or not normalized_row_key:
+        raise ValueError("module_id, run_id и row_key обязательны")
+    if len(normalized_row_key) > 512:
+        raise ValueError("row_key слишком длинный")
+    if len(normalized_comment) > 5000:
+        raise ValueError("Комментарий слишком длинный (максимум 5000 символов)")
+
+    now = datetime.now().isoformat()
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        run_exists = cursor.execute(
+            """
+            SELECT 1
+            FROM reconciliation_runs
+            WHERE module_id = ? AND run_id = ?
+            LIMIT 1
+            """,
+            (normalized_module_id, normalized_run_id),
+        ).fetchone()
+        if not run_exists:
+            raise LookupError("Архивная сверка не найдена")
+
+        if not normalized_comment and not reviewed:
+            cursor.execute(
+                """
+                DELETE FROM reconciliation_row_reviews
+                WHERE module_id = ? AND run_id = ? AND row_key = ?
+                """,
+                (normalized_module_id, normalized_run_id, normalized_row_key),
+            )
+            conn.commit()
+            return {
+                "row_key": normalized_row_key,
+                "comment": "",
+                "reviewed": False,
+                "created_by": "",
+                "created_at": "",
+                "updated_by": normalized_user,
+                "updated_at": now,
+                "deleted": True,
+            }
+
+        existing = cursor.execute(
+            """
+            SELECT created_by, created_at
+            FROM reconciliation_row_reviews
+            WHERE module_id = ? AND run_id = ? AND row_key = ?
+            LIMIT 1
+            """,
+            (normalized_module_id, normalized_run_id, normalized_row_key),
+        ).fetchone()
+
+        created_by = str(existing[0] or "") if existing else normalized_user
+        created_at = str(existing[1] or "") if existing else now
+
+        cursor.execute(
+            """
+            INSERT INTO reconciliation_row_reviews (
+                module_id, run_id, row_key, comment, is_reviewed,
+                created_by, created_at, updated_by, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(module_id, run_id, row_key) DO UPDATE SET
+                comment = excluded.comment,
+                is_reviewed = excluded.is_reviewed,
+                updated_by = excluded.updated_by,
+                updated_at = excluded.updated_at
+            """,
+            (
+                normalized_module_id,
+                normalized_run_id,
+                normalized_row_key,
+                normalized_comment,
+                1 if reviewed else 0,
+                created_by,
+                created_at,
+                normalized_user,
+                now,
+            ),
+        )
+        conn.commit()
+
+    return {
+        "row_key": normalized_row_key,
+        "comment": normalized_comment,
+        "reviewed": bool(reviewed),
+        "created_by": created_by,
+        "created_at": created_at,
+        "updated_by": normalized_user,
+        "updated_at": now,
+        "deleted": False,
+    }
+
+
 def delete_reconciliation_run(
     module_id: str,
     record_id: int,
@@ -667,21 +805,30 @@ def delete_reconciliation_run(
     """Delete one run, restricted to its owner unless an explicit override is allowed."""
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
-        if allow_owner_override:
+        row = cursor.execute(
+            "SELECT run_id, created_by FROM reconciliation_runs WHERE id = ? AND module_id = ?",
+            (int(record_id), str(module_id)),
+        ).fetchone()
+        if not row:
+            return False
+
+        run_id = str(row[0] or "")
+        created_by = str(row[1] or "")
+        if not allow_owner_override and created_by != str(user or ""):
+            return False
+
+        cursor.execute(
+            "DELETE FROM reconciliation_runs WHERE id = ? AND module_id = ?",
+            (int(record_id), str(module_id)),
+        )
+        deleted = cursor.rowcount > 0
+        if deleted and run_id:
             cursor.execute(
-                "DELETE FROM reconciliation_runs WHERE id = ? AND module_id = ?",
-                (int(record_id), str(module_id)),
-            )
-        else:
-            cursor.execute(
-                """
-                DELETE FROM reconciliation_runs
-                WHERE id = ? AND module_id = ? AND created_by = ?
-                """,
-                (int(record_id), str(module_id), str(user or "")),
+                "DELETE FROM reconciliation_row_reviews WHERE module_id = ? AND run_id = ?",
+                (str(module_id), run_id),
             )
         conn.commit()
-        return cursor.rowcount > 0
+        return deleted
 
 
 # Compatibility wrappers for Bank RRN while the frontend keeps its existing model.

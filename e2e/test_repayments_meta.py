@@ -76,6 +76,27 @@ def test_repayments_run_and_archive_round_trip(api_client, admin_token):
         )
         assert full.status_code == 200, full.text
         assert full.json()["result_snapshot"]["run_id"] == result["run_id"]
+
+        review = api_client.put(
+            module_path + f"/reviews/{result['run_id']}",
+            headers=headers,
+            json={
+                "row_key": "12345",
+                "comment": "Проверено вручную",
+                "reviewed": True,
+            },
+        )
+        assert review.status_code == 200, review.text
+        assert review.json()["comment"] == "Проверено вручную"
+        assert review.json()["reviewed"] is True
+
+        reviews = api_client.get(
+            module_path + f"/reviews/{result['run_id']}",
+            headers=headers,
+        )
+        assert reviews.status_code == 200, reviews.text
+        assert reviews.json()[0]["row_key"] == "12345"
+        assert reviews.json()[0]["reviewed"] is True
     finally:
         removed = api_client.delete(
             module_path + f"/archive/{record_id}",

@@ -10,8 +10,10 @@ from backend.app.services.source_preview import preview_source_file
 from backend.app.services.reconciliation import (
     execute_module,
     get_module_run,
+    get_module_run_reviews,
     list_module_runs,
     remove_module_run,
+    save_module_run_review,
     require_module,
     save_module_run,
 )
@@ -156,6 +158,43 @@ async def fetch_module_archive_record(
     ):
         raise HTTPException(status_code=403, detail="Доступ к архиву ограничен")
     return json_safe(get_module_run(module_id, record_id))
+
+
+@router.get("/{module_id}/reviews/{run_id}")
+async def fetch_module_row_reviews(
+    module_id: str,
+    run_id: str,
+    x_user: Optional[str] = Header("admin"),
+):
+    perms = get_user_permissions(x_user)
+    if (
+        not has_permission(perms, f"{module_id}.view")
+        and not has_permission(perms, "archive.view")
+        and "*" not in perms
+    ):
+        raise HTTPException(status_code=403, detail="Доступ к разбору сверки ограничен")
+    return json_safe(get_module_run_reviews(module_id, run_id))
+
+
+@router.put("/{module_id}/reviews/{run_id}")
+async def update_module_row_review(
+    module_id: str,
+    run_id: str,
+    payload: Dict[str, Any],
+    x_user: Optional[str] = Header("admin"),
+):
+    perms = get_user_permissions(x_user)
+    if not has_permission(perms, f"{module_id}.run") and "*" not in perms:
+        raise HTTPException(status_code=403, detail="Нет прав на изменение разбора сверки")
+
+    return json_safe(save_module_run_review(
+        module_id,
+        run_id,
+        str(payload.get("row_key") or ""),
+        str(payload.get("comment") or ""),
+        bool(payload.get("reviewed", False)),
+        x_user or "",
+    ))
 
 
 @router.delete("/{module_id}/archive/{record_id}")

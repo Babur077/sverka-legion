@@ -13,9 +13,11 @@ from backend.app.services.archive_authority import prepare_authoritative_archive
 from backend.app.repositories.runs import (
     delete_run,
     get_run,
+    list_run_reviews,
     list_run_summaries,
     list_runs,
     save_run,
+    save_run_review,
 )
 from modules.registry import module_registry
 from utils.permissions import record_audit_event
@@ -190,6 +192,50 @@ def get_module_run(module_id: str, record_id: int) -> dict:
     if not record:
         raise HTTPException(status_code=404, detail="Запись архива не найдена")
     return record
+
+
+def get_module_run_reviews(module_id: str, run_id: str) -> list[dict]:
+    require_module(module_id)
+    return list_run_reviews(module_id, run_id)
+
+
+def save_module_run_review(
+    module_id: str,
+    run_id: str,
+    row_key: str,
+    comment: str,
+    reviewed: bool,
+    username: str,
+) -> dict:
+    require_module(module_id)
+    try:
+        saved = save_run_review(
+            module_id,
+            run_id,
+            row_key,
+            comment,
+            reviewed,
+            username,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    record_audit_event(
+        user_id=username,
+        action="ROW_REVIEW_UPDATE",
+        module_id=module_id,
+        object_type="ReconciliationRowReview",
+        object_id=f"{run_id}:{row_key}",
+        status="SUCCESS",
+        details=(
+            "reviewed"
+            if reviewed
+            else ("commented" if str(comment or "").strip() else "review_cleared")
+        ),
+    )
+    return saved
 
 
 def remove_module_run(
