@@ -10,6 +10,7 @@ import logging
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,10 +34,22 @@ logger = logging.getLogger("reconcilehub.api")
 # versioned migrations and then bootstraps reference data.
 init_db()
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    start_job_worker()
+    start_backup_worker()
+    try:
+        yield
+    finally:
+        stop_job_worker()
+        stop_backup_worker()
+
+
 app = FastAPI(
     title="ReconcileHub Platform API",
     description="Модульная платформа финансовых и банковских сверок",
     version="2.2.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -132,18 +145,6 @@ app.include_router(epos.router)
 app.include_router(settings.router)
 app.include_router(admin.router)
 app.include_router(audit.router)
-
-
-@app.on_event("startup")
-def start_background_services() -> None:
-    start_job_worker()
-    start_backup_worker()
-
-
-@app.on_event("shutdown")
-def stop_background_services() -> None:
-    stop_job_worker()
-    stop_backup_worker()
 
 
 # Compiled React frontend.
