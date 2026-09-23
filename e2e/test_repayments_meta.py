@@ -26,8 +26,8 @@ def test_repayments_run_and_archive_round_trip(api_client, admin_token):
             "one_c_file": (
                 "1C Погашение.csv",
                 (
-                    "Вх.номер,Дата,Сумма\n"
-                    "12345,01.09.2026,1000\n"
+                    "Вх.номер,Дата,Сумма,Назначение платежа\n"
+                    "12345,01.09.2026,1000,Назначение из 1С\n"
                 ).encode("utf-8-sig"),
                 "text/csv",
             ),
@@ -35,8 +35,8 @@ def test_repayments_run_and_archive_round_trip(api_client, admin_token):
                 "Meta Погашение.csv",
                 (
                     "withdraw_unique_id,bank_date,bank_amount,our_system_date,"
-                    "our_system_amount_success,contract_number\n"
-                    "12345,01.09.2026,1000,02.09.2026,1000,C-1\n"
+                    "our_system_amount_success,contract_number,bank_purpose_of_payment\n"
+                    "12345,01.09.2026,1000,02.09.2026,1000,C-1,Назначение из Meta\n"
                 ).encode("utf-8-sig"),
                 "text/csv",
             ),
@@ -50,6 +50,8 @@ def test_repayments_run_and_archive_round_trip(api_client, admin_token):
     rows = result["custom_metrics"]["repayments"]["rows"]
     assert rows[0]["Комментарий"] == "Правильно"
     assert rows[0]["Номер договора опознание"] == "C-1"
+    assert rows[0]["Назначения 1С"] == ["Назначение из 1С"]
+    assert rows[0]["Назначения Meta"] == ["Назначение из Meta"]
 
     saved = api_client.post(
         module_path + "/archive",
