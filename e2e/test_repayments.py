@@ -13,7 +13,7 @@ def test_repayment_run_and_archive_round_trip(api_client, admin_token):
     manifests = api_client.get("/api/modules", headers=headers)
     assert manifests.status_code == 200, manifests.text
     manifest = next(row for row in manifests.json() if row["id"] == "ravan_1c")
-    assert manifest["name"] == "Сверка погашений"
+    assert manifest["name"] == "Сверка 2910"
     assert manifest["author"] == "Sayfulloh Abdusalomov"
 
     missing = api_client.post(module_path + "/run", headers=headers)
