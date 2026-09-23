@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -88,6 +89,7 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
   const [statusFilter, setStatusFilter] = useState('Все');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
+  const [expandedPayments, setExpandedPayments] = useState<Set<string>>(() => new Set());
 
   const [archive, setArchive] = useState<RepaymentsArchiveRecord[]>([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
@@ -105,6 +107,7 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
       return [
         row['Номер платежа'],
         row['Номер договора опознание'],
+        row['Назначение платежа'],
         row['Комментарий'],
       ].some(value => String(value || '').toLowerCase().includes(needle));
     });
@@ -120,6 +123,15 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
     (safePage - 1) * PAGE_SIZE,
     safePage * PAGE_SIZE,
   );
+
+  const togglePaymentPurpose = (paymentNumber: string) => {
+    setExpandedPayments(current => {
+      const next = new Set(current);
+      if (next.has(paymentNumber)) next.delete(paymentNumber);
+      else next.add(paymentNumber);
+      return next;
+    });
+  };
 
   const loadArchive = async () => {
     setArchiveLoading(true);
@@ -159,6 +171,7 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
       setResult(next);
       setStatusFilter('Все');
       setQuery('');
+      setExpandedPayments(new Set());
 
       try {
         const archiveMessage = await saveRepaymentsRun(user.username, next);
@@ -187,6 +200,7 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
       setResult(full.result_snapshot);
       setStatusFilter('Все');
       setQuery('');
+      setExpandedPayments(new Set());
       window.scrollTo({ top: 0, behavior: 'smooth' });
       setMessage({
         type: 'info',
@@ -379,7 +393,7 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                   <input
                     value={query}
                     onChange={event => setQuery(event.target.value)}
-                    placeholder="Номер платежа, договор, комментарий"
+                    placeholder="Номер платежа, договор, назначение, комментарий"
                     className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-xs outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
                   />
                 </label>
@@ -402,30 +416,66 @@ export const RepaymentsWorkspace: React.FC<Props> = ({ user, onBack }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {pageRows.map((row: RepaymentRow, index) => (
-                      <tr key={`${row['Номер платежа']}-${index}`} className="hover:bg-slate-50/70">
-                        <td className="px-3 py-2 font-mono font-semibold text-slate-800">{row['Номер платежа']}</td>
-                        <td className="px-3 py-2 text-slate-600">{row['Дата'] || '—'}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{money(row['Сумма'])}</td>
-                        <td className="px-3 py-2 text-slate-600">{row['Дата Meta'] || '—'}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{money(row['Сумма Meta'])}</td>
-                        <td className={`px-3 py-2 text-right font-bold tabular-nums ${
-                          Math.abs(Number(row['Δ суммы'] || 0)) <= 1 ? 'text-emerald-600' : 'text-rose-600'
-                        }`}>
-                          {Number(row['Δ суммы'] || 0) > 0 ? '+' : ''}{money(row['Δ суммы'])}
-                        </td>
-                        <td className="px-3 py-2 text-slate-600">{row['Дата в системе'] || '—'}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{money(row['Сумма опознание'])}</td>
-                        <td className="max-w-[260px] truncate px-3 py-2 text-slate-600" title={row['Номер договора опознание'] || ''}>
-                          {row['Номер договора опознание'] || '—'}
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(row['Комментарий'])}`}>
-                            {row['Комментарий']}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {pageRows.map((row: RepaymentRow, index) => {
+                      const paymentNumber = String(row['Номер платежа'] || '');
+                      const paymentPurpose = String(row['Назначение платежа'] || '').trim();
+                      const isExpanded = expandedPayments.has(paymentNumber);
+
+                      return (
+                        <React.Fragment key={`${paymentNumber}-${index}`}>
+                          <tr className={`hover:bg-slate-50/70 ${isExpanded ? 'bg-indigo-50/30' : ''}`}>
+                            <td className="px-3 py-2 font-mono font-semibold text-slate-800">
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => togglePaymentPurpose(paymentNumber)}
+                                  disabled={!paymentPurpose}
+                                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-default disabled:opacity-20"
+                                  title={paymentPurpose ? (isExpanded ? 'Скрыть назначение платежа' : 'Показать назначение платежа') : 'Назначение платежа отсутствует'}
+                                >
+                                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                </button>
+                                <span>{paymentNumber}</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-slate-600">{row['Дата'] || '—'}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{money(row['Сумма'])}</td>
+                            <td className="px-3 py-2 text-slate-600">{row['Дата Meta'] || '—'}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{money(row['Сумма Meta'])}</td>
+                            <td className={`px-3 py-2 text-right font-bold tabular-nums ${
+                              Math.abs(Number(row['Δ суммы'] || 0)) <= 1 ? 'text-emerald-600' : 'text-rose-600'
+                            }`}>
+                              {Number(row['Δ суммы'] || 0) > 0 ? '+' : ''}{money(row['Δ суммы'])}
+                            </td>
+                            <td className="px-3 py-2 text-slate-600">{row['Дата в системе'] || '—'}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{money(row['Сумма опознание'])}</td>
+                            <td className="max-w-[260px] truncate px-3 py-2 text-slate-600" title={row['Номер договора опознание'] || ''}>
+                              {row['Номер договора опознание'] || '—'}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(row['Комментарий'])}`}>
+                                {row['Комментарий']}
+                              </span>
+                            </td>
+                          </tr>
+
+                          {isExpanded && paymentPurpose && (
+                            <tr className="bg-indigo-50/50">
+                              <td colSpan={10} className="px-10 py-3">
+                                <div className="rounded-xl border border-indigo-100 bg-white px-4 py-3">
+                                  <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-indigo-500">
+                                    Назначение платежа
+                                  </div>
+                                  <div className="whitespace-pre-wrap break-words text-xs leading-5 text-slate-700">
+                                    {paymentPurpose}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
 
