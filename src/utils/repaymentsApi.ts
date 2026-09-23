@@ -17,6 +17,7 @@ export interface RepaymentRow {
   'Дата в системе'?: string | null;
   'Сумма опознание': number;
   'Номер договора опознание'?: string | null;
+  'Назначение платежа'?: string | null;
   'Комментарий': string;
   'Δ суммы': number;
 }
@@ -54,6 +55,7 @@ export interface RepaymentsRunResult {
         one_c?: number;
         meta?: number;
       };
+      payment_purpose_source?: string | null;
     };
   };
 }
@@ -178,6 +180,7 @@ export function exportRepaymentsToExcel(result: RepaymentsRunResult): void {
   const normalized = rows.map(row => {
     const output: Record<string, string | number> = {};
     Object.entries(row).forEach(([key, value]) => {
+      if (key === 'Назначение платежа') return;
       output[key] = safeCell(value);
     });
     return output;
