@@ -53,6 +53,12 @@ META_REQUIRED_COLUMNS = (
     "contract_number",
 )
 
+ONE_C_PURPOSE_ALIASES = (
+    "Назначение платежа",
+    "Назначение",
+    "Детали платежа",
+    "Содержание",
+)
 META_PURPOSE_ALIASES = (
     "bank_purpose_of_payment",
     "payment_purpose",
@@ -188,7 +194,7 @@ def _find_optional_column(frame: pd.DataFrame, aliases: tuple[str, ...]) -> str 
     return None
 
 
-def _unique_text(values: pd.Series) -> str:
+def _unique_texts(values: pd.Series) -> list[str]:
     items: list[str] = []
     for raw in values:
         try:
@@ -199,7 +205,11 @@ def _unique_text(values: pd.Series) -> str:
         text = str(raw).replace("\u00a0", " ").strip()
         if text and text not in items:
             items.append(text)
-    return "\n".join(items)
+    return items
+
+
+def _unique_text(values: pd.Series) -> str:
+    return "\n".join(_unique_texts(values))
 
 
 def _header_row(params: Dict[str, Any], key: str) -> int:
@@ -492,8 +502,10 @@ class RepaymentsModule(BaseReconciliationModule):
                 + ", ".join(missing_meta)
             )
 
-        # Назначение платежа для этого модуля берём только из Meta.
-        # В рабочем файле поле называется bank_purpose_of_payment.
+        # Назначения читаем независимо из обоих источников:
+        # 1С — из русской колонки назначения,
+        # Meta — в первую очередь из bank_purpose_of_payment.
+        one_c_purpose_column = _find_optional_column(one_c, ONE_C_PURPOSE_ALIASES)
         meta_purpose_column = _find_optional_column(meta, META_PURPOSE_ALIASES)
 
         one_c = one_c.rename(columns={
@@ -543,27 +555,35 @@ class RepaymentsModule(BaseReconciliationModule):
                 if contract and contract not in contracts:
                     contracts.append(contract)
 
+            meta_purposes = (
+                _unique_texts(group[meta_purpose_column])
+                if meta_purpose_column and meta_purpose_column in group.columns
+                else []
+            )
+
             meta_data[str(payment_number)] = {
                 "bank_amount": float(group["bank_amount"].sum()),
                 "recognition_amount": float(group["our_system_amount_success"].sum()),
                 "bank_dates": bank_dates,
                 "system_date": max(system_dates) if system_dates else pd.NaT,
                 "contracts": ", ".join(contracts),
-                "payment_purpose": (
-                    _unique_text(group[meta_purpose_column])
-                    if meta_purpose_column and meta_purpose_column in group.columns
-                    else ""
-                ),
+                "payment_purposes": meta_purposes,
+                "payment_purpose": "\n".join(meta_purposes),
             }
 
         one_c_data: dict[str, dict[str, Any]] = {}
         for payment_number, group in one_c_valid.groupby("Номер платежа", sort=False):
             dates = group["Дата"].dropna().tolist()
+            one_c_purposes = (
+                _unique_texts(group[one_c_purpose_column])
+                if one_c_purpose_column and one_c_purpose_column in group.columns
+                else []
+            )
             one_c_data[str(payment_number)] = {
                 "date": min(dates) if dates else pd.NaT,
                 "amount": float(group["Сумма"].sum()),
-                # В 1С назначения платежа нет; источник назначения — Meta.
-                "payment_purpose": "",
+                "payment_purposes": one_c_purposes,
+                "payment_purpose": "\n".join(one_c_purposes),
             }
 
         numbers_1c = set(one_c_data)
@@ -580,10 +600,12 @@ class RepaymentsModule(BaseReconciliationModule):
                 date_1c = one_c_data[payment_number]["date"]
                 amount_1c = float(one_c_data[payment_number]["amount"])
                 payment_purpose_1c = str(one_c_data[payment_number].get("payment_purpose") or "")
+                payment_purposes_1c = list(one_c_data[payment_number].get("payment_purposes") or [])
             else:
                 date_1c = pd.NaT
                 amount_1c = 0.0
                 payment_purpose_1c = ""
+                payment_purposes_1c = []
 
             if in_meta:
                 meta_info = meta_data[payment_number]
@@ -593,6 +615,7 @@ class RepaymentsModule(BaseReconciliationModule):
                 system_date = meta_info["system_date"]
                 contracts = str(meta_info["contracts"])
                 payment_purpose_meta = str(meta_info.get("payment_purpose") or "")
+                payment_purposes_meta = list(meta_info.get("payment_purposes") or [])
             else:
                 bank_amount = 0.0
                 recognition_amount = 0.0
@@ -600,8 +623,13 @@ class RepaymentsModule(BaseReconciliationModule):
                 system_date = pd.NaT
                 contracts = ""
                 payment_purpose_meta = ""
+                payment_purposes_meta = []
 
-            payment_purpose = payment_purpose_meta
+            combined_purposes: list[str] = []
+            for purpose in [*payment_purposes_1c, *payment_purposes_meta]:
+                if purpose and purpose not in combined_purposes:
+                    combined_purposes.append(purpose)
+            payment_purpose = "\n".join(combined_purposes)
 
             comparison_date = pd.NaT
             if bank_dates:
@@ -645,6 +673,10 @@ class RepaymentsModule(BaseReconciliationModule):
                 "Сумма опознание": round(recognition_amount, 2),
                 "Номер договора опознание": contracts,
                 "Назначение платежа": payment_purpose,
+                "Назначения 1С": payment_purposes_1c,
+                "Назначения Meta": payment_purposes_meta,
+                "Количество назначений 1С": len(payment_purposes_1c),
+                "Количество назначений Meta": len(payment_purposes_meta),
                 "Комментарий": comment,
                 "Δ суммы": round(bank_amount - amount_1c, 2),
                 "Smart Match кандидат": (
@@ -670,6 +702,10 @@ class RepaymentsModule(BaseReconciliationModule):
                 "Сумма опознание",
                 "Номер договора опознание",
                 "Назначение платежа",
+                "Назначения 1С",
+                "Назначения Meta",
+                "Количество назначений 1С",
+                "Количество назначений Meta",
                 "Комментарий",
                 "Δ суммы",
                 "Smart Match кандидат",
@@ -752,11 +788,18 @@ class RepaymentsModule(BaseReconciliationModule):
                         "one_c": one_c_header,
                         "meta": meta_header,
                     },
-                    "payment_purpose_source": (
-                        f"Meta:{meta_purpose_column}"
-                        if meta_purpose_column
-                        else None
-                    ),
+                    "payment_purpose_source": " | ".join(
+                        source
+                        for source in (
+                            f"1C:{one_c_purpose_column}" if one_c_purpose_column else "",
+                            f"Meta:{meta_purpose_column}" if meta_purpose_column else "",
+                        )
+                        if source
+                    ) or None,
+                    "payment_purpose_sources": {
+                        "one_c": one_c_purpose_column,
+                        "meta": meta_purpose_column,
+                    },
                 }
             },
         )
