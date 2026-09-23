@@ -109,7 +109,7 @@ def test_registry_auto_discovers_production_modules():
     manifests = registry.list_manifests()
     by_id = {manifest.id: manifest for manifest in manifests}
 
-    assert set(by_id) == {"bank_rrn", "ravan_1c", "reconciliation_builder"}
+    assert set(by_id) == {"bank_rrn", "ravan_1c", "reconciliation_builder", "repayments"}
     assert by_id["bank_rrn"].workspace == "bank_rrn"
     assert "bank_rrn.export" in by_id["bank_rrn"].available_permissions
     assert by_id["reconciliation_builder"].workspace == "reconciliation_builder"
@@ -117,6 +117,9 @@ def test_registry_auto_discovers_production_modules():
     assert by_id["ravan_1c"].workspace == "ravan_1c"
     assert by_id["ravan_1c"].author == "Sayfulloh Abdusalomov"
     assert "ravan_1c.export" in by_id["ravan_1c"].available_permissions
+    assert by_id["repayments"].name == "Сверка Погашений"
+    assert by_id["repayments"].workspace == "repayments"
+    assert "repayments.export" in by_id["repayments"].available_permissions
     assert registry.discovery_errors == {}
 
 

@@ -36,6 +36,9 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
         "ravan_1c.view",
         "ravan_1c.run",
         "ravan_1c.export",
+        "repayments.view",
+        "repayments.run",
+        "repayments.export",
     ],
     "accountant_acquiring": [
         "bank_rrn.view",
@@ -47,6 +50,9 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
         "ravan_1c.view",
         "ravan_1c.run",
         "ravan_1c.export",
+        "repayments.view",
+        "repayments.run",
+        "repayments.export",
     ],
     "auditor": [
         "bank_rrn.view",
@@ -55,6 +61,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
         "archive.view",
         "reconciliation_builder.view",
         "ravan_1c.view",
+        "repayments.view",
     ],
 }
 
