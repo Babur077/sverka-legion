@@ -229,7 +229,11 @@ def save_module_run_review(
         object_type="ReconciliationRowReview",
         object_id=f"{run_id}:{row_key}",
         status="SUCCESS",
-        details=("reviewed" if reviewed else "commented") + (f": {comment[:200]}" if comment else ""),
+        details=(
+            "reviewed"
+            if reviewed
+            else ("commented" if str(comment or "").strip() else "review_cleared")
+        ),
     )
     return saved
 
