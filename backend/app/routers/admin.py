@@ -60,6 +60,7 @@ def permission_catalog() -> Dict[str, Any]:
             "view": "Просмотр",
             "run": "Запуск сверки",
             "export": "Экспорт",
+            "manage": "Управление данными",
         }
         for permission in declared:
             if permission in seen:
