@@ -7,7 +7,7 @@ def test_migrations_apply_in_order_and_only_once(tmp_path):
     db_path = tmp_path / "reconcile_hub.db"
 
     applied = run_migrations(str(db_path))
-    assert applied == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert applied == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
     with sqlite3.connect(db_path) as conn:
         tables = {
@@ -31,6 +31,8 @@ def test_migrations_apply_in_order_and_only_once(tmp_path):
         "reconciliation_definition_versions",
         "reconciliation_run_results",
         "reconciliation_row_reviews",
+        "test_vorona_import_batches",
+        "test_vorona_records",
     }.issubset(tables)
 
     with sqlite3.connect(db_path) as conn:
@@ -43,7 +45,7 @@ def test_migrations_apply_in_order_and_only_once(tmp_path):
     assert {"smart_match_decision", "smart_match_candidate"}.issubset(review_columns)
 
     assert run_migrations(str(db_path)) == []
-    assert [item["version"] for item in get_applied_migrations(str(db_path))] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert [item["version"] for item in get_applied_migrations(str(db_path))] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 
 def test_migrations_upgrade_existing_minimal_database(tmp_path):
