@@ -117,6 +117,20 @@ def save_import_batch(
                 "message": "Для этого источника и периода уже есть активная загрузка.",
             }
 
+        # Deactivate the old version before inserting the new active row.
+        # The partial UNIQUE index permits only one active source/period.
+        # Because all changes live in one transaction, a failed insert rolls
+        # this temporary deactivation back automatically.
+        if current:
+            cursor.execute(
+                """
+                UPDATE test_vorona_import_batches
+                SET is_active = 0, status = 'replacing'
+                WHERE id = ?
+                """,
+                (int(current["id"]),),
+            )
+
         cursor.execute(
             """
             INSERT INTO test_vorona_import_batches (
@@ -143,7 +157,7 @@ def save_import_batch(
             cursor.execute(
                 """
                 UPDATE test_vorona_import_batches
-                SET is_active = 0, status = 'replaced', replaced_by_batch_id = ?
+                SET status = 'replaced', replaced_by_batch_id = ?
                 WHERE id = ?
                 """,
                 (batch_id, int(current["id"])),
