@@ -40,3 +40,22 @@ Thumbs.db
 
 # Project-specific tooling
 cloudflared.exe
+
+
+# Confidential business data / local working files
+runtime/
+*.xlsx
+*.xls
+*.csv
+*.tsv
+*.dump
+*.backup
+*.session.sql
+*.lnk
+*.bak
+.vscode/
+VORONA_upload/*.xlsx
+VORONA_upload/*.xls
+VORONA_upload/*.dump
+VORONA_upload/*.session.sql
+database/reconcile_hub.db
