@@ -1,0 +1,3302 @@
+<!DOCTYPE html>
+<!-- VS Code: add .vscode/settings.json with {"css.validate":false,"html.validate.styles":false} to silence Jinja2 lint warnings -->
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VORONA — Сверка данных</title>
+
+    <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.css">
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* stylelint-disable */
+        /* vscode-css-validate: false */
+        :root {
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --surface2: #f1f5f9;
+            --border: #cbd5e1;
+            --accent: #2563eb;
+            --accent-dim: rgba(37, 99, 235, 0.08);
+            
+            --green: #16a34a;
+            --green-dim: rgba(22, 163, 74, 0.08);
+            --red: #dc2626;
+            --red-dim: rgba(220, 38, 38, 0.08);
+            --yellow: #d97706;
+            
+            --text: #0f172a;
+            --text-muted: #475569;
+            --text-dim: #94a3b8;
+            
+            --radius: 10px;
+            --shadow: 0 10px 15px -3px rgba(0,0,0,0.04), 0 4px 6px -4px rgba(0,0,0,0.02);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .app-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+        .app-logo {
+            width: 40px; height: 40px;
+            background: var(--accent);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .app-title h1 {
+            font-size: 20px; font-weight: 700; color: var(--text); line-height: 1.2;
+        }
+        .app-title p {
+            font-size: 13px; color: var(--text-muted); margin-top: 2px;
+        }
+
+        .filter-bar {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .filter-bar label {
+            font-size: 13px; color: var(--text-muted); font-weight: 500;
+        }
+        .filter-bar select {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 7px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .filter-bar select:focus { border-color: var(--accent); }
+        .filter-bar select option { background: var(--surface2); }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 9px 22px;
+            border-radius: 7px;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn-primary:hover { opacity: 0.85; }
+
+
+
+        .tab-nav {
+            display: flex;
+            gap: 2px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius) var(--radius) 0 0;
+            padding: 6px 8px 0;
+            border-bottom: none;
+            overflow-x: auto;
+        }
+        .tab-btn {
+            padding: 9px 18px;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            color: var(--text-muted);
+            background: transparent;
+            border: none;
+            border-radius: 7px 7px 0 0;
+            cursor: pointer;
+            transition: color 0.2s, background 0.2s;
+            white-space: nowrap;
+            position: relative;
+        }
+        .tab-btn:hover { color: var(--text); background: var(--surface2); }
+        .tab-btn.active {
+            color: var(--accent);
+            background: var(--surface2);
+            border-bottom: 2px solid var(--accent);
+        }
+        .tab-btn .tab-badge {
+            display: inline-block;
+            background: var(--accent-dim);
+            color: var(--accent);
+            border-radius: 20px;
+            padding: 1px 7px;
+            font-size: 11px;
+            margin-left: 6px;
+        }
+        .tab-btn.active .tab-badge { background: var(--accent); color: #fff; }
+
+        .tab-panel {
+            display: none;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 var(--radius) var(--radius);
+            padding: 20px;
+            position: relative;
+        }
+        .tab-panel.active { display: block; }
+
+        table.dataTable {
+            border-collapse: collapse !important;
+            width: 100% !important;
+            background: transparent;
+            color: var(--text);
+            font-size: 13px;
+        }
+        table.dataTable thead th {
+            background: var(--surface2) !important;
+            color: var(--text-muted) !important;
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 1px solid var(--border) !important;
+            border-top: none !important;
+            padding: 10px 12px !important;
+            white-space: nowrap;
+            /* Закреплённая шапка: при скролле длинного списка партнёров названия
+               колонок остаются видны наверху. Таблицы не в отдельном скролл-контейнере
+               (скроллится вся страница), поэтому top совпадает с верхом вьюпорта. */
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+        table.dataTable tbody tr {
+            background: transparent;
+            transition: background 0.15s;
+        }
+        table.dataTable tbody tr:hover td { background: var(--surface2) !important; }
+
+        /* Выделение выбранной строки (партнёра) в главной таблице сверки */
+        table.dataTable tbody tr.row-selected td,
+        table.dataTable tbody tr.row-selected:hover td {
+            background: #e2e8f0 !important;
+        }
+        table.dataTable tbody td {
+            border-bottom: 1px solid var(--border) !important;
+            padding: 9px 12px !important;
+            vertical-align: middle;
+            /* Длинный текст обрезается по границе ячейки, а не выходит за её пределы */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 0; /* нужно, чтобы ellipsis корректно работал при table-layout:fixed */
+        }
+        table.dataTable thead th {
+            /* Заголовок тоже не должен вылезать за пределы колонки при узкой ширине */
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        table.dataTable tfoot th {
+            background: var(--surface2) !important;
+            color: var(--text) !important;
+            font-weight: 700 !important;
+            border-top: 2px solid var(--border) !important;
+            padding: 10px 12px !important;
+        }
+        table.dataTable.no-footer { border-bottom: none !important; }
+
+        table.dataTable thead th.sorting::after,
+        table.dataTable thead th.sorting::before,
+        table.dataTable thead th.sorting_asc::after,
+        table.dataTable thead th.sorting_asc::before,
+        table.dataTable thead th.sorting_desc::after,
+        table.dataTable thead th.sorting_desc::before {
+            display: none !important;
+        }
+
+        div.dataTables_wrapper div.dataTables_length label,
+        div.dataTables_wrapper div.dataTables_info,
+        div.dataTables_wrapper div.dataTables_paginate {
+            color: var(--text-muted) !important;
+            font-size: 12px;
+        }
+        div.dataTables_wrapper div.dataTables_length select {
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 3px 6px;
+        }
+        div.dataTables_wrapper div.dataTables_paginate .paginate_button {
+            color: var(--text-muted) !important;
+            background: transparent !important;
+            border: 1px solid transparent !important;
+            border-radius: 5px !important;
+            padding: 4px 9px !important;
+            font-size: 12px;
+        }
+        div.dataTables_wrapper div.dataTables_paginate .paginate_button:hover {
+            background: var(--surface2) !important;
+            color: var(--text) !important;
+            border-color: var(--border) !important;
+        }
+        div.dataTables_wrapper div.dataTables_paginate .paginate_button.current {
+            background: var(--accent-dim) !important;
+            color: var(--accent) !important;
+            border-color: var(--accent) !important;
+        }
+        div.dataTables_wrapper div.dataTables_filter label { color: var(--text-muted) !important; font-size: 12px; }
+        div.dataTables_wrapper div.dataTables_filter input {
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 5px 9px;
+            font-size: 12px;
+            outline: none;
+        }
+        div.dataTables_wrapper div.dataTables_filter input:focus { border-color: var(--accent); }
+
+        .filter-toggle-btn {
+            background: var(--surface2);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 7px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .filter-toggle-btn:hover { color: var(--text); border-color: var(--yellow); }
+        .filter-toggle-btn.active-diff {
+            background: var(--red-dim);
+            color: var(--red);
+            border-color: var(--red);
+        }
+
+        .buttons-excel {
+            background: var(--green-dim) !important;
+            color: var(--green) !important;
+            border: 1px solid var(--green) !important;
+            border-radius: 7px !important;
+            padding: 7px 16px !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            font-family: 'Inter', sans-serif !important;
+            cursor: pointer !important;
+            margin-bottom: 14px !important;
+            transition: opacity 0.2s !important;
+        }
+        .buttons-excel:hover { opacity: 0.8 !important; }
+
+        .text-red { color: var(--red) !important; font-weight: 600; }
+        .text-green { color: var(--green) !important; font-weight: 600; }
+        .text-yellow { color: var(--yellow) !important; font-weight: 600; }
+        .num { text-align: right !important; font-variant-numeric: tabular-nums; }
+
+        .partner-link {
+            color: var(--accent);
+            cursor: pointer;
+            font-weight: 500;
+            text-decoration: none;
+        }
+        .partner-link:hover { text-decoration: underline; }
+
+        .th-container {
+            display: flex; align-items: center; justify-content: space-between; gap: 6px;
+        }
+        .excel-filter-btn {
+            cursor: pointer;
+            padding: 1px 5px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 10px;
+            color: var(--text-muted);
+            transition: all 0.2s;
+            flex-shrink: 0;
+            user-select: none;
+        }
+        .excel-filter-btn:hover { background: var(--border); color: var(--text); }
+        .excel-filter-btn.active-filter {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .excel-dropdown {
+            position: absolute;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 12px;
+            min-width: 280px;
+            box-shadow: var(--shadow);
+            z-index: 9999;
+            border-radius: 8px;
+            font-size: 13px;
+            display: none;
+        }
+        
+        /* Измените этот блок в стилях */
+        .excel-dropdown .pop-sort {
+            display: flex;
+            flex-direction: column; /* Изменено с gap: 6px на колонку */
+            gap: 6px;
+            margin-bottom: 8px;
+            justify-content: flex-start;
+        }
+
+        /* Стили для кнопок внутри pop-sort, чтобы они занимали всю ширину */
+        .excel-dropdown .pop-sort .sort-btn {
+            width: 100%;
+            text-align: left; /* Выравнивание текста по левому краю для аккуратности */
+        }
+        .sort-btn {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.15s;
+            font-family: 'Inter', sans-serif;
+        }
+        .sort-btn:hover {
+            background: var(--border);
+            color: var(--text);
+        }
+        .sort-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+        
+        .filter-clear-btn {
+            background: none;
+            border: none;
+            font-size: 11px;
+            color: var(--red);
+            cursor: pointer;
+            margin-bottom: 8px;
+            padding: 4px 0;
+            text-align: left;
+            font-weight: 500;
+            width: 100%;
+        }
+        .filter-clear-btn:hover {
+            text-decoration: underline;
+        }
+        .filter-clear-btn.disabled {
+            color: var(--text-dim);
+            cursor: not-allowed;
+            text-decoration: none !important;
+        }
+
+        .excel-dropdown .pop-search {
+            width: 100%; padding: 6px 8px; margin-bottom: 8px; box-sizing: border-box;
+            background: var(--surface2); border: 1px solid var(--border);
+            color: var(--text); border-radius: 5px; font-size: 12px; outline: none;
+        }
+        .excel-dropdown .pop-search:focus { border-color: var(--accent); }
+
+        .excel-dropdown .pop-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 0 2px;
+        }
+        .excel-dropdown .act-link {
+            font-size: 11px; 
+            color: var(--accent); 
+            cursor: pointer; 
+            font-weight: 500;
+            background: none;
+            border: none;
+            padding: 2px 4px;
+        }
+        .excel-dropdown .act-link:hover { text-decoration: underline; }
+
+        .excel-dropdown .cb-list {
+            max-height: 160px; overflow-y: auto;
+            border: 1px solid var(--border);
+            padding: 6px; background: var(--surface);
+            border-radius: 5px; margin-bottom: 10px;
+        }
+        .excel-dropdown .cb-list label {
+            display: flex; align-items: center; gap: 8px; padding: 5px 4px;
+            color: var(--text); cursor: pointer; user-select: none;
+            font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            border-radius: 4px;
+        }
+        .excel-dropdown .cb-list label.keyboard-focused {
+            background: var(--accent-dim);
+            outline: 1px solid var(--accent);
+        }
+        .excel-dropdown .cb-list label:hover {
+            background: var(--surface2);
+        }
+        .excel-dropdown .cb-list input[type="checkbox"] { 
+            accent-color: var(--accent); 
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        
+        .excel-dropdown .pop-footer { 
+            display: flex; 
+            justify-content: flex-end; 
+            gap: 6px; 
+            margin-bottom: 4px;
+        }
+        .excel-dropdown .pop-btn {
+            padding: 5px 12px; font-size: 12px; border-radius: 5px;
+            border: 1px solid var(--border);
+            background: var(--surface2); color: var(--text); cursor: pointer;
+            font-family: 'Inter', sans-serif; transition: background 0.15s;
+        }
+        .excel-dropdown .pop-btn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .excel-dropdown .pop-btn:hover { background: var(--border); }
+        .excel-dropdown .btn-ok {
+            background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 500;
+        }
+        .excel-dropdown .btn-ok:hover { opacity: 0.85; }
+        
+        .sort-btn.keyboard-focused {
+            background: var(--accent-dim);
+            outline: 1px solid var(--accent);
+            color: var(--accent);
+        }
+        .pop-search.keyboard-focused {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+        }
+        .pop-btn.keyboard-focused {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+        }
+        .act-link.keyboard-focused {
+            outline: 1px dotted var(--accent);
+            background: var(--accent-dim);
+            border-radius: 3px;
+        }
+
+        .custom-modal {
+            position: fixed; z-index: 10000;
+            left: 0; top: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.3);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 60px;
+        }
+        .custom-modal.show { display: flex; }
+        .modal-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            width: 92%; max-width: 1000px;
+            max-height: 80vh;
+            display: flex; flex-direction: column;
+            animation: modal-in 0.2s ease;
+        }
+        @keyframes modal-in {
+            from { opacity: 0; transform: translateY(-16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .modal-header {
+            padding: 18px 22px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .modal-header h3 {
+            font-size: 15px; font-weight: 700; color: var(--text);
+        }
+        .modal-header .modal-meta {
+            font-size: 12px; color: var(--text-muted); margin-top: 2px;
+        }
+        .modal-close {
+            background: none; border: none; color: var(--text-muted);
+            font-size: 20px; cursor: pointer; padding: 4px 8px;
+            border-radius: 5px; transition: background 0.15s;
+        }
+        .modal-close:hover { background: var(--surface2); color: var(--text); }
+
+        .modal-tab-nav {
+            display: flex; gap: 2px;
+            padding: 10px 22px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .modal-tab-btn {
+            padding: 7px 14px;
+            font-size: 12px; font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            color: var(--text-muted);
+            background: transparent;
+            border: none; border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .modal-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .modal-tab-btn:hover:not(.active) { color: var(--text); }
+
+        .modal-body { padding: 16px 22px; overflow-y: auto; flex: 1; }
+        .modal-panel { display: none; }
+        .modal-panel.active { display: block; }
+
+        .modal-summary {
+            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+        }
+        .modal-kpi {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 8px 14px;
+            text-align: center;
+        }
+        .modal-kpi .mk-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+        .modal-kpi .mk-val { font-size: 15px; font-weight: 700; color: var(--text); margin-top: 2px; }
+
+        .loading-overlay {
+            display: none;
+            position: absolute; inset: 0;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 0 0 var(--radius) var(--radius);
+            z-index: 100;
+            align-items: center; justify-content: center;
+        }
+        .loading-overlay.show { display: flex; }
+        .spinner {
+            width: 28px; height: 28px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        .scroll-arrow {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px; height: 38px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+            transition: background 0.15s, transform 0.1s;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+        .scroll-arrow:hover { background: #1a56db; transform: scale(1.08); }
+        .scroll-arrow-wrap {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .scroll-arrow { transition: background 0.15s, transform 0.1s, opacity 0.2s; }
+        .upload-table-btn {
+            padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;
+            font-family: 'Inter', sans-serif; cursor: pointer;
+            border: 1px solid var(--border); background: var(--surface2); color: var(--text-muted);
+            transition: all 0.15s;
+        }
+        .upload-table-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .upload-table-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+        #uploadDropZone.drag-over { border-color: var(--accent); background: var(--accent-dim); }
+
+        #uploadPreviewTable th {
+            background: var(--surface2);
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            white-space: nowrap;
+            text-align: left;
+        }
+        #uploadPreviewTable td {
+            padding: 5px 8px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 160px;
+            color: var(--text);
+        }
+        #uploadPreviewTable tr:last-child td { border-bottom: none; }
+        .preview-msg { padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; }
+        .preview-msg.ok      { background: var(--green-dim); color: var(--green); }
+        .preview-msg.warn    { background: #fff7ed; color: var(--yellow); border: 1px solid #fed7aa; }
+        .preview-msg.error   { background: var(--red-dim); color: var(--red); }
+        .preview-msg.info    { background: var(--accent-dim); color: var(--accent); }
+    
+        /* DB tab colour overrides — avoids Jinja2 in style="" */
+        .tab-btn--db:hover { color: #6366f1; }
+        .tab-btn--db-active {
+            color: #6366f1 !important;
+            border-bottom: 2px solid #6366f1 !important;
+        }
+        .tab-badge--db {
+            background: rgba(99,102,241,0.1);
+            color: #6366f1;
+        }
+        .tab-badge--db-active {
+            background: #6366f1 !important;
+            color: #fff !important;
+        }
+        /* ── INLINE EDITING ── */
+        .editable-cell {
+            cursor: pointer;
+            position: relative;
+        }
+        .editable-cell:hover::after {
+            content: '✎';
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 10px;
+            color: var(--accent);
+            opacity: 0.6;
+        }
+        .editable-cell.editing {
+            padding: 0 !important;
+        }
+        .cell-input {
+            width: 100%;
+            border: 2px solid var(--accent);
+            border-radius: 4px;
+            padding: 6px 8px;
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            background: #fff;
+            color: var(--text);
+            outline: none;
+            box-sizing: border-box;
+        }
+        .row-pending td { background: rgba(37,99,235,0.06) !important; }
+        .row-saving  td { background: rgba(22,163,74,0.08) !important; opacity: 0.7; }
+        .row-error   td { background: rgba(220,38,38,0.08) !important; }
+
+        .btn-add-row {
+            margin-top: 12px;
+            background: var(--surface2);
+            border: 1px dashed var(--border);
+            color: var(--text-muted);
+            padding: 7px 16px;
+            border-radius: 7px;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-add-row:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+        .btn-del-row {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: all 0.15s;
+            line-height: 1;
+        }
+        .btn-del-row:hover { color: var(--red); background: var(--red-dim); }
+
+        /* ── EXCEL DROPDOWN BUTTON ── */
+        .excel-dl-wrap { position: relative; display: inline-block; margin-bottom: 14px; }
+        .btn-excel-dl {
+            background: var(--green-dim);
+            color: var(--green);
+            border: 1px solid var(--green);
+            border-radius: 7px;
+            padding: 7px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn-excel-dl:hover { opacity: 0.8; }
+        .excel-dl-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            min-width: 220px;
+            z-index: 9999;
+            overflow: hidden;
+        }
+        .excel-dl-menu.open { display: block; }
+        .excel-dl-item {
+            display: block;
+            width: 100%;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            background: none;
+            border: none;
+            text-align: left;
+            cursor: pointer;
+            color: var(--text);
+            transition: background 0.12s;
+        }
+        .excel-dl-item:hover { background: var(--surface2); }
+        .excel-dl-item small { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+        /* confirm overlay */
+        .confirm-overlay {
+            position: fixed; inset: 0; background: rgba(15,23,42,0.35);
+            backdrop-filter: blur(3px); z-index: 20000;
+            display: none; align-items: center; justify-content: center;
+        }
+        .confirm-overlay.show { display: flex; }
+        .confirm-box {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 24px 28px; max-width: 360px; width: 90%;
+            box-shadow: var(--shadow); text-align: center;
+        }
+        .confirm-box p { font-size: 14px; color: var(--text); margin-bottom: 18px; line-height: 1.5; }
+        .confirm-box .cb-btns { display: flex; gap: 10px; justify-content: center; }
+        .confirm-box .cb-btns button {
+            padding: 8px 22px; border-radius: 7px; font-size: 13px;
+            font-weight: 600; font-family: 'Inter', sans-serif; cursor: pointer; border: none;
+        }
+        .cb-cancel { background: var(--surface2); color: var(--text); border: 1px solid var(--border) !important; }
+        .cb-confirm { background: var(--red); color: #fff; }
+
+        .save-toast {
+            position: fixed; bottom: 24px; right: 24px;
+            background: var(--green); color: #fff;
+            padding: 10px 20px; border-radius: 8px;
+            font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif;
+            box-shadow: var(--shadow); z-index: 30000;
+            display: none; animation: toast-in 0.2s ease;
+        }
+        @keyframes toast-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+        /* ── ИЗМЕНЕНИЕ ШИРИНЫ СТОЛБЦОВ (перетаскивание за правый край заголовка) ── */
+        table.dataTable thead th { position: relative; }
+        .col-resizer {
+            position: absolute; top: 0; right: -3px; width: 7px; height: 100%;
+            cursor: col-resize; z-index: 5; user-select: none; touch-action: none;
+        }
+        .col-resizer:hover, body.col-resizing .col-resizer.active {
+            background: var(--accent); opacity: 0.6;
+        }
+        body.col-resizing { cursor: col-resize !important; }
+        body.col-resizing * { user-select: none !important; }
+    </style>
+</head>
+<body>
+
+<div id="confirmOverlay" class="confirm-overlay">
+    <div class="confirm-box">
+        <p id="confirmMsg">Вы уверены?</p>
+        <div class="cb-btns">
+            <button class="cb-cancel" id="confirmNo">Отмена</button>
+            <button class="cb-confirm" id="confirmYes">Удалить</button>
+        </div>
+    </div>
+</div>
+<div id="saveToast" class="save-toast">✓ Сохранено</div>
+
+<div class="app-header">
+    <div class="app-logo">🪬</div>
+    <div class="app-title">
+        <h1>VORONA — Сверка данных</h1>
+        <p>Автоматическая сверка: продажи · фактуры · оплаты</p>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:10px;align-items:center;">
+        <button id="btnOpenUpload" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);padding:8px 16px;border-radius:7px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">⬆ Загрузить Excel</button>
+        <a href="/partner-monthly" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);padding:8px 16px;border-radius:7px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;text-decoration:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">📅 Помесячный отчёт</a>
+    </div>
+</div>
+
+<!-- ── МОДАЛЬНОЕ ОКНО ЗАГРУЗКИ ── -->
+<div id="uploadModal" class="custom-modal">
+    <div class="modal-box" style="max-width:620px;min-height:unset;">
+        <div class="modal-header">
+            <h3>⬆ Загрузить Excel в базу</h3>
+            <button class="modal-close" id="closeUploadModal">✕</button>
+        </div>
+        <div class="modal-body" style="padding:20px 22px;">
+
+            <!-- Тип загрузки -->
+            <div style="margin-bottom:16px;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Тип загрузки</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;" id="uploadTypeBtns">
+                    <button class="upload-table-btn active" data-upload-type="table">📊 Данные таблицы</button>
+                    <button class="upload-table-btn" data-upload-type="saldo">💰 Начальное сальдо 1С</button>
+                    <button class="upload-table-btn" data-upload-type="balance1c">📈 Сальдо 1С (КС06)</button>
+                </div>
+            </div>
+
+            <!-- Выбор таблицы (только для type=table) -->
+            <div id="uploadTableSection" style="margin-bottom:16px;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Таблица</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;" id="uploadTableBtns">
+                    <button class="upload-table-btn active" data-table="vbase">📊 Продажи</button>
+                    <button class="upload-table-btn" data-table="vbank">🏦 Оплаты</button>
+                    <button class="upload-table-btn" data-table="vfaktura">🧾 Фактуры</button>
+                    <button class="upload-table-btn" data-table="vipp">👥 Партнёры</button>
+                </div>
+            </div>
+
+            <!-- Год (только для type=saldo) -->
+            <div id="uploadSaldoSection" style="margin-bottom:16px;display:none;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Год</label>
+                <input type="number" id="uploadSaldoYear" value="2025" min="2020" max="2099"
+                    style="width:100px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
+                <div style="margin-top:8px;font-size:11px;color:var(--text-muted);">
+                    Файл должен содержать колонки: <b>VID, Partner, INN, Saldo</b>
+                </div>
+            </div>
+
+            <!-- Месяц + Год (только для type=balance1c) -->
+            <div id="uploadBalance1cSection" style="margin-bottom:16px;display:none;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Период (месяц конечного сальдо)</label>
+                <div style="display:flex;gap:8px;">
+                    <select id="uploadBalance1cMonth" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;outline:none;">
+                        {% set months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'] %}
+                        {% for m in months %}
+                        <option value="{{ loop.index }}">{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="number" id="uploadBalance1cYear" value="2026" min="2020" max="2099"
+                        style="width:100px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
+                </div>
+                <div style="margin-top:8px;font-size:11px;color:var(--text-muted);">
+                    Берётся лист <b>«КС06»</b> из файла. Сальдо на партнёра = сумма правого блока (Vorona Code) минус сумма левого блока (VID) — считается автоматически.
+                </div>
+            </div>
+
+            <!-- Drag & Drop зона -->
+            <div id="uploadDropZone" style="border:2px dashed var(--border);border-radius:10px;padding:28px 20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;background:var(--surface2);">
+                <div style="font-size:32px;margin-bottom:8px;">📄</div>
+                <div style="font-weight:600;color:var(--text);margin-bottom:4px;">Перетащите файл сюда</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">или нажмите чтобы выбрать</div>
+                <div id="uploadFileName" style="font-size:12px;color:var(--accent);font-weight:600;min-height:18px;"></div>
+                <input type="file" id="uploadFileInput" accept=".xlsx,.xls" style="display:none;">
+            </div>
+
+            <!-- Предпросмотр файла: первые строки + найденные периоды + проверка колонок,
+                 показывается сразу после выбора файла, ДО отправки на сервер -->
+            <div id="uploadPreview" style="display:none;margin-top:14px;">
+                <div id="uploadPreviewMsgs" style="font-size:12px;margin-bottom:8px;"></div>
+                <div id="uploadPreviewTableWrap" style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;">
+                    <table id="uploadPreviewTable" style="width:100%;border-collapse:collapse;font-size:11px;">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Лог -->
+            <div id="uploadLog" style="display:none;margin-top:14px;background:var(--surface2);border-radius:8px;padding:12px 14px;font-size:12px;font-family:monospace;color:var(--text);max-height:140px;overflow-y:auto;white-space:pre-wrap;"></div>
+
+            <!-- Кнопки -->
+            <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
+                <button id="btnCancelUpload" class="pop-btn btn-cancel">Отмена</button>
+                <button id="btnDoUpload" class="pop-btn btn-ok" disabled>⬆ Загрузить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:20px;align-items:stretch;">
+
+    <!-- Карточка: Сверка -->
+    <form method="POST" action="/" style="flex:1;min-width:280px;" id="formRecon">
+        <input type="hidden" name="active_tab" id="active_tab" value="{{ active_tab }}">
+        <!-- Передаём текущие значения базы чтобы не сбросились -->
+        <input type="hidden" name="db_month" value="{{ db_month }}">
+        <input type="hidden" name="db_year"  value="{{ db_year }}">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;height:100%;">
+            <span style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.07em;white-space:nowrap;">📊 Период сверки</span>
+            <label style="font-size:13px;color:var(--text-muted);">Месяц:</label>
+            <select name="month" id="month" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 11px;border-radius:7px;font-size:14px;font-family:'Inter',sans-serif;outline:none;">
+                {% set months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'] %}
+                {% for m in months %}
+                <option value="{{ m }}" {% if month == m %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+            </select>
+            <label style="font-size:13px;color:var(--text-muted);">Год:</label>
+            <select name="year" id="year" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 11px;border-radius:7px;font-size:14px;font-family:'Inter',sans-serif;outline:none;">
+                {% for y in range(2024, 2028) %}
+                <option value="{{ y }}" {% if year == y %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn-primary" style="margin-left:4px;">Загрузить сверку</button>
+        </div>
+    </form>
+
+    <!-- Карточка: База данных (Продажи / Фактуры / Оплаты) -->
+    <form method="POST" action="/" style="flex:1;min-width:280px;" id="formDB">
+        <input type="hidden" name="active_tab" id="active_tab_db" value="{{ active_tab }}">
+        <!-- Передаём текущие значения сверки чтобы не сбросились -->
+        <input type="hidden" name="month" value="{{ month }}">
+        <input type="hidden" name="year"  value="{{ year }}">
+        <div style="background:var(--surface);border:1px solid #6366f1;border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;height:100%;">
+            <span style="font-size:11px;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:0.07em;white-space:nowrap;">📋 Период базы</span>
+            <label style="font-size:13px;color:var(--text-muted);">Месяц:</label>
+            <select name="db_month" id="db_month" style="background:var(--surface2);border:1px solid #a5b4fc;color:var(--text);padding:7px 11px;border-radius:7px;font-size:14px;font-family:'Inter',sans-serif;outline:none;">
+                {% set months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'] %}
+                {% for m in months %}
+                <option value="{{ m }}" {% if db_month == m %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+            </select>
+            <label style="font-size:13px;color:var(--text-muted);">Год:</label>
+            <select name="db_year" id="db_year" style="background:var(--surface2);border:1px solid #a5b4fc;color:var(--text);padding:7px 11px;border-radius:7px;font-size:14px;font-family:'Inter',sans-serif;outline:none;">
+                {% for y in range(2024, 2028) %}
+                <option value="{{ y }}" {% if db_year == y %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn-primary" style="margin-left:4px;background:#6366f1;">Загрузить базу</button>
+        </div>
+    </form>
+
+</div>
+
+
+
+<div class="scroll-arrow-wrap" id="scroll-top-area">
+    <button class="scroll-arrow" id="btn-scroll-top" title="В начало страницы" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+    <button class="scroll-arrow" id="btn-scroll-down" title="В конец страницы" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">&#8595;</button>
+</div>
+
+<div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:0;">
+
+    <!-- Вкладка Сверка — отдельно слева -->
+    <div class="tab-nav" style="border-radius:var(--radius) var(--radius) 0 0;flex-shrink:0;">
+        <button class="tab-btn {% if active_tab == 'all' or active_tab == '' %}active{% endif %}" data-tab="all">
+            📊 Сверка <span class="tab-badge" id="badge-all">{{ data | length }}</span>
+        </button>
+        <button class="tab-btn {% if active_tab == 'history' %}active{% endif %}" data-tab="history">
+            🕘 История
+        </button>
+    </div>
+
+    <!-- Вкладки базы — в центре, с подписью периода -->
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
+        <div style="font-size:11px;color:#6366f1;font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em;">
+            База: {{ db_month }} {{ db_year }}
+        </div>
+        <div class="tab-nav tab-nav--db" style="border-radius:var(--radius) var(--radius) 0 0;border-color:#a5b4fc;">
+            <button class="tab-btn tab-btn--db {% if active_tab == 'sales' %}active tab-btn--db-active{% endif %}" data-tab="sales">
+                Продажи <span class="tab-badge tab-badge--db {% if active_tab == 'sales' %}tab-badge--db-active{% endif %}" id="badge-sales">{{ sales_data | length }}</span>
+            </button>
+            <button class="tab-btn tab-btn--db {% if active_tab == 'faktura' %}active tab-btn--db-active{% endif %}" data-tab="faktura">
+                Фактуры <span class="tab-badge tab-badge--db {% if active_tab == 'faktura' %}tab-badge--db-active{% endif %}" id="badge-faktura">{{ faktura_data | length }}</span>
+            </button>
+            <button class="tab-btn tab-btn--db {% if active_tab == 'bank' %}active tab-btn--db-active{% endif %}" data-tab="bank">
+                Оплаты <span class="tab-badge tab-badge--db {% if active_tab == 'bank' %}tab-badge--db-active{% endif %}" id="badge-bank">{{ bank_data | length }}</span>
+            </button>
+        </div>
+    </div>
+
+</div>
+
+
+<div class="tab-panel" id="tab-history">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <label style="font-size:12px;color:var(--text-muted);">Таблица:
+                <select id="historyTableFilter" style="margin-left:6px;">
+                    <option value="">Все</option>
+                    <option value="vbase">vbase (Продажи)</option>
+                    <option value="vfaktura">vfaktura (Фактуры)</option>
+                    <option value="vbank">vbank (Оплаты)</option>
+                </select>
+            </label>
+            <label style="font-size:12px;color:var(--text-muted);">Партнёр (VID):
+                <input type="text" id="historyVidFilter" placeholder="напр. V107" autocomplete="off"
+                    style="margin-left:6px;width:110px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 9px;border-radius:6px;font-size:12px;font-family:'Inter',sans-serif;outline:none;">
+            </label>
+            <button id="btnHistoryVidClear" class="pop-btn" style="padding:6px 10px;display:none;" title="Сбросить фильтр по партнёру">✕</button>
+            <button id="btnRefreshHistory" class="pop-btn btn-ok" style="padding:6px 14px;">⟳ Обновить</button>
+            <a id="btnExportHistory" class="pop-btn" style="padding:6px 14px;text-decoration:none;display:inline-block;" href="/db/export_history" target="_blank">⬇ Экспорт</a>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);" id="historyCount"></div>
+    </div>
+
+    <table id="tableHistory" class="display cell-border no-footer" style="width:100%">
+        <thead>
+            <tr>
+                <th>Дата/время</th>
+                <th>Таблица</th>
+                <th>VID</th>
+                <th>ID строки</th>
+                <th>Действие</th>
+                <th>Колонка</th>
+                <th>Было</th>
+                <th>Стало</th>
+                <th style="text-align:center;">Действия</th>
+            </tr>
+        </thead>
+        <tbody id="historyTbody">
+        </tbody>
+    </table>
+</div>
+
+<div class="tab-panel active" id="tab-all">
+    <div style="margin-bottom:10px;">
+        <button id="btnOnlyDiff" class="filter-toggle-btn" title="Показывать только партнёров с ненулевым расхождением">
+            ⚠️ Только с расхождением
+        </button>
+    </div>
+    <table id="tableAll" class="display cell-border no-footer" style="width:100%">
+        <thead>
+            <tr>
+                <th style="width:36px;text-align:center;color:var(--text-muted);">#</th>
+                <th><div class="th-container"><span>VID</span><span class="excel-filter-btn">▼</span></div></th>
+                <th><div class="th-container"><span>ИНН</span><span class="excel-filter-btn">▼</span></div></th>
+                <th><div class="th-container"><span>Партнёр</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>Payment</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>Bank</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>Faktura</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>Komissiya</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>НС 1С</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>Saldo</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>Сальдо 1С</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>Расхождение</span><span class="excel-filter-btn">▼</span></div></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data %}
+            <tr>
+                <td style="text-align:center;color:var(--text-muted);font-size:12px;">{{ loop.index }}</td>
+                <td>{{ row.get('VID', '-') }}</td>
+                <td>{{ row.get('ИНН', '-') }}</td>
+                <td>
+                    <span class="partner-link" data-vid="{{ row.get('VID', '') }}" data-inn="{{ row.get('ИНН', '') }}" data-name="{{ row.get('Партнер', '') }}">
+                        {{ row.get('Партнер', '') }}
+                    </span>
+                </td>
+                <td class="num">{{ "{:,.2f}".format(row.get('Payment', 0) | float).replace(",", " ") }}</td>
+                <td class="num">{{ "{:,.2f}".format(row.get('Bank', 0) | float).replace(",", " ") }}</td>
+                <td class="num">{{ "{:,.2f}".format(row.get('Faktura', 0) | float).replace(",", " ") }}</td>
+                <td class="num">{{ "{:,.2f}".format(row.get('Komissiya', 0) | float).replace(",", " ") }}</td>
+                <td class="num">{{ "{:,.2f}".format(row.get('НС', 0) | float).replace(",", " ") }}</td>
+                <td class="num">{{ "{:,.2f}".format(row.get('Saldo', 0) | float).replace(",", " ") }}</td>
+                <td class="num">{{ "{:,.2f}".format(row.get('1C', 0) | float).replace(",", " ") }}</td>
+                <td class="num {% if row.get('Difference', 0) != 0 %}text-red{% else %}text-green{% endif %}">
+                    {{ "{:,.2f}".format(row.get('Difference', 0) | float).replace(",", " ") }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <th></th>
+                <th colspan="3" style="text-align:right; color: var(--text-muted)">Итого:</th>
+                <th class="num" id="tot-all-payment">—</th>
+                <th class="num" id="tot-all-bank">—</th>
+                <th class="num" id="tot-all-faktura">—</th>
+                <th class="num" id="tot-all-komissiya">—</th>
+                <th class="num" id="tot-all-ns">—</th>
+                <th class="num" id="tot-all-saldo">—</th>
+                <th class="num" id="tot-all-1c">—</th>
+                <th class="num" id="tot-all-diff">—</th>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div id="dropdownAll" class="excel-dropdown">
+    <div class="pop-sort">
+        <button class="sort-btn" data-sort="asc">▲ Сортировка А→Я / ↑</button>
+        <button class="sort-btn" data-sort="desc">▼ Сортировка Я→А / ↓</button>
+    </div>
+    <button id="clearFilterAll" class="filter-clear-btn">✕ Снять фильтры со столбца</button>
+    <input type="text" id="popSearchAll" class="pop-search" placeholder="Поиск значений...">
+    <div id="cbListAll" class="cb-list"></div>
+    <div class="pop-footer">
+        <button id="btnOkAll" class="pop-btn btn-ok">OK</button>
+        <button id="btnCancelAll" class="pop-btn btn-cancel">Отмена</button>
+    </div>
+    </div>
+</div>
+
+<div class="tab-panel" id="tab-sales">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+        <div style="font-size: 12px; color: var(--text-muted);">
+            Продажи за <strong>{{ db_month }} {{ db_year }}</strong> (из vbase)
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <div class="excel-dl-wrap" data-table="vbase">
+                <button class="btn-excel-dl">↓ Скачать Excel ▾</button>
+                <div class="excel-dl-menu">
+                    <button class="excel-dl-item" data-mode="current">📋 Текущая таблица (с фильтрами)
+                        <small>Только то, что видно сейчас</small>
+                    </button>
+                    <button class="excel-dl-item" data-mode="full">🗄 Вся база (vbase)
+                        <small>Все строки без фильтрации</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <table id="tableSales" class="display cell-border no-footer" style="width:100%">
+        <thead>
+            <tr>
+                <th style="width:36px;"></th>
+                <th><div class="th-container"><span>VID</span><span class="excel-filter-btn">▼</span></div></th>
+                <th><div class="th-container"><span>ИНН</span><span class="excel-filter-btn">▼</span></div></th>
+                <th><div class="th-container"><span>Партнёр</span><span class="excel-filter-btn">▼</span></div></th>
+                <th><div class="th-container"><span>Service</span><span class="excel-filter-btn">▼</span></div></th>
+                <th><div class="th-container"><span>Status</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>Payment</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>Komissiya</span><span class="excel-filter-btn">▼</span></div></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in sales_data %}
+            <tr data-pk="{{ row.get('id', '') }}" data-table="vbase">
+                <td style="text-align:center;padding:4px!important;"><button class="btn-del-row" title="Удалить строку">🗑</button></td>
+                <td class="editable-cell" data-col="VID">{{ row.get('VID', '') }}</td>
+                <td class="editable-cell" data-col="INN">{{ row.get('ИНН', '-') }}</td>
+                <td class="editable-cell" data-col="Partner">
+                    <span class="partner-link" data-vid="{{ row.get('VID', '') }}" data-inn="{{ row.get('ИНН', '') }}" data-name="{{ row.get('Партнер', '') }}">
+                        {{ row.get('Партнер', '') }}
+                    </span>
+                </td>
+                <td class="editable-cell" data-col="Service">{{ row.get('Service', '') }}</td>
+                <td class="editable-cell" data-col="Status">{{ row.get('Status', '') }}</td>
+                <td class="editable-cell num" data-col="Sales">{{ "{:,.2f}".format(row.get('Payment', 0) | float).replace(",", " ") }}</td>
+                <td class="editable-cell num" data-col="Komissiya">{{ "{:,.2f}".format(row.get('Komissiya', 0) | float).replace(",", " ") }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <th></th>
+                <th colspan="4" style="text-align:right; color: var(--text-muted)">Итого:</th>
+                <th class="num" id="tot-sales-payment">—</th>
+                <th class="num" id="tot-sales-kom">—</th>
+            </tr>
+        </tfoot>
+    </table>
+    <button class="btn-add-row" data-table="vbase" data-tab="sales">＋ Добавить строку</button>
+    
+    <div id="dropdownSales" class="excel-dropdown">
+    <div class="pop-sort">
+        <button class="sort-btn" data-sort="asc">▲ Сортировка А→Я / ↑</button>
+        <button class="sort-btn" data-sort="desc">▼ Сортировка Я→А / ↓</button>
+    </div>
+    <button id="clearFilterSales" class="filter-clear-btn">✕ Снять фильтры со столбца</button>
+    <input type="text" id="popSearchSales" class="pop-search" placeholder="Поиск значений...">
+    <div id="cbListSales" class="cb-list"></div>
+    <div class="pop-footer">
+        <button id="btnOkSales" class="pop-btn btn-ok">OK</button>
+        <button id="btnCancelSales" class="pop-btn btn-cancel">Отмена</button>
+    </div>
+    </div>
+</div>
+
+<div class="tab-panel" id="tab-faktura">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+        <div style="font-size: 12px; color: var(--text-muted);">
+            Фактуры за <strong>{{ db_month }} {{ db_year }}</strong> (из vfaktura)
+        </div>
+        <div class="excel-dl-wrap" data-table="vfaktura">
+            <button class="btn-excel-dl">↓ Скачать Excel ▾</button>
+            <div class="excel-dl-menu">
+                <button class="excel-dl-item" data-mode="current">📋 Текущая таблица (с фильтрами)<small>Только то, что видно сейчас</small></button>
+                <button class="excel-dl-item" data-mode="full">🗄 Вся база (vfaktura)<small>Все строки без фильтрации</small></button>
+            </div>
+        </div>
+    </div>
+    <table id="tableFaktura" class="display cell-border no-footer" style="width:100%">
+        <thead>
+            <tr>
+                <th style="width:36px;"></th>
+                <th><div class="th-container"><span>VID</span><span class="excel-filter-btn">▼</span></div></th>
+                <th><div class="th-container"><span>ИНН</span><span class="excel-filter-btn">▼</span></div></th>
+                <th><div class="th-container"><span>Партнёр</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>Summ</span><span class="excel-filter-btn">▼</span></div></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in faktura_data %}
+            <tr data-pk="{{ row.get('id', '') }}" data-table="vfaktura">
+                <td style="text-align:center;padding:4px!important;"><button class="btn-del-row" title="Удалить строку">🗑</button></td>
+                <td class="editable-cell" data-col="VID">{{ row.get('VID', '') }}</td>
+                <td class="editable-cell" data-col="INN">{{ row.get('ИНН', '-') }}</td>
+                <td class="editable-cell" data-col="Partner">
+                    <span class="partner-link" data-vid="{{ row.get('VID', '') }}" data-inn="{{ row.get('ИНН', '') }}" data-name="{{ row.get('Партнер', '') }}">
+                        {{ row.get('Партнер', '') }}
+                    </span>
+                </td>
+                <td class="editable-cell num" data-col="Summ">{{ "{:,.2f}".format(row.get('Faktura', 0) | float).replace(",", " ") }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <th></th>
+                <th colspan="2" style="text-align:right; color: var(--text-muted)">Итого:</th>
+                <th class="num" id="tot-fak-faktura">—</th>
+            </tr>
+        </tfoot>
+    </table>
+    <button class="btn-add-row" data-table="vfaktura" data-tab="faktura">＋ Добавить строку</button>
+    
+    <div id="dropdownFaktura" class="excel-dropdown">
+    <div class="pop-sort">
+        <button class="sort-btn" data-sort="asc">▲ Сортировка А→Я / ↑</button>
+        <button class="sort-btn" data-sort="desc">▼ Сортировка Я→А / ↓</button>
+    </div>
+    <button id="clearFilterFaktura" class="filter-clear-btn">✕ Снять фильтры со столбца</button>
+    <input type="text" id="popSearchFaktura" class="pop-search" placeholder="Поиск значений...">
+    <div id="cbListFaktura" class="cb-list"></div>
+    <div class="pop-footer">
+        <button id="btnOkFaktura" class="pop-btn btn-ok">OK</button>
+        <button id="btnCancelFaktura" class="pop-btn btn-cancel">Отмена</button>
+    </div>
+    </div>
+</div>
+
+<div class="tab-panel" id="tab-bank">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+        <div style="font-size: 12px; color: var(--text-muted);">
+            Оплаты за <strong>{{ db_month }} {{ db_year }}</strong> (из vbank)
+        </div>
+        <div class="excel-dl-wrap" data-table="vbank">
+            <button class="btn-excel-dl">↓ Скачать Excel ▾</button>
+            <div class="excel-dl-menu">
+                <button class="excel-dl-item" data-mode="current">📋 Текущая таблица (с фильтрами)<small>Только то, что видно сейчас</small></button>
+                <button class="excel-dl-item" data-mode="full">🗄 Вся база (vbank)<small>Все строки без фильтрации</small></button>
+            </div>
+        </div>
+    </div>
+    <table id="tableBank" class="display cell-border no-footer" style="width:100%">
+        <thead>
+            <tr>
+                <th style="width:36px;"></th>
+                <th><div class="th-container"><span>VID</span><span class="excel-filter-btn">▼</span></div></th>
+                <th><div class="th-container"><span>ИНН</span><span class="excel-filter-btn">▼</span></div></th>
+                <th><div class="th-container"><span>Партнёр</span><span class="excel-filter-btn">▼</span></div></th>
+                <th class="num"><div class="th-container"><span>Summ</span><span class="excel-filter-btn">▼</span></div></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in bank_data %}
+            <tr data-pk="{{ row.get('id', '') }}" data-table="vbank">
+                <td style="text-align:center;padding:4px!important;"><button class="btn-del-row" title="Удалить строку">🗑</button></td>
+                <td class="editable-cell" data-col="VID">{{ row.get('VID', '') }}</td>
+                <td class="editable-cell" data-col="INN">{{ row.get('ИНН', '-') }}</td>
+                <td class="editable-cell" data-col="Partner">
+                    <span class="partner-link" data-vid="{{ row.get('VID', '') }}" data-inn="{{ row.get('ИНН', '') }}" data-name="{{ row.get('Партнер', '') }}">
+                        {{ row.get('Партнер', '') }}
+                    </span>
+                </td>
+                <td class="editable-cell num" data-col="Summ">{{ "{:,.2f}".format(row.get('Bank', 0) | float).replace(",", " ") }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <th></th>
+                <th colspan="2" style="text-align:right; color: var(--text-muted)">Итого:</th>
+                <th class="num" id="tot-bank-bank">—</th>
+            </tr>
+        </tfoot>
+    </table>
+    <button class="btn-add-row" data-table="vbank" data-tab="bank">＋ Добавить строку</button>
+    
+    <div id="dropdownPayment" class="excel-dropdown">
+    <div class="pop-sort">
+        <button class="sort-btn" data-sort="asc">▲ Сортировка А→Я / ↑</button>
+        <button class="sort-btn" data-sort="desc">▼ Сортировка Я→А / ↓</button>
+    </div>
+    <button id="clearFilterPayment" class="filter-clear-btn">✕ Снять фильтры со столбца</button>
+    <input type="text" id="popSearchPayment" class="pop-search" placeholder="Поиск значений...">
+    <div id="cbListPayment" class="cb-list"></div>
+    <div class="pop-footer">
+        <button id="btnOkPayment" class="pop-btn btn-ok">OK</button>
+        <button id="btnCancelPayment" class="pop-btn btn-cancel">Отмена</button>
+    </div>
+    </div>
+</div>
+
+
+<div id="detailsModal" class="custom-modal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <h3 id="modalPartnerName">Детализация по партнёру</h3>
+                <div class="modal-meta" id="modalMeta"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;">
+                <a id="openMonthlyReport" href="#" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap;">📅 Помесячный отчёт →</a>
+                <button class="modal-close" id="closeModal">✕</button>
+            </div>
+        </div>
+
+        <div style="padding: 10px 22px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div class="modal-tab-nav" style="padding: 0; border-bottom: none; gap: 2px; flex-shrink: 0;">
+                <button class="modal-tab-btn active" data-mtab="sales-docs">Продажи</button>
+                <button class="modal-tab-btn" data-mtab="faktura-docs">Фактуры</button>
+                <button class="modal-tab-btn" data-mtab="bank-docs">Оплаты</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding-bottom:8px;flex-wrap:wrap;">
+                <span style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">Период:</span>
+                <select id="modalMonthFrom" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:12px;font-family:'Inter',sans-serif;outline:none;">
+                    {% set months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'] %}
+                    {% for m in months %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                </select>
+                <select id="modalYearFrom" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:12px;font-family:'Inter',sans-serif;outline:none;">
+                    {% for y in range(2024, 2028) %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+                </select>
+                <span style="font-size:12px;color:var(--text-muted);">—</span>
+                <select id="modalMonthTo" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:12px;font-family:'Inter',sans-serif;outline:none;">
+                    {% set months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'] %}
+                    {% for m in months %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                </select>
+                <select id="modalYearTo" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:12px;font-family:'Inter',sans-serif;outline:none;">
+                    {% for y in range(2024, 2028) %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+                </select>
+                <button id="modalPeriodApply" style="background:var(--accent);color:#fff;border:none;padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Применить</button>
+            </div>
+        </div>
+
+        <div class="modal-body">
+            <div id="modalSummary"></div>
+            <div class="modal-panel active" id="modal-sales-docs">
+                <table id="detailsTableSales" class="display no-footer" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>VID</th><th>ИНН</th><th>Партнёр</th><th>Service</th><th>Status</th>
+                            <th class="num">Payment</th>
+                            <th class="num">Komissiya</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dtBodySales"></tbody>
+                    <tfoot><tr><th></th><th></th><th></th><th></th><th style="text-align:right;color:var(--text-muted);">Итого:</th><th class="num" id="det-tot-sales-payment"></th><th class="num" id="det-tot-sales-kom"></th></tr></tfoot>
+                </table>
+            </div>
+
+            <div class="modal-panel" id="modal-faktura-docs">
+                <table id="detailsTableFaktura" class="display no-footer" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>VID</th><th>ИНН</th><th>Партнёр</th>
+                            <th class="num">Summ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dtBodyFaktura"></tbody>
+                    <tfoot><tr><th></th><th></th><th style="text-align:right;color:var(--text-muted);">Итого:</th><th class="num" id="det-tot-faktura"></th></tr></tfoot>
+                </table>
+            </div>
+
+            <div class="modal-panel" id="modal-bank-docs">
+                <table id="detailsTableBank" class="display no-footer" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>VID</th><th>ИНН</th><th>Партнёр</th>
+                            <th class="num">Summ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dtBodyBank"></tbody>
+                    <tfoot><tr><th></th><th></th><th style="text-align:right;color:var(--text-muted);">Итого:</th><th class="num" id="det-tot-bank"></th></tr></tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── МОДАЛКА ДОБАВЛЕНИЯ НОВОЙ СТРОКИ ── -->
+<div id="addRowModal" class="custom-modal">
+    <div class="modal-box" style="max-width:480px;">
+        <div class="modal-header">
+            <div>
+                <h3 id="addRowTitle">Добавить строку</h3>
+                <div class="modal-meta" id="addRowMeta"></div>
+            </div>
+            <button class="modal-close" id="closeAddRowModal">✕</button>
+        </div>
+        <div class="modal-body">
+            <div id="addRowFields" style="display:flex;flex-direction:column;gap:10px;"></div>
+            <div id="addRowError" style="color:#ef4444;font-size:12px;margin-top:8px;display:none;"></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--border);">
+            <button id="btnCancelAddRow" class="pop-btn btn-cancel">Отмена</button>
+            <button id="btnSubmitAddRow" class="pop-btn btn-ok">Добавить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+$(function() {
+
+    // Карта месяцев (вынесена чтобы не конфликтовать с Jinja2)
+    var MONTH_MAP_JS = {'Январь':1,'Февраль':2,'Март':3,'Апрель':4,'Май':5,'Июнь':6,'Июль':7,'Август':8,'Сентябрь':9,'Октябрь':10,'Ноябрь':11,'Декабрь':12};
+    function getDbMonth() { return MONTH_MAP_JS[$('select[name="db_month"]').val()] || 1; }
+    function getDbYear()  { return parseInt($('select[name="db_year"]').val()) || new Date().getFullYear(); }
+
+    var lang = {
+        info: "Строки _START_–_END_ из _TOTAL_",
+        infoEmpty: "Нет записей",
+        zeroRecords: "Ничего не найдено",
+        emptyTable: "Нет данных",
+        search: "Поиск:",
+        lengthMenu: "Показать _MENU_",
+        paginate: { previous: "←", next: "→" }
+    };
+    
+    var dtInstances = {};
+
+    // Хранилище фильтров — восстанавливаем из sessionStorage при перезагрузке
+    var _sfRaw = null;
+    try { _sfRaw = JSON.parse(sessionStorage.getItem('vorona_filters') || 'null'); } catch(e) {}
+    var savedFilters = (_sfRaw && typeof _sfRaw === "object") ? _sfRaw : {
+        '#tableAll': {},
+        '#tableSales': {},
+        '#tableFaktura': {},
+        '#tableBank': {},
+    };
+    sessionStorage.removeItem('vorona_filters');
+
+    var activeTriggerBtn = null;
+    var activeColIdx = -1;
+    var activeDropdownId = null;
+    var activeTableId = null;
+    
+    // Для клавиатурной навигации в фильтре
+    var currentFocusIndex = 0;
+    var focusableElements = [];
+    var isKeyboardNavActive = false;
+
+    // ── HELPER FUNCTIONS ──
+    function fmt(n) {
+        return parseFloat(n || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function intVal(s) {
+        if (typeof s === 'number') return s;
+        return parseFloat(String(s).replace(/\s/g,'').replace(',','.')) || 0;
+    }
+    function calcFooter(api, colMap, idMap) {
+        Object.keys(colMap).forEach(function(cIdx) {
+            var sum = api.column(parseInt(cIdx), {page:'current'}).data()
+                .reduce(function(a,b){ return intVal(a)+intVal(b); }, 0);
+            var $el = $(idMap[cIdx]);
+            $el.text(fmt(sum));
+            if (idMap[cIdx].includes('diff') || idMap[cIdx].includes('1c') || idMap[cIdx].includes('saldo')) {
+                if (idMap[cIdx].includes('diff') || idMap[cIdx].includes('Diff')) {
+                    $el.css('color', sum !== 0 ? 'var(--red)' : 'var(--green)');
+                }
+            }
+        });
+    }
+
+    // Определение типа значений в столбце (числовые или текстовые)
+    function detectValueType(tableId, colIdx) {
+        var api = $(tableId).DataTable();
+        var sampleValues = [];
+        api.rows({search:'applied'}).every(function(rIdx) {
+            if (sampleValues.length >= 5) return;
+            var node = api.cell(rIdx, colIdx).node();
+            var cleanText = node ? $(node).text().replace(/\s+/g, ' ').trim() : '';
+            if (cleanText) sampleValues.push(cleanText);
+        });
+        
+        var numericCount = 0;
+        for (var i = 0; i < Math.min(sampleValues.length, 10); i++) {
+            var val = sampleValues[i].replace(/\s/g, '').replace(',', '.');
+            if (!isNaN(parseFloat(val)) && isFinite(val)) {
+                numericCount++;
+            }
+        }
+        return (numericCount > Math.min(sampleValues.length, 10) / 2) ? 'numeric' : 'text';
+    }
+
+    // Сортировка значений
+    function sortValues(values, sortOrder, valueType) {
+        var sorted = [...values];
+        if (valueType === 'numeric') {
+            sorted.sort(function(a, b) {
+                var numA = parseFloat(a.replace(/\s/g, '').replace(',', '.')) || 0;
+                var numB = parseFloat(b.replace(/\s/g, '').replace(',', '.')) || 0;
+                return sortOrder === 'asc' ? numA - numB : numB - numA;
+            });
+        } else {
+            sorted.sort(function(a, b) {
+                var strA = String(a).toLowerCase();
+                var strB = String(b).toLowerCase();
+                if (sortOrder === 'asc') {
+                    return strA.localeCompare(strB);
+                } else {
+                    return strB.localeCompare(strA);
+                }
+            });
+        }
+        return sorted;
+    }
+
+    // Построение списка чекбоксов с учетом сортировки и пункта "(Выделить всё)"
+    function buildCbListWithSort(tableId, colIdx, dropdownId, sortOrder, valueType) {
+        var api = $(tableId).DataTable();
+        var uniqueVals = [];
+        
+        api.rows({search:'applied'}).every(function(rIdx) {
+            var node = api.cell(rIdx, colIdx).node();
+            var cleanText = node ? $(node).text().replace(/\s+/g, ' ').trim() : '';
+            if (cleanText && uniqueVals.indexOf(cleanText) === -1) {
+                uniqueVals.push(cleanText);
+            }
+        });
+
+        var currentFilters = savedFilters[tableId][colIdx] || [];
+        currentFilters.forEach(function(v) {
+            if (uniqueVals.indexOf(v) === -1) uniqueVals.push(v);
+        });
+
+        // Применяем сортировку к значениям данных
+        var sortedVals = sortValues(uniqueVals, sortOrder, valueType);
+
+        var $cbList = $(dropdownId).find('.cb-list').empty();
+
+        // Проверяем, должны ли стоять все галочки по умолчанию
+        var isAllCheckedByDefault = (currentFilters.length === 0);
+
+        // 1. Создаем первый элемент списка — интерактивную строку "(Выделить всё)"
+        var $selectAllLabel = $('<label class="cb-item master-select" tabindex="0"></label>');
+        var $selectAllCc = $('<input type="checkbox" class="master-cb">');
+        
+        // Кнопка "Выделить всё" активна, если активны все элементы
+        var allChecked = sortedVals.length > 0 && sortedVals.every(function(v) {
+            return isAllCheckedByDefault || currentFilters.indexOf(v) !== -1;
+        });
+        $selectAllCc.prop('checked', allChecked);
+        $selectAllLabel.append($selectAllCc).append(' <span>(Выделить всё)</span>');
+        $cbList.append($selectAllLabel);
+
+        // 2. Рендерим отсортированные объекты данных
+        sortedVals.forEach(function(val) {
+            var isChecked = isAllCheckedByDefault || (currentFilters.indexOf(val) !== -1);
+            var lblHtml = '<label class="cb-item" tabindex="0"><input type="checkbox" class="xcb" value="' + val.replace(/"/g, '&quot;') + '" ' + (isChecked ? 'checked' : '') + '> ' + val + '</label>';
+            $cbList.append(lblHtml);
+        });
+
+        $(dropdownId).find('.pop-search').val('');
+        
+        // Сохраняем состояние сортировки в кэш дропдауна
+        $(dropdownId).data('sort-order', sortOrder);
+        $(dropdownId).data('value-type', valueType);
+        
+        $(dropdownId).find('.sort-btn').removeClass('active');
+        $(dropdownId).find('.sort-btn[data-sort="' + sortOrder + '"]').addClass('active');
+
+        // Обработчик логики инверсии для "(Выделить всё)"
+        $selectAllCc.on('change', function() {
+            var isChecked = $(this).is(':checked');
+            // Переключаем только видимые чекбоксы (важно, если работает поисковик)
+            $cbList.find('.cb-item:not(.master-select)').each(function() {
+                if ($(this).is(':visible')) {
+                    $(this).find('input[type="checkbox"]').prop('checked', isChecked);
+                }
+            });
+        });
+
+        // Снятие мастер-чекбокса, если выключили любой рядовой элемент
+        $cbList.on('change', '.cb-item:not(.master-select) input[type="checkbox"]', function() {
+            var $visibleItems = $cbList.find('.cb-item:not(.master-select):visible input[type="checkbox"]');
+            var $checkedVisible = $visibleItems.filter(':checked');
+            $selectAllCc.prop('checked', $visibleItems.length === $checkedVisible.length);
+        });
+    }
+
+    function buildCbList(tableId, colIdx, dropdownId, sortOrder) {
+        var valueType = $(dropdownId).data('value-type');
+        if (!valueType) {
+            valueType = detectValueType(tableId, colIdx);
+            $(dropdownId).data('value-type', valueType);
+        }
+        var currentSortOrder = sortOrder || $(dropdownId).data('sort-order') || 'asc';
+        buildCbListWithSort(tableId, colIdx, dropdownId, currentSortOrder, valueType);
+    }
+    
+    // ── ИЗМЕНЕНИЕ ШИРИНЫ СТОЛБЦОВ МЫШЬЮ ──
+    // Ширины сохраняются в localStorage по каждой таблице отдельно, чтобы
+    // настройка не сбрасывалась при перезагрузке страницы.
+    var resizeInitialized = {};
+
+    function makeColumnsResizable(tableId) {
+        var $table = $(tableId);
+        if (!$table.length || !$table.is(':visible')) return;
+
+        var storageKey = 'colWidths:' + tableId;
+        var ths = $table.find('thead tr:first th');
+
+        if (!resizeInitialized[tableId]) {
+            resizeInitialized[tableId] = true;
+
+            // Стартовые ширины: либо сохранённые ранее, либо текущие фактические
+            var saved = null;
+            try { saved = JSON.parse(localStorage.getItem(storageKey) || 'null'); } catch (e) {}
+
+            ths.each(function(i) {
+                var w = (saved && saved[i]) ? saved[i] : $(this).outerWidth();
+                $(this).css('width', w + 'px');
+            });
+            $table.css('table-layout', 'fixed');
+
+            ths.each(function(i) {
+                var $th = $(this);
+                var $handle = $('<span class="col-resizer"></span>');
+                $th.append($handle);
+
+                $handle.on('mousedown', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var startX = e.pageX;
+                    var startWidth = $th.outerWidth();
+                    $('body').addClass('col-resizing');
+                    $handle.addClass('active');
+
+                    function onMove(ev) {
+                        var newW = Math.max(40, startWidth + (ev.pageX - startX));
+                        $th.css('width', newW + 'px');
+                    }
+                    function onUp() {
+                        $(document).off('mousemove.colresize mouseup.colresize');
+                        $('body').removeClass('col-resizing');
+                        $handle.removeClass('active');
+                        var widths = [];
+                        ths.each(function() { widths.push($(this).outerWidth()); });
+                        try { localStorage.setItem(storageKey, JSON.stringify(widths)); } catch (e) {}
+                    }
+                    $(document).on('mousemove.colresize', onMove).on('mouseup.colresize', onUp);
+                });
+            });
+        } else {
+            // Таблица уже была инициализирована — просто восстанавливаем сохранённые ширины
+            // (нужно, например, когда вкладка была скрыта в момент первой инициализации).
+            var savedAgain = null;
+            try { savedAgain = JSON.parse(localStorage.getItem(storageKey) || 'null'); } catch (e) {}
+            if (savedAgain) {
+                ths.each(function(i) {
+                    if (savedAgain[i]) $(this).css('width', savedAgain[i] + 'px');
+                });
+            }
+        }
+    }
+
+    // ── ИНИЦИАЛИЗАЦИЯ ВСЕХ ТАБЛИЦ DATATABLES ──
+    // Плагин сортировки числовых значений с пробелами (формат "1 234.56")
+    $.fn.dataTable.ext.type.order['num-fmt-pre'] = function(d) {
+        d = typeof d === 'string' ? d.replace(/\s/g, '').replace(',', '.') : d;
+        return isNaN(parseFloat(d)) ? 0 : parseFloat(d);
+    };
+
+    dtInstances.all = $('#tableAll').DataTable({
+        dom: 'Blfrtip', pageLength: -1, lengthMenu: [[10,25,50,-1],[10,25,50,'Все']], language: lang,
+        ordering: true,
+        order: [],
+        columnDefs: [
+            { targets: 0, orderable: false, searchable: false },
+            { targets: [4,5,6,7,8,9,10,11], type: 'num-fmt' },
+            { targets: '_all', orderable: false }
+        ],
+        buttons: [{
+            extend: 'excelHtml5', text: '↓ Экспорт Excel', className: 'buttons-excel',
+            title: 'Сверка ' + ($('#month').val()||'') + ' ' + ($('#year').val()||''), footer: true,
+            exportOptions: { columns: ':not(:first-child):visible', modifier: {page:'all', search:'applied'} }
+        }],
+        drawCallback: function() {
+            var api = this.api();
+            api.rows({search:'applied'}).every(function(i) {
+                $(this.node()).find('td:first-child').text(i + 1);
+            });
+            calcFooter(api,
+                {4:'',5:'',6:'',7:'',8:'',9:'',10:'',11:''},
+                {4:'#tot-all-payment',5:'#tot-all-bank',6:'#tot-all-faktura',7:'#tot-all-komissiya',8:'#tot-all-ns',9:'#tot-all-saldo',10:'#tot-all-1c',11:'#tot-all-diff'}
+            );
+            $('#badge-all').text(api.rows({search:'applied'}).count());
+        }
+    });
+
+
+
+    dtInstances.sales = $('#tableSales').DataTable({
+        dom: 'lfrtip', pageLength: -1, lengthMenu: [[10,25,50,-1],[10,25,50,'Все']], language: lang,
+        ordering: true, order: [],
+        columnDefs: [
+            { targets: 0, orderable: false, searchable: false },
+            { targets: [5,6], type: 'num-fmt' },
+            { targets: '_all', orderable: false }
+        ],
+        drawCallback: function() {
+            var api = this.api();
+            calcFooter(api, {5:'',6:''}, {5:'#tot-sales-payment', 6:'#tot-sales-kom'});
+            $('#badge-sales').text(api.rows({search:'applied'}).count());
+        }
+    });
+
+    dtInstances.faktura = $('#tableFaktura').DataTable({
+        dom: 'lfrtip', pageLength: -1, lengthMenu: [[10,25,50,-1],[10,25,50,'Все']], language: lang,
+        ordering: true, order: [],
+        columnDefs: [
+            { targets: 0, orderable: false, searchable: false },
+            { targets: [4], type: 'num-fmt' },
+            { targets: '_all', orderable: false }
+        ],
+        drawCallback: function() {
+            var api = this.api();
+            calcFooter(api, {4:''}, {4:'#tot-fak-faktura'});
+            $('#badge-faktura').text(api.rows({search:'applied'}).count());
+        }
+    });
+
+    dtInstances.bank = $('#tableBank').DataTable({
+        dom: 'lfrtip', pageLength: -1, lengthMenu:[[10,25,50,-1],[10,25,50,'Все']], language: lang,
+        ordering: true, order: [],
+        columnDefs: [
+            { targets: 0, orderable: false, searchable: false },
+            { targets: [4], type: 'num-fmt' },
+            { targets: '_all', orderable: false }
+        ],
+        drawCallback: function() {
+            var api = this.api();
+            calcFooter(api, {4:''}, {4:'#tot-bank-bank'});
+            $('#badge-bank').text(api.rows({search:'applied'}).count());
+        }
+    });
+
+    // Таблица "Сверка" видна сразу при загрузке страницы — инициализируем resize сейчас.
+    // Остальные (Продажи/Фактуры/Оплаты/История) скрыты вкладками — их инициализируем
+    // при первом переключении на них, см. switchTab().
+    makeColumnsResizable('#tableAll');
+
+    // Восстанавливаем активную вкладку ПОСЛЕ инициализации DataTables
+    var restoredTab = $('#active_tab').val() || 'all';
+    switchTab(restoredTab);
+
+    // ── КЛИК ПО ВКЛАДКАМ (TABS) ──
+    function switchTab(tab) {
+        $('.tab-btn').removeClass('active');
+        $('.tab-btn[data-tab="' + tab + '"]').addClass('active');
+        $('.tab-panel').removeClass('active');
+        $('#tab-' + tab).addClass('active');
+        $('#active_tab').val(tab);
+        if (dtInstances[tab]) dtInstances[tab].columns.adjust().draw(false);
+        var tableIdByTab = {all: '#tableAll', sales: '#tableSales', faktura: '#tableFaktura', bank: '#tableBank', history: '#tableHistory'};
+        if (tableIdByTab[tab]) makeColumnsResizable(tableIdByTab[tab]);
+    }
+
+    $('.tab-btn').on('click', function() {
+        var tab = $(this).data('tab');
+        switchTab(tab);
+        if (tab === 'history') loadHistory();
+    });
+    if (restoredTab === 'history') loadHistory();
+
+    // ── ИСТОРИЯ ИЗМЕНЕНИЙ БАЗЫ ──
+    function escapeHtml(s) {
+        if (s === null || s === undefined) return '';
+        return String(s).replace(/[&<>"']/g, function(c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+        });
+    }
+
+    var ACTION_LABELS = {INSERT: '➕ Добавление', UPDATE: '✏️ Изменение', DELETE: '🗑 Удаление'};
+    var HISTORY_COLSPAN = 9;
+
+    function historyUrl() {
+        var table = $('#historyTableFilter').val();
+        var vid = $('#historyVidFilter').val().trim();
+        var url = '/db/history?limit=300';
+        if (table) url += '&table=' + encodeURIComponent(table);
+        if (vid) url += '&vid=' + encodeURIComponent(vid);
+        return url;
+    }
+
+    function exportHistoryUrl() {
+        var table = $('#historyTableFilter').val();
+        var vid = $('#historyVidFilter').val().trim();
+        var params = [];
+        if (table) params.push('table=' + encodeURIComponent(table));
+        if (vid) params.push('vid=' + encodeURIComponent(vid));
+        return '/db/export_history' + (params.length ? '?' + params.join('&') : '');
+    }
+
+    function loadHistory() {
+        var url = historyUrl();
+        $('#historyTbody').html('<tr><td colspan="' + HISTORY_COLSPAN + '" style="text-align:center;color:var(--text-muted);">Загрузка...</td></tr>');
+        $.getJSON(url, function(resp) {
+            var rows = resp.rows || [];
+            $('#historyCount').text(rows.length + ' записей');
+            if (!rows.length) {
+                $('#historyTbody').html('<tr><td colspan="' + HISTORY_COLSPAN + '" style="text-align:center;color:var(--text-muted);">Изменений пока нет</td></tr>');
+                return;
+            }
+            var html = '';
+            rows.forEach(function(r) {
+                // Откат доступен только для UPDATE с известной колонкой — возвращаем
+                // old_value обратно через /db/update. Для INSERT/DELETE откат через
+                // ту же кнопку не поддержан (это отдельная операция — восстановить/
+                // удалить всю строку), поэтому кнопки для них не показываем.
+                var canRollback = r.action === 'UPDATE' && r.column_name && r.row_pk;
+                var rollbackBtn = canRollback
+                    ? '<button class="pop-btn btn-rollback" style="padding:3px 9px;font-size:11px;" ' +
+                        'data-table="' + escapeHtml(r.table_name) + '" ' +
+                        'data-pk="' + escapeHtml(r.row_pk) + '" ' +
+                        'data-col="' + escapeHtml(r.column_name) + '" ' +
+                        'data-old="' + escapeHtml(r.old_value) + '" ' +
+                        'title="Вернуть значение колонки \'' + escapeHtml(r.column_name) + '\' обратно на \'' + escapeHtml(r.old_value) + '\'">↩️ Откатить</button>'
+                    : '';
+                html += '<tr>' +
+                    '<td>' + escapeHtml(r.changed_at) + '</td>' +
+                    '<td>' + escapeHtml(r.table_name) + '</td>' +
+                    '<td>' + (r.vid ? '<a href="#" class="history-vid-link" data-vid="' + escapeHtml(r.vid) + '">' + escapeHtml(r.vid) + '</a>' : '—') + '</td>' +
+                    '<td>' + escapeHtml(r.row_pk) + '</td>' +
+                    '<td>' + (ACTION_LABELS[r.action] || escapeHtml(r.action)) + '</td>' +
+                    '<td>' + escapeHtml(r.column_name) + '</td>' +
+                    '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(r.old_value) + '">' + escapeHtml(r.old_value) + '</td>' +
+                    '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(r.new_value) + '">' + escapeHtml(r.new_value) + '</td>' +
+                    '<td style="text-align:center;">' + rollbackBtn + '</td>' +
+                '</tr>';
+            });
+            $('#historyTbody').html(html);
+        }).fail(function() {
+            $('#historyTbody').html('<tr><td colspan="' + HISTORY_COLSPAN + '" style="text-align:center;color:#ef4444;">Ошибка загрузки истории</td></tr>');
+        });
+    }
+
+    $('#btnRefreshHistory').on('click', loadHistory);
+    $('#historyTableFilter').on('change', function() {
+        loadHistory();
+        $('#btnExportHistory').attr('href', exportHistoryUrl());
+    });
+
+    // ── Фильтр истории по партнёру (VID) ──
+    var historyVidDebounce = null;
+    $('#historyVidFilter').on('input', function() {
+        $('#btnHistoryVidClear').toggle(!!$(this).val().trim());
+        clearTimeout(historyVidDebounce);
+        historyVidDebounce = setTimeout(function() {
+            loadHistory();
+            $('#btnExportHistory').attr('href', exportHistoryUrl());
+        }, 350);
+    });
+    $('#btnHistoryVidClear').on('click', function() {
+        $('#historyVidFilter').val('');
+        $(this).hide();
+        loadHistory();
+        $('#btnExportHistory').attr('href', exportHistoryUrl());
+    });
+
+    // Клик по VID в истории — быстрый способ отфильтровать историю только по этому партнёру
+    $(document).on('click', '.history-vid-link', function(e) {
+        e.preventDefault();
+        var vid = $(this).data('vid');
+        $('#historyVidFilter').val(vid);
+        $('#btnHistoryVidClear').show();
+        loadHistory();
+        $('#btnExportHistory').attr('href', exportHistoryUrl());
+    });
+
+    // ── ОТКАТ ИЗМЕНЕНИЯ ОДНИМ КЛИКОМ ──
+    $(document).on('click', '.btn-rollback', function() {
+        var $btn = $(this);
+        var table = $btn.data('table');
+        var pk = $btn.data('pk');
+        var col = $btn.data('col');
+        var oldVal = $btn.data('old');
+        if (oldVal === '—' || oldVal === undefined) oldVal = '';
+
+        showConfirm('Вернуть значение "' + col + '" (строка #' + pk + ' в ' + table + ') обратно на "' + oldVal + '"?', function() {
+            $btn.prop('disabled', true).text('⏳...');
+            $.ajax({
+                url: '/db/update',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ table: table, pk_val: pk, col: col, value: oldVal }),
+                success: function(resp) {
+                    if (resp.error) {
+                        showToast('❌ ' + resp.error, 'var(--red)');
+                        $btn.prop('disabled', false).text('↩️ Откатить');
+                        return;
+                    }
+                    showToast('✓ Откачено');
+                    loadHistory();
+                },
+                error: function() {
+                    showToast('❌ Ошибка отката', 'var(--red)');
+                    $btn.prop('disabled', false).text('↩️ Откатить');
+                }
+            });
+        });
+    });
+
+    // ── УНИВЕРСАЛЬНЫЙ EXCEL-ФИЛЬТР ДЛЯ ВСЕХ ТАБЛИЦ ──
+    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+        var currentTableId = '#' + settings.nTable.id;
+        var filters = savedFilters[currentTableId];
+        if (!filters) return true;
+
+        for (var cIdx in filters) {
+            var allowedVals = filters[cIdx];
+            if (!allowedVals || !allowedVals.length) continue;
+
+            var api = $(currentTableId).DataTable();
+            var node = api.cell(dataIndex, parseInt(cIdx)).node();
+            var cellVal = node ? $(node).text().replace(/\s+/g,' ').trim() : '';
+
+            if (allowedVals.indexOf(cellVal) === -1) {
+                return false;
+            }
+        }
+        return true;
+    });
+
+    // ── ФИЛЬТР «ТОЛЬКО С РАСХОЖДЕНИЕМ» (вкладка Сверка) ──
+    // Скрывает строки, где Difference (последняя колонка, индекс 11) равна 0 —
+    // чтобы не листать сотни совпадающих партнёров ради десятка проблемных.
+    var onlyDiffActive = false;
+    var DIFF_COL_IDX = 11;
+
+    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+        if (!onlyDiffActive || settings.nTable.id !== 'tableAll') return true;
+        var raw = data[DIFF_COL_IDX] || '0';
+        var num = parseFloat(String(raw).replace(/\s/g, '').replace(',', '.'));
+        if (isNaN(num)) num = 0;
+        return Math.abs(num) > 0.005; // защита от копеечных погрешностей округления
+    });
+
+    $('#btnOnlyDiff').on('click', function() {
+        onlyDiffActive = !onlyDiffActive;
+        $(this).toggleClass('active-diff', onlyDiffActive);
+        if (dtInstances.all) dtInstances.all.draw();
+    });
+
+    // Восстанавливаем визуальное состояние кнопок-фильтров
+    (function restoreFilterButtons() {
+        Object.keys(savedFilters).forEach(function(tblId) {
+            var cols = savedFilters[tblId];
+            if (Object.keys(cols).length === 0) return;
+            $(tblId).find('thead th').each(function(idx) {
+                if (cols[idx] && cols[idx].length > 0) {
+                    $(this).find('.excel-filter-btn').addClass('active-filter').text('⏷');
+                }
+            });
+            var dtKey = tblId.replace("#table","").toLowerCase();
+            if (dtInstances[dtKey]) dtInstances[dtKey].draw(false);
+        });
+    })();
+
+    // Обновление фокусируемых элементов (исключены удаленные ссылки)
+    function updateFocusableElements(dropdownId) {
+        var $dropdown = $(dropdownId);
+        focusableElements = [];
+        
+        $dropdown.find('.sort-btn').each(function() { focusableElements.push(this); });
+        
+        var clearBtn = $dropdown.find('.filter-clear-btn')[0];
+        if (clearBtn) focusableElements.push(clearBtn);
+        
+        var searchInput = $dropdown.find('.pop-search')[0];
+        if (searchInput) focusableElements.push(searchInput);
+        
+        // Чекбоксы в списке (включая "(Выделить всё)" первым делом)
+        $dropdown.find('.cb-list label:visible').each(function() { focusableElements.push(this); });
+        
+        $dropdown.find('.pop-btn').each(function() { focusableElements.push(this); });
+        
+        return focusableElements;
+    }
+    
+    function removeAllFocusClasses(dropdownId) {
+        $(dropdownId).find('.sort-btn').removeClass('keyboard-focused');
+        $(dropdownId).find('.filter-clear-btn').removeClass('keyboard-focused');
+        $(dropdownId).find('.pop-search').removeClass('keyboard-focused');
+        $(dropdownId).find('.cb-list label').removeClass('keyboard-focused');
+        $(dropdownId).find('.pop-btn').removeClass('keyboard-focused');
+    }
+    
+    function setFocusAtIndex(dropdownId, index) {
+        var elements = updateFocusableElements(dropdownId);
+        if (elements.length === 0) return;
+        
+        if (index < 0) index = 0;
+        if (index >= elements.length) index = elements.length - 1;
+        
+        currentFocusIndex = index;
+        removeAllFocusClasses(dropdownId);
+        
+        var $el = $(elements[currentFocusIndex]);
+        $el.addClass('keyboard-focused');
+        
+        if ($el.length && $el[0].scrollIntoViewIfNeeded) {
+            $el[0].scrollIntoViewIfNeeded(false);
+        } else if ($el.length) {
+            $el[0].scrollIntoView({ block: 'nearest' });
+        }
+        
+        if ($el.hasClass('pop-search')) {
+            $el[0].focus();
+        } else if ($el.hasClass('sort-btn') || $el.hasClass('filter-clear-btn') || $el.is('label') || $el.hasClass('pop-btn')) {
+            $el[0].focus();
+        }
+    }
+    
+    // Применение фильтра
+    function applyFilter() {
+        if (!activeTableId || !activeDropdownId || !activeTriggerBtn) return;
+        
+        var $dropdown = $(activeDropdownId);
+        var api = $(activeTableId).DataTable();
+        
+        var checkedVals = [];
+        var totalAllOptions = 0;
+        var isSearching = $dropdown.find('.pop-search').val().trim().length > 0;
+
+        $dropdown.find('.cb-list label:not(.master-select)').each(function() {
+            totalAllOptions++;
+            var $checkbox = $(this).find('input[type="checkbox"]');
+            
+            if (isSearching) {
+                if ($(this).is(':visible') && $checkbox.is(':checked')) {
+                    checkedVals.push($checkbox.val());
+                }
+            } else {
+                if ($checkbox.is(':checked')) {
+                    checkedVals.push($checkbox.val());
+                }
+            }
+        });
+
+        // Если ничего не выбрано или выбраны абсолютно все элементы — сбрасываем фильтр (поведение Excel)
+        if (checkedVals.length === 0 || (!isSearching && checkedVals.length === totalAllOptions)) {
+            delete savedFilters[activeTableId][activeColIdx];
+            activeTriggerBtn.removeClass('active-filter').text('▼');
+        } else {
+            savedFilters[activeTableId][activeColIdx] = checkedVals;
+            activeTriggerBtn.addClass('active-filter').text('⏷');
+        }
+
+        api.draw();
+        $dropdown.fadeOut(150);
+        resetKeyboardNavigation();
+        $(document).off('keydown.filterNav');
+    }
+    
+    function clearColumnFilter() {
+        if (!activeTableId || !activeDropdownId || !activeTriggerBtn) return;
+        
+        var api = $(activeTableId).DataTable();
+        delete savedFilters[activeTableId][activeColIdx];
+        activeTriggerBtn.removeClass('active-filter').text('▼');
+        api.draw();
+        
+        var $dropdown = $(activeDropdownId);
+        $dropdown.fadeOut(150);
+        resetKeyboardNavigation();
+        $(document).off('keydown.filterNav');
+    }
+    
+    // Обработка клавиш в окне фильтрации
+    // Обработка клавиш в окне фильтрации
+    function setupDropdownKeyboardNavigation(dropdownId) {
+        $(document).off('keydown.filterNav').on('keydown.filterNav', function(e) {
+            var $activeDropdown = $(activeDropdownId);
+            if (!$activeDropdown.is(':visible')) return;
+            
+            var elements = updateFocusableElements(activeDropdownId);
+            if (elements.length === 0) return;
+            
+            var $focused = $(elements[currentFocusIndex]);
+
+            switch(e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    isKeyboardNavActive = true;
+                    setFocusAtIndex(activeDropdownId, currentFocusIndex + 1);
+                    break;
+                    
+                case 'ArrowUp':
+                    e.preventDefault();
+                    isKeyboardNavActive = true;
+                    setFocusAtIndex(activeDropdownId, currentFocusIndex - 1);
+                    break;
+                    
+                case 'Enter':
+                    e.preventDefault();
+                    // Если фокус НАВЕДЕН на кнопку сброса — сбрасываем фильтр
+                    if ($focused.is('.filter-clear-btn')) {
+                        clearColumnFilter();
+                    }
+                    // Если фокус НАВЕДЕН на кнопку Отмена — просто закрываем окно
+                    else if ($focused.is('.btn-cancel')) {
+                        $focused.trigger('click');
+                    }
+                    // ВО ВСЕХ ОСТАЛЬНЫХ СЛУЧАЯХ (в строке поиска, на чекбоксах, на "(Выделить всё)")
+                    // нажатие Enter СРАЗУ применяет фильтр к таблице (без переключения чекбоксов)
+                    else {
+                        applyFilter();
+                    }
+                    break;
+                    
+                case ' ':
+                case 'Space':
+                    // 1. Если фокус в инпуте поиска, пробел пишет символ, не перехватываем
+                    if ($focused.is('input.pop-search')) {
+                        return;
+                    }
+                    
+                    e.preventDefault();
+                    
+                    // 2. Если фокус на кнопках сортировки — имитируем клик (переключаем сортировку)
+                    if ($focused.is('.sort-btn')) {
+                        $focused.trigger('click');
+                    }
+                    // 3. Если фокус на кнопке сброса фильтра — имитируем клик (сбрасываем фильтр)
+                    else if ($focused.is('.filter-clear-btn')) {
+                        clearColumnFilter();
+                    }
+                    // 4. Если фокус на кнопке Отмена — имитируем клик
+                    else if ($focused.is('.btn-cancel')) {
+                        $focused.trigger('click');
+                    }
+                    // 5. Если фокус на строках-лейблах списка — переключаем галочку
+                    else if ($focused.is('label')) {
+                        var $chk = $focused.find('input[type="checkbox"]');
+                        $chk.prop('checked', !$chk.prop('checked')).trigger('change');
+                    } 
+                    // 6. Во всех остальных случаях — применяем фильтр
+                    else {
+                        applyFilter();
+                    }
+                    break;
+                    
+                case 'Escape':
+                    e.preventDefault();
+                    $(activeDropdownId).find('.btn-cancel').trigger('click');
+                    break;
+                    
+                default:
+                    break;
+            }
+        });
+    }
+    
+    function resetKeyboardNavigation() {
+        isKeyboardNavActive = false;
+        currentFocusIndex = 0;
+        if (activeDropdownId) {
+            removeAllFocusClasses(activeDropdownId);
+        }
+    }
+
+    // Открытие дропдауна
+    $('table.display').on('click', '.excel-filter-btn', function(e) {
+        e.stopPropagation();
+        activeTriggerBtn = $(this);
+        
+        var th = $(this).closest('th');
+        var $table = $(this).closest('table');
+        
+        activeTableId = '#' + $table.attr('id');
+        activeColIdx = th.parent().children('th').index(th);
+        
+        var dropdownMap = {
+            '#tableAll': '#dropdownAll',
+            '#tableSales': '#dropdownSales',
+            '#tableFaktura': '#dropdownFaktura',
+            '#tableBank': '#dropdownPayment',
+        };
+        
+        activeDropdownId = dropdownMap[activeTableId];
+        
+        var off = $(this).offset();
+        var $tabPanel = $(this).closest('.tab-panel');
+        var wOff = $tabPanel.offset();
+        
+        $('.excel-dropdown').hide();
+        
+        $(activeDropdownId).css({
+            top: (off.top - wOff.top + $(this).outerHeight() + 5) + 'px',
+            left: Math.min(off.left - wOff.left, $tabPanel.width() - 295) + 'px'
+        }).fadeIn(180);
+
+        var hasFilt = savedFilters[activeTableId][activeColIdx] && savedFilters[activeTableId][activeColIdx].length;
+        $(activeDropdownId).find('.filter-clear-btn').toggleClass('disabled', !hasFilt)
+            .text(hasFilt ? '✕ Снять фильтры со столбца' : '✕ Нет активных фильтров');
+        
+        var valueType = detectValueType(activeTableId, activeColIdx);
+        var currentSortOrder = $(activeDropdownId).data('sort-order') || 'asc';
+        $(activeDropdownId).data('value-type', valueType);
+        
+        buildCbListWithSort(activeTableId, activeColIdx, activeDropdownId, currentSortOrder, valueType);
+        
+        resetKeyboardNavigation();
+        setupDropdownKeyboardNavigation(activeDropdownId);
+        setTimeout(function() {
+            setFocusAtIndex(activeDropdownId, 0);
+        }, 50);
+    });
+
+    // Кнопки сортировки (делегированный обработчик — работает всегда)
+    $(document).on('click', '.sort-btn', function() {
+        var sortOrder = $(this).data('sort');
+        var $dropdown = $(this).closest('.excel-dropdown');
+        var dropdownId = '#' + $dropdown.attr('id');
+        var valueType = $dropdown.data('value-type');
+        
+        if (!valueType && activeTableId) {
+            valueType = detectValueType(activeTableId, activeColIdx);
+            $dropdown.data('value-type', valueType);
+        }
+        
+        if (activeTableId && activeColIdx >= 0) {
+            // Сортируем саму таблицу DataTables
+            var api = $(activeTableId).DataTable();
+            api.order([activeColIdx, sortOrder]).draw(false);
+
+            // Перестраиваем список чекбоксов в дропдауне с новым порядком
+            buildCbListWithSort(activeTableId, activeColIdx, dropdownId, sortOrder, valueType);
+            setTimeout(function() {
+                setFocusAtIndex(dropdownId, 0);
+            }, 50);
+        }
+    });
+    
+    $('.filter-clear-btn').on('click', function() {
+        if ($(this).hasClass('disabled')) return;
+        clearColumnFilter();
+    });
+
+    $('.btn-ok').on('click', function() {
+        applyFilter();
+    });
+
+    $('.btn-cancel').on('click', function() {
+        $(this).closest('.excel-dropdown').fadeOut(150);
+        resetKeyboardNavigation();
+        $(document).off('keydown.filterNav');
+    });
+
+    // Поиск в фильтре с обновлением состояния "(Выделить всё)" по видимости элементов
+    $('.pop-search').on('input', function() {
+        var $dropdown = $(this).closest('.excel-dropdown');
+        var searchText = $(this).val().trim().toLowerCase();
+        
+        $dropdown.find('.cb-list label:not(.master-select)').each(function() {
+            var labelText = $(this).text().trim().toLowerCase();
+            if (searchText === '' || labelText.indexOf(searchText) !== -1) {
+                $(this).show();
+            } else {
+                $(this).hide();
+            }
+        });
+
+        // Динамически пересчитываем состояние мастер-чекбокса на основе отфильтрованных строк
+        var $visibleBoxes = $dropdown.find('.cb-list label:not(.master-select):visible input[type="checkbox"]');
+        var $checkedVisible = $visibleBoxes.filter(':checked');
+        $dropdown.find('.master-cb').prop('checked', $visibleBoxes.length > 0 && $visibleBoxes.length === $checkedVisible.length);
+    });
+
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('.excel-dropdown').length && !$(e.target).hasClass('excel-filter-btn')) {
+            $('.excel-dropdown').fadeOut(150);
+            resetKeyboardNavigation();
+            $(document).off('keydown.filterNav');
+        }
+    });
+
+
+    // ── ДЕТАЛИЗАЦИЯ И МОДАЛЬНОЕ ОКНО ПАРТНЕРА ──
+    var detailDTs = {};
+    var currentDetailVid  = '';
+    var currentDetailInn  = '';
+    var currentDetailName = '';
+
+    // Вкладки внутри модалки
+    $(document).on('click', '.modal-tab-btn', function() {
+        var mtab = $(this).data('mtab');
+        $('.modal-tab-btn').removeClass('active');
+        $(this).addClass('active');
+        $('.modal-panel').removeClass('active');
+        $('#modal-' + mtab).addClass('active');
+
+        var tMap = {'sales-docs':'Sales','faktura-docs':'Faktura','bank-docs':'Bank'};
+        var dtKey = 'det' + tMap[mtab];
+        if (detailDTs[dtKey]) detailDTs[dtKey].columns.adjust().draw(false);
+    });
+
+    // Шаблоны таблиц — пересоздаём целиком при каждом открытии
+        var TABLE_TEMPLATES = {
+        Sales: '<table id="detailsTableSales" class="display no-footer" style="width:100%">' +
+            '<thead><tr><th>VID</th><th>ИНН</th><th>Партнёр</th><th>Service</th><th>Status</th>' +
+            '<th class="num">Payment</th><th class="num">Komissiya</th></tr></thead>' +
+            '<tbody id="dtBodySales"></tbody>' +
+            '<tfoot><tr><th></th><th></th><th></th><th></th>' +
+            '<th style="text-align:right;color:var(--text-muted);">Итого:</th>' +
+            '<th class="num" id="det-tot-sales-payment"></th>' +
+            '<th class="num" id="det-tot-sales-kom"></th></tr></tfoot></table>',
+
+        Faktura: '<table id="detailsTableFaktura" class="display no-footer" style="width:100%">' +
+            '<thead><tr><th>VID</th><th>ИНН</th><th>Партнёр</th><th class="num">Summ</th></tr></thead>' +
+            '<tbody id="dtBodyFaktura"></tbody>' +
+            '<tfoot><tr><th></th><th></th>' +
+            '<th style="text-align:right;color:var(--text-muted);">Итого:</th>' +
+            '<th class="num" id="det-tot-faktura"></th></tr></tfoot></table>',
+
+        Bank: '<table id="detailsTableBank" class="display no-footer" style="width:100%">' +
+            '<thead><tr><th>VID</th><th>ИНН</th><th>Партнёр</th><th class="num">Summ</th></tr></thead>' +
+            '<tbody id="dtBodyBank"></tbody>' +
+            '<tfoot><tr><th></th><th></th>' +
+            '<th style="text-align:right;color:var(--text-muted);">Итого:</th>' +
+            '<th class="num" id="det-tot-bank"></th></tr></tfoot></table>'
+    };
+
+    // Сброс — уничтожаем DataTable и полностью пересоздаём DOM таблиц
+    function resetDetailTables() {
+        ['#detailsTableSales','#detailsTableFaktura','#detailsTableBank'].forEach(function(sel) {
+            if ($.fn.dataTable.isDataTable(sel)) {
+                $(sel).DataTable().clear().destroy();
+            }
+        });
+        detailDTs = {};
+
+        // Полностью заменяем содержимое каждой панели свежей таблицей
+        $('#modal-sales-docs').html(TABLE_TEMPLATES.Sales);
+        $('#modal-faktura-docs').html(TABLE_TEMPLATES.Faktura);
+        $('#modal-bank-docs').html(TABLE_TEMPLATES.Bank);
+    }
+
+    // Основная функция загрузки данных детализации
+    function loadDetailData() {
+        var monthFrom = $('#modalMonthFrom').val();
+        var yearFrom  = parseInt($('#modalYearFrom').val());
+        var monthTo   = $('#modalMonthTo').val();
+        var yearTo    = parseInt($('#modalYearTo').val());
+
+        $('#modalMeta').text(
+            'ИНН: ' + (currentDetailInn || 'не указан') + 
+            '  ·  ' + monthFrom + ' ' + yearFrom + ' — ' + monthTo + ' ' + yearTo
+        );
+        $('#modalSummary').html('<div style="color:var(--text-muted);font-size:12px;">Загрузка…</div>');
+
+        resetDetailTables();
+
+        $.ajax({
+            url: '/get_partner_details',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                vid:        currentDetailVid,
+                inn:        currentDetailInn,
+                name:       currentDetailName,
+                month_from: monthFrom,
+                year_from:  yearFrom,
+                month_to:   monthTo,
+                year_to:    yearTo
+            }),
+            success: function(res) {
+                var htmlSales = '', htmlFaktura = '', htmlBank = '';
+                var totSalesPayment = 0, totSalesKom = 0, totFaktura = 0, totBank = 0;
+
+                // Продажи: VID, ИНН, Партнёр, Service, Status, Payment, Komissiya
+                (res.sales || []).forEach(function(item) {
+                    totSalesPayment += parseFloat(item.sales || 0);
+                    totSalesKom     += parseFloat(item.komissiya || 0);
+                    htmlSales += '<tr>' +
+                        '<td>' + (item.vid     || '') + '</td>' +
+                        '<td>' + (item.inn     || '') + '</td>' +
+                        '<td>' + (item.partner || '') + '</td>' +
+                        '<td>' + (item.service || '') + '</td>' +
+                        '<td>' + (item.status  || '') + '</td>' +
+                        '<td class="num">' + fmt(item.sales     || 0) + '</td>' +
+                        '<td class="num">' + fmt(item.komissiya || 0) + '</td>' +
+                    '</tr>';
+                });
+
+                // Фактуры: VID, ИНН, Партнёр, Summ
+                (res.faktura || []).forEach(function(item) {
+                    totFaktura += parseFloat(item.summ || 0);
+                    htmlFaktura += '<tr>' +
+                        '<td>' + (item.vid     || '') + '</td>' +
+                        '<td>' + (item.inn     || '') + '</td>' +
+                        '<td>' + (item.partner || '') + '</td>' +
+                        '<td class="num">' + fmt(item.summ || 0) + '</td>' +
+                    '</tr>';
+                });
+
+                // Оплаты: VID, ИНН, Партнёр, Summ
+                (res.bank || []).forEach(function(item) {
+                    totBank += parseFloat(item.summ || 0);
+                    htmlBank += '<tr>' +
+                        '<td>' + (item.vid     || '') + '</td>' +
+                        '<td>' + (item.inn     || '') + '</td>' +
+                        '<td>' + (item.partner || '') + '</td>' +
+                        '<td class="num">' + fmt(item.summ || 0) + '</td>' +
+                    '</tr>';
+                });
+
+                $('#dtBodySales').html(htmlSales);
+                $('#dtBodyFaktura').html(htmlFaktura);
+                $('#dtBodyBank').html(htmlBank);
+
+                var dtLang = $.extend({}, lang, { emptyTable: 'Нет данных за выбранный период' });
+                var dtOpts = { dom:'lfrtip', pageLength:-1, language:dtLang, ordering:true };
+                detailDTs.detSales   = $('#detailsTableSales').DataTable(dtOpts);
+                detailDTs.detFaktura = $('#detailsTableFaktura').DataTable(dtOpts);
+                detailDTs.detBank    = $('#detailsTableBank').DataTable(dtOpts);
+
+                // Итоги в tfoot
+                $('#det-tot-sales-payment').text(fmt(totSalesPayment));
+                $('#det-tot-sales-kom').text(fmt(totSalesKom));
+                $('#det-tot-faktura').text(fmt(totFaktura));
+                $('#det-tot-bank').text(fmt(totBank));
+
+                $('#modalSummary').html('');
+            },
+            error: function() {
+                $('#modalSummary').html('<div style="color:var(--red); font-size:13px;">Ошибка загрузки данных. Проверьте сервер.</div>');
+            }
+        });
+    }
+
+    // Выделение строки серым при клике — чтобы видеть, на каком партнёре остановились.
+    // Один клик — снимаем выделение с остальных строк таблицы и подсвечиваем текущую.
+    $('#tableAll').on('click', 'tbody tr', function() {
+        $(this).closest('tbody').find('tr.row-selected').removeClass('row-selected');
+        $(this).addClass('row-selected');
+    });
+
+    // ── КЛАВИАТУРНАЯ НАВИГАЦИЯ ПО ТАБЛИЦЕ «СВЕРКА» ──
+    // ↑/↓ — переключают выделение строки (среди строк, видимых на текущей странице
+    // после фильтрации/поиска), Enter — открывает попап деталей по выделенному партнёру.
+    // Активна, только когда открыта вкладка «Сверка» и фокус не внутри поля ввода/попапа.
+    $(document).on('keydown', function(e) {
+        if (!['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) return;
+        if (!$('#tab-all').hasClass('active')) return;
+        if ($('#detailsModal').hasClass('show') || $('#uploadModal').hasClass('show')) return;
+
+        var $active = $(document.activeElement);
+        if ($active.is('input, select, textarea') || $active.closest('.editable-cell').length) return;
+
+        var $rows = $('#tableAll tbody tr:visible');
+        if (!$rows.length) return;
+
+        var $current = $rows.filter('.row-selected');
+        var idx = $current.length ? $rows.index($current) : -1;
+
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            var nextIdx;
+            if (idx === -1) {
+                nextIdx = 0;
+            } else {
+                nextIdx = e.key === 'ArrowDown' ? Math.min(idx + 1, $rows.length - 1) : Math.max(idx - 1, 0);
+            }
+            $rows.removeClass('row-selected');
+            var $next = $rows.eq(nextIdx).addClass('row-selected');
+            $next[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        } else if (e.key === 'Enter') {
+            if (idx === -1) return;
+            e.preventDefault();
+            $rows.eq(idx).find('.partner-link').trigger('click');
+        }
+    });
+
+    // Открытие модалки по клику на партнёра
+    $(document).on('click', '.partner-link', function() {
+        currentDetailVid  = $(this).attr('data-vid')  || '';
+        currentDetailInn  = $(this).attr('data-inn')  || '';
+        currentDetailName = $(this).attr('data-name') || '';
+
+        $('#modalPartnerName').text(currentDetailName || '—');
+
+        // Ссылка на помесячный отчёт работает только если известен ИНН
+        if (currentDetailInn && currentDetailInn !== '-') {
+            $('#openMonthlyReport').attr('href', '/partner-monthly?inn=' + encodeURIComponent(currentDetailInn)).show();
+        } else {
+            $('#openMonthlyReport').hide();
+        }
+
+        // Устанавливаем период по умолчанию = текущий период сверки
+        var curMonth = $('#month').val();
+        var curYear  = $('#year').val();
+        $('#modalMonthFrom').val(curMonth);
+        $('#modalYearFrom').val(curYear);
+        $('#modalMonthTo').val(curMonth);
+        $('#modalYearTo').val(curYear);
+
+        // Сбрасываем на первую вкладку
+        $('.modal-tab-btn[data-mtab="sales-docs"]').trigger('click');
+
+        $('#detailsModal').addClass('show');
+        loadDetailData();
+    });
+
+    // Кнопка «Применить» период в модалке
+    $('#modalPeriodApply').on('click', function() {
+        if (currentDetailVid || currentDetailInn || currentDetailName) {
+            loadDetailData();
+        }
+    });
+
+    $('#closeModal').on('click', function() { $('#detailsModal').removeClass('show'); });
+    
+    $('#filterForm').on('submit', function() {
+        try { sessionStorage.setItem('vorona_filters', JSON.stringify(savedFilters)); } catch(e) {}
+    });
+
+    $(document).on('click', function(e) {
+        if ($(e.target).is('#detailsModal')) $('#detailsModal').removeClass('show');
+    });
+
+    // ══════════════════════════════════════════════════════════════
+    // ── INLINE EDITING ──────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════
+
+    function showToast(msg, color) {
+        var $t = $('#saveToast');
+        $t.text(msg || '✓ Сохранено').css('background', color || 'var(--green)').fadeIn(150);
+        clearTimeout($t.data('tid'));
+        $t.data('tid', setTimeout(function() { $t.fadeOut(300); }, 2000));
+    }
+
+    // Клик по editable-cell → открываем input
+    $(document).on('click', '.editable-cell', function(e) {
+        if ($(e.target).is('a, .partner-link')) return; // не перехватываем клики по ссылкам
+        if ($(this).hasClass('editing')) return;
+
+        var $td   = $(this);
+        var $tr   = $td.closest('tr');
+        var col   = $td.data('col');
+        // Берём «сырое» значение: для числовых убираем форматирование
+        var raw   = $td.data('raw-value');
+        if (raw === undefined) {
+            raw = $td.text().trim().replace(/\s/g, '').replace(',', '.');
+            // Если текст явно нечисловой — берём как есть
+            if (isNaN(parseFloat(raw)) || raw === '') raw = $td.text().trim();
+        }
+
+        $td.addClass('editing').data('original', $td.html());
+        var $input = $('<input class="cell-input">').val(raw);
+        $td.empty().append($input);
+        $input.focus().select();
+
+        function commit() {
+            var newVal = $input.val().trim();
+            var pkVal  = $tr.data('pk');
+            var table  = $tr.data('table');
+
+            if (newVal === String(raw)) {
+                // Не изменилось — просто восстанавливаем
+                $td.removeClass('editing').html($td.data('original'));
+                return;
+            }
+
+            $tr.removeClass('row-pending row-error').addClass('row-saving');
+            $td.removeClass('editing');
+
+            $.ajax({
+                url: '/db/update',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ table: table, pk_val: pkVal, col: col, value: newVal }),
+                success: function(res) {
+                    $tr.removeClass('row-saving');
+                    if (res.ok) {
+                        // Обновляем отображение
+                        $td.data('raw-value', newVal);
+                        // Для числовых столбцов — форматируем
+                        var numVal = parseFloat(newVal.replace(',', '.'));
+                        if (!isNaN(numVal) && $td.hasClass('num')) {
+                            $td.text(numVal.toLocaleString('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:2}));
+                        } else {
+                            $td.text(newVal);
+                        }
+                        showToast('✓ Сохранено');
+                        // Пересчёт итогов
+                        var dtKey = $tr.closest('.tab-panel').attr('id').replace('tab-','');
+                        if (dtInstances[dtKey]) dtInstances[dtKey].draw(false);
+                    } else {
+                        $tr.addClass('row-error');
+                        $td.html($td.data('original'));
+                        showToast('✗ Ошибка: ' + (res.error || ''), 'var(--red)');
+                    }
+                },
+                error: function(xhr) {
+                    $tr.removeClass('row-saving').addClass('row-error');
+                    $td.html($td.data('original'));
+                    var msg = '✗ Ошибка сервера';
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        if (resp && resp.error) msg = '✗ Ошибка: ' + resp.error;
+                    } catch (e) {}
+                    showToast(msg, 'var(--red)');
+                }
+            });
+        }
+
+        $input.on('keydown', function(e) {
+            if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+            if (e.key === 'Escape') { $td.removeClass('editing').html($td.data('original')); }
+        });
+        $input.on('blur', function() { commit(); });
+    });
+
+    // ── УДАЛЕНИЕ СТРОКИ ──────────────────────────────────────────
+    var _confirmCallback = null;
+
+    function showConfirm(msg, cb) {
+        $('#confirmMsg').text(msg);
+        _confirmCallback = cb;
+        $('#confirmOverlay').addClass('show');
+    }
+
+    $('#confirmYes').on('click', function() {
+        $('#confirmOverlay').removeClass('show');
+        if (_confirmCallback) { _confirmCallback(); _confirmCallback = null; }
+    });
+    $('#confirmNo').on('click', function() {
+        $('#confirmOverlay').removeClass('show');
+        _confirmCallback = null;
+    });
+
+    $(document).on('click', '.btn-del-row', function(e) {
+        e.stopPropagation();
+        var $tr    = $(this).closest('tr');
+        var pkVal  = $tr.data('pk');
+        var table  = $tr.data('table');
+
+        showConfirm('Удалить строку из ' + table + '? (pk=' + pkVal + ')', function() {
+            $.ajax({
+                url: '/db/delete',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ table: table, pk_val: pkVal }),
+                success: function(res) {
+                    if (res.ok) {
+                        // Удаляем через DataTables API
+                        var dtKey = $tr.closest('.tab-panel').attr('id').replace('tab-','');
+                        if (dtInstances[dtKey]) {
+                            dtInstances[dtKey].row($tr).remove().draw(false);
+                        } else {
+                            $tr.remove();
+                        }
+                        showToast('✓ Строка удалена');
+                    } else {
+                        showToast('✗ ' + (res.error || 'Ошибка удаления'), 'var(--red)');
+                    }
+                },
+                error: function() { showToast('✗ Ошибка сервера', 'var(--red)'); }
+            });
+        });
+    });
+
+    // ── ДОБАВЛЕНИЕ НОВОЙ СТРОКИ (через модалку, один INSERT, одна запись в истории) ──
+    // Схемы полей по таблицам: подпись + тип (text/number) + readonly (автозаполняется по VID)
+    var NEW_ROW_FIELDS = {
+        vbase: [
+            {col:'VID', label:'VID', type:'text', auto:false},
+            {col:'INN', label:'ИНН', type:'text', auto:true},
+            {col:'Partner', label:'Партнёр', type:'text', auto:true},
+            {col:'Service', label:'Service', type:'text', auto:false},
+            {col:'Status', label:'Status', type:'text', auto:false},
+            {col:'Sales', label:'Sales', type:'number', auto:false},
+            {col:'Komissiya', label:'Komissiya', type:'number', auto:false},
+        ],
+        vfaktura: [
+            {col:'VID', label:'VID', type:'text', auto:false},
+            {col:'INN', label:'ИНН', type:'text', auto:true},
+            {col:'Partner', label:'Партнёр', type:'text', auto:true},
+            {col:'Data', label:'Дата (Data)', type:'text', auto:false},
+            {col:'Summ', label:'Сумма (Summ)', type:'number', auto:false},
+        ],
+        vbank: [
+            {col:'VID', label:'VID', type:'text', auto:false},
+            {col:'INN', label:'ИНН', type:'text', auto:true},
+            {col:'Partner', label:'Партнёр', type:'text', auto:true},
+            {col:'Data', label:'Дата (Data)', type:'text', auto:false},
+            {col:'Summ', label:'Сумма (Summ)', type:'number', auto:false},
+        ],
+    };
+
+    // Карта таблица → DataTables-ключ → id таблицы (для добавления готовой строки в UI)
+    var TAB_TABLE_MAP = {
+        vbase:    { dtKey: 'sales',   tableId: '#tableSales',   cols: ['VID','INN','Partner','Service','Status','Sales','Komissiya'] },
+        vfaktura: { dtKey: 'faktura', tableId: '#tableFaktura', cols: ['VID','INN','Partner','Summ'] },
+        vbank:    { dtKey: 'bank',    tableId: '#tableBank',    cols: ['VID','INN','Partner','Summ'] },
+    };
+
+    var addRowCurrentTable = null;
+
+    $(document).on('click', '.btn-add-row', function() {
+        var table  = $(this).data('table');
+        var fields = NEW_ROW_FIELDS[table];
+        if (!fields) return;
+
+        addRowCurrentTable = table;
+        $('#addRowMeta').text('Таблица: ' + table + ' · Период: ' + ($('select[name="db_month"]').val() || '') + ' ' + ($('select[name="db_year"]').val() || ''));
+        $('#addRowError').hide().text('');
+
+        var html = '';
+        fields.forEach(function(f) {
+            html += '<div>' +
+                '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">' + f.label + (f.auto ? ' (автоматически по VID)' : '') + '</label>' +
+                '<input type="' + (f.type === 'number' ? 'text' : 'text') + '" data-col="' + f.col + '" ' +
+                (f.auto ? 'readonly' : '') +
+                ' style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:' + (f.auto ? 'var(--surface2)' : 'var(--surface)') + ';color:var(--text);font-family:Inter,sans-serif;font-size:13px;outline:none;">' +
+            '</div>';
+        });
+        $('#addRowFields').html(html);
+        $('#addRowModal').addClass('show');
+        $('#addRowFields input[data-col="VID"]').trigger('focus');
+    });
+
+    $('#closeAddRowModal, #btnCancelAddRow').on('click', function() {
+        $('#addRowModal').removeClass('show');
+    });
+
+    // Автоподстановка ИНН/Партнёра при вводе VID (по уходу с поля)
+    $(document).on('blur', '#addRowFields input[data-col="VID"]', function() {
+        var vid = $(this).val().trim();
+        if (!vid) return;
+        $.ajax({
+            url: '/db/lookup_vid',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ vid: vid }),
+            success: function(res) {
+                if (res.found) {
+                    $('#addRowFields input[data-col="INN"]').val(res.INN);
+                    $('#addRowFields input[data-col="Partner"]').val(res.Partner);
+                } else {
+                    $('#addRowFields input[data-col="INN"]').val('');
+                    $('#addRowFields input[data-col="Partner"]').val('');
+                    $('#addRowError').text('VID "' + vid + '" не найден в справочнике vipp_canon — проверьте написание.').show();
+                }
+            }
+        });
+    });
+
+    $('#btnSubmitAddRow').on('click', function() {
+        var table = addRowCurrentTable;
+        var fields = NEW_ROW_FIELDS[table];
+        if (!table || !fields) return;
+
+        var row = {};
+        var vidVal = $('#addRowFields input[data-col="VID"]').val().trim();
+        if (!vidVal) {
+            $('#addRowError').text('Укажите VID.').show();
+            return;
+        }
+
+        fields.forEach(function(f) {
+            row[f.col] = $('#addRowFields input[data-col="' + f.col + '"]').val().trim();
+        });
+        row['period_month'] = getDbMonth();
+        row['period_year']  = getDbYear();
+
+        $('#btnSubmitAddRow').prop('disabled', true).text('Добавление...');
+
+        $.ajax({
+            url: '/db/insert',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ table: table, row: row }),
+            success: function(res) {
+                $('#btnSubmitAddRow').prop('disabled', false).text('Добавить');
+                if (!res.ok) { $('#addRowError').text(res.error || 'Ошибка добавления').show(); return; }
+
+                var pkVal = res.pk_val;
+                var info  = TAB_TABLE_MAP[table];
+                var $rowHtml = '<tr data-pk="' + pkVal + '" data-table="' + table + '">';
+                $rowHtml += '<td style="text-align:center;padding:4px!important;"><button class="btn-del-row" title="Удалить строку">🗑</button></td>';
+                info.cols.forEach(function(c) {
+                    var cls = (c === 'Sales' || c === 'Komissiya' || c === 'Summ') ? 'num' : '';
+                    var val = row[c] || '0';
+                    if (cls === 'num') {
+                        var num = parseFloat(val.replace(/\s/g,'').replace(',','.')) || 0;
+                        val = num.toLocaleString('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:2});
+                    }
+                    $rowHtml += '<td class="editable-cell ' + cls + '" data-col="' + c + '">' + val + '</td>';
+                });
+                $rowHtml += '</tr>';
+
+                if (dtInstances[info.dtKey]) {
+                    dtInstances[info.dtKey].row.add($($rowHtml)).draw(false);
+                }
+
+                $('#addRowModal').removeClass('show');
+                showToast('✓ Строка добавлена');
+            },
+            error: function(xhr) {
+                $('#btnSubmitAddRow').prop('disabled', false).text('Добавить');
+                var msg = 'Ошибка сервера';
+                try { msg = JSON.parse(xhr.responseText).error || msg; } catch(e) {}
+                $('#addRowError').text(msg).show();
+            }
+        });
+    });
+
+    // ── EXCEL DOWNLOAD ───────────────────────────────────────────
+    // Открыть/закрыть меню
+    $(document).on('click', '.btn-excel-dl', function(e) {
+        e.stopPropagation();
+        var $menu = $(this).siblings('.excel-dl-menu');
+        $('.excel-dl-menu').not($menu).removeClass('open');
+        $menu.toggleClass('open');
+    });
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('.excel-dl-wrap').length) {
+            $('.excel-dl-menu').removeClass('open');
+        }
+    });
+
+    // Клик по пункту меню
+    $(document).on('click', '.excel-dl-item', function() {
+        var mode   = $(this).data('mode');
+        var $wrap  = $(this).closest('.excel-dl-wrap');
+        var table  = $wrap.data('table');
+        var dtKey  = TAB_TABLE_MAP[table] ? TAB_TABLE_MAP[table].dtKey : null;
+        $('.excel-dl-menu').removeClass('open');
+
+        if (mode === 'full') {
+            // Скачать всю таблицу из Postgres
+            var month = getDbMonth();
+            var year  = $('select[name="db_year"]').val() || new Date().getFullYear();
+            window.location.href = '/db/export/' + table + '?full=1&month=' + month + '&year=' + year;
+
+        } else {
+            // Скачать то, что сейчас в таблице (с учётом фильтров/сортировки)
+            if (!dtKey || !dtInstances[dtKey]) return;
+            var dt = dtInstances[dtKey];
+
+            // Собираем видимые строки
+            var headers = [];
+            $(TAB_TABLE_MAP[table].tableId + ' thead th').each(function(i) {
+                if (i === 0) return; // пропускаем колонку с кнопкой удаления
+                headers.push($(this).text().trim());
+            });
+
+            var rows = [];
+            dt.rows({ search: 'applied', order: 'current' }).every(function() {
+                var $tr  = $(this.node());
+                var row  = [];
+                $tr.find('td').each(function(i) {
+                    if (i === 0) return; // пропускаем кнопку удаления
+                    var txt = $(this).text().trim().replace(/\s+/g, ' ');
+                    row.push(txt);
+                });
+                rows.push(row);
+            });
+
+            // Отправляем на сервер для генерации Excel
+            $.ajax({
+                url: '/db/export_filtered',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ table: table, headers: headers, rows: rows }),
+                xhrFields: { responseType: 'blob' },
+                success: function(blob, status, xhr) {
+                    var fname = xhr.getResponseHeader('Content-Disposition') || '';
+                    var match = fname.match(/filename="?([^"]+)"?/);
+                    var filename = match ? match[1] : table + '_filtered.xlsx';
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url; a.download = filename;
+                    document.body.appendChild(a); a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                },
+                error: function() { showToast('✗ Ошибка генерации файла', 'var(--red)'); }
+            });
+        }
+    });
+
+});
+</script>
+
+<div class="scroll-arrow-wrap" id="scroll-top-area">
+    <button class="scroll-arrow" id="btn-scroll-top" title="В начало страницы" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+    <button class="scroll-arrow" id="btn-scroll-down" title="В конец страницы" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">&#8595;</button>
+</div>
+
+<script>
+(function() {
+    const btnTop  = document.getElementById('btn-scroll-top');
+    const btnDown = document.getElementById('btn-scroll-down');
+    function updateBtns() {
+        const scrolled = window.scrollY;
+        const maxScroll = document.body.scrollHeight - window.innerHeight;
+        btnTop.style.opacity  = scrolled > 50 ? '1' : '0.3';
+        btnDown.style.opacity = scrolled < maxScroll - 50 ? '1' : '0.3';
+    }
+    window.addEventListener('scroll', updateBtns, { passive: true });
+    updateBtns();
+})();
+</script>
+
+<script>
+(function() {
+    var uploadType   = 'table';
+    var selectedTable = 'vbase';
+    var selectedFile  = null;
+    var selectedFileBuffer = null; // ArrayBuffer кэшируется, чтобы перестраивать
+                                    // предпросмотр при смене таблицы/типа без пере-чтения файла
+
+    var TABLE_COLS = {
+        vbase:    ['Data','Partner','INN','Service','Status','Sales','Komissiya','VID'],
+        vbank:    ['Data','Partner','INN','Summ','VID'],
+        vfaktura: ['Data','Partner','INN','Summ','VID'],
+        vipp:     ['№','Partner','INN','VID']
+    };
+
+    document.getElementById('btnOpenUpload').addEventListener('click', function() {
+        document.getElementById('uploadModal').classList.add('show');
+    });
+    document.getElementById('closeUploadModal').addEventListener('click', closeModal);
+    document.getElementById('btnCancelUpload').addEventListener('click', closeModal);
+    document.getElementById('uploadModal').addEventListener('click', function(e) {
+        if (e.target === this) closeModal();
+    });
+    function closeModal() {
+        document.getElementById('uploadModal').classList.remove('show');
+        resetUpload();
+    }
+    function resetUpload() {
+        selectedFile = null;
+        document.getElementById('uploadFileName').textContent = '';
+        document.getElementById('uploadFileInput').value = '';
+        document.getElementById('uploadLog').style.display = 'none';
+        document.getElementById('uploadLog').textContent = '';
+        document.getElementById('btnDoUpload').disabled = true;
+        clearPreview();
+    }
+
+    // ── ПРЕДПРОСМОТР ФАЙЛА (ДО ЗАГРУЗКИ НА СЕРВЕР) ──
+    // Парсим Excel прямо в браузере (SheetJS): показываем первые строки, проверяем
+    // наличие нужных колонок и — если есть колонка "Data" — какие периоды нашлись
+    // и не загружены ли они уже в базу (спрашиваем сервер отдельным лёгким запросом).
+    function clearPreview() {
+        selectedFileBuffer = null;
+        document.getElementById('uploadPreview').style.display = 'none';
+        document.getElementById('uploadPreviewMsgs').innerHTML = '';
+        document.querySelector('#uploadPreviewTable thead').innerHTML = '';
+        document.querySelector('#uploadPreviewTable tbody').innerHTML = '';
+    }
+
+    function addPreviewMsg(type, text) {
+        var el = document.createElement('div');
+        el.className = 'preview-msg ' + type;
+        el.textContent = text;
+        document.getElementById('uploadPreviewMsgs').appendChild(el);
+    }
+
+    function pad2(n) { return n < 10 ? '0' + n : String(n); }
+    function formatDateShort(d) { return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '.' + d.getFullYear(); }
+
+    // Разбирает дату из ячейки: JS Date (если cellDates:true сработал), число
+    // (Excel serial date) или текст в форматах dd.mm.yyyy / yyyy-mm-dd (day-first,
+    // как и на сервере в pd.to_datetime(..., dayfirst=True)).
+    function parseDateFlexible(v) {
+        if (v instanceof Date && !isNaN(v)) return v;
+        if (typeof v === 'number' && window.XLSX && XLSX.SSF) {
+            try {
+                var d = XLSX.SSF.parse_date_code(v);
+                if (d) return new Date(d.y, d.m - 1, d.d);
+            } catch (e) {}
+        }
+        if (typeof v === 'string') {
+            var s = v.trim();
+            var m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/);
+            if (m) {
+                var day = parseInt(m[1], 10), month = parseInt(m[2], 10), year = parseInt(m[3], 10);
+                if (year < 100) year += 2000;
+                var d2 = new Date(year, month - 1, day);
+                if (!isNaN(d2)) return d2;
+            }
+            var m2 = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+            if (m2) {
+                var d3 = new Date(parseInt(m2[1], 10), parseInt(m2[2], 10) - 1, parseInt(m2[3], 10));
+                if (!isNaN(d3)) return d3;
+            }
+        }
+        return null;
+    }
+
+    function renderPreviewRowsTable(rows) {
+        var theadEl = document.querySelector('#uploadPreviewTable thead');
+        var tbodyEl = document.querySelector('#uploadPreviewTable tbody');
+        if (!rows.length) return;
+        var header = rows[0];
+        var trh = document.createElement('tr');
+        header.forEach(function(c) {
+            var th = document.createElement('th');
+            th.textContent = String(c || '');
+            trh.appendChild(th);
+        });
+        theadEl.appendChild(trh);
+        rows.slice(1).forEach(function(r) {
+            var tr = document.createElement('tr');
+            header.forEach(function(_, i) {
+                var td = document.createElement('td');
+                var v = r[i];
+                td.textContent = (v instanceof Date) ? formatDateShort(v) : (v === undefined || v === null ? '' : String(v));
+                td.title = td.textContent;
+                tr.appendChild(td);
+            });
+            tbodyEl.appendChild(tr);
+        });
+        if (rows.length > 1) addPreviewMsg('info', '👁️ Первые ' + (rows.length - 1) + ' строк из файла:');
+    }
+
+    function renderPreview() {
+        if (!selectedFileBuffer || typeof XLSX === 'undefined') return;
+
+        var wrap = document.getElementById('uploadPreview');
+        document.getElementById('uploadPreviewMsgs').innerHTML = '';
+        document.querySelector('#uploadPreviewTable thead').innerHTML = '';
+        document.querySelector('#uploadPreviewTable tbody').innerHTML = '';
+        wrap.style.display = 'block';
+
+        var wb;
+        try {
+            wb = XLSX.read(selectedFileBuffer, { type: 'array', cellDates: true });
+        } catch (e) {
+            addPreviewMsg('error', '❌ Не удалось разобрать файл: ' + e.message);
+            return;
+        }
+
+        var sheetName = wb.SheetNames[0];
+        var requiredCols = null;
+        if (uploadType === 'table') {
+            requiredCols = TABLE_COLS[selectedTable];
+        } else if (uploadType === 'saldo') {
+            requiredCols = ['VID', 'Saldo'];
+        } else if (uploadType === 'balance1c') {
+            sheetName = wb.SheetNames.filter(function(n) { return n.trim() === 'КС06'; })[0];
+            if (!sheetName) {
+                addPreviewMsg('error', '❌ Лист «КС06» не найден в файле. Проверьте название листа. Доступные листы: ' + wb.SheetNames.join(', '));
+                return;
+            }
+        }
+
+        var ws = wb.Sheets[sheetName];
+        if (!ws) { addPreviewMsg('error', '❌ Лист пустой или повреждён'); return; }
+
+        var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        if (!rows.length) { addPreviewMsg('error', '❌ Файл пустой'); return; }
+
+        if (uploadType === 'balance1c') {
+            addPreviewMsg('info', 'ℹ️ Лист «КС06» найден. Структура из двух блоков колонок проверяется и считается на сервере.');
+            renderPreviewRowsTable(rows.slice(0, 8));
+            return;
+        }
+
+        var headerRow = rows[0].map(function(c) { return String(c || '').trim(); });
+        var dataRows = rows.slice(1).filter(function(r) {
+            return r.some(function(c) { return c !== '' && c !== null && c !== undefined; });
+        });
+
+        addPreviewMsg('info', 'ℹ️ Строк с данными: ' + dataRows.length);
+
+        if (requiredCols) {
+            var missing = requiredCols.filter(function(c) { return headerRow.indexOf(c) === -1; });
+            if (missing.length) {
+                addPreviewMsg('error', '❌ Отсутствуют колонки: ' + missing.join(', '));
+            } else {
+                addPreviewMsg('ok', '✓ Все нужные колонки на месте (' + requiredCols.join(', ') + ')');
+            }
+        }
+
+        var dataColIdx = headerRow.indexOf('Data');
+        if (dataColIdx !== -1) {
+            var periodsMap = {};
+            dataRows.forEach(function(r) {
+                var d = parseDateFlexible(r[dataColIdx]);
+                if (d) periodsMap[d.getFullYear() + '-' + (d.getMonth() + 1)] = [d.getFullYear(), d.getMonth() + 1];
+            });
+            var periods = Object.keys(periodsMap).map(function(k) { return periodsMap[k]; });
+            periods.sort(function(a, b) { return a[0] - b[0] || a[1] - b[1]; });
+
+            if (periods.length) {
+                var periodLabel = periods.map(function(p) { return pad2(p[1]) + '.' + p[0]; }).join(', ');
+                addPreviewMsg('info', '📅 Найдены периоды: ' + periodLabel);
+
+                if (uploadType === 'table') {
+                    fetch('/db/check_periods', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ table: selectedTable, periods: periods })
+                    }).then(function(r) { return r.json(); }).then(function(resp) {
+                        if (resp.already && resp.already.length) {
+                            var lbl = resp.already.map(function(p) {
+                                return pad2(p.month) + '.' + p.year + ' (' + p.count + ' строк)';
+                            }).join(', ');
+                            addPreviewMsg('warn', '⚠️ Уже есть в базе: ' + lbl + ' — сервер отклонит загрузку, пока эти периоды не удалены.');
+                        }
+                    }).catch(function() { /* тихо игнорируем — это необязательная подсказка */ });
+                }
+            } else {
+                addPreviewMsg('warn', '⚠️ Не удалось определить период — не найдено ни одной корректной даты в колонке "Data"');
+            }
+        }
+
+        renderPreviewRowsTable(rows.slice(0, 8));
+    }
+
+    // Переключение типа загрузки
+    document.querySelectorAll('[data-upload-type]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('[data-upload-type]').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            uploadType = this.dataset.uploadType;
+            document.getElementById('uploadTableSection').style.display = uploadType === 'table' ? '' : 'none';
+            document.getElementById('uploadSaldoSection').style.display = uploadType === 'saldo' ? '' : 'none';
+            document.getElementById('uploadBalance1cSection').style.display = uploadType === 'balance1c' ? '' : 'none';
+            if (selectedFileBuffer) { renderPreview(); } else { clearPreview(); }
+        });
+    });
+
+    // Выбор таблицы
+    document.querySelectorAll('#uploadTableBtns .upload-table-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#uploadTableBtns .upload-table-btn').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            selectedTable = this.dataset.table;
+            if (selectedFileBuffer) renderPreview();
+        });
+    });
+
+    // Drag & Drop
+    var dropZone  = document.getElementById('uploadDropZone');
+    var fileInput = document.getElementById('uploadFileInput');
+
+    dropZone.addEventListener('click', function() { fileInput.click(); });
+    dropZone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', function() { this.classList.remove('drag-over'); });
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault(); this.classList.remove('drag-over');
+        if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', function() {
+        if (this.files[0]) setFile(this.files[0]);
+    });
+
+    function setFile(f) {
+        if (!f.name.match(/\.xlsx?$/i)) { showLog('❌ Только .xlsx или .xls файлы'); return; }
+        selectedFile = f;
+        document.getElementById('uploadFileName').textContent = '📄 ' + f.name;
+        document.getElementById('btnDoUpload').disabled = false;
+        document.getElementById('uploadLog').style.display = 'none';
+        clearPreview();
+
+        if (typeof XLSX === 'undefined') return; // библиотека не загрузилась — просто без предпросмотра
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            selectedFileBuffer = e.target.result;
+            renderPreview();
+        };
+        reader.onerror = function() {
+            addPreviewMsg('error', '❌ Не удалось прочитать файл для предпросмотра');
+            document.getElementById('uploadPreview').style.display = 'block';
+        };
+        reader.readAsArrayBuffer(f);
+    }
+
+    // Загрузка
+    document.getElementById('btnDoUpload').addEventListener('click', function() {
+        if (!selectedFile) return;
+        var btn = this;
+        btn.disabled = true;
+        btn.textContent = '⏳ Загружаем...';
+
+        var formData = new FormData();
+        formData.append('file', selectedFile);
+
+        var url;
+        if (uploadType === 'saldo') {
+            url = '/db/upload_saldo_initial';
+            formData.append('year', document.getElementById('uploadSaldoYear').value);
+        } else if (uploadType === 'balance1c') {
+            url = '/db/upload_balance_1c';
+            formData.append('month', document.getElementById('uploadBalance1cMonth').value);
+            formData.append('year', document.getElementById('uploadBalance1cYear').value);
+        } else {
+            url = '/db/upload_excel';
+            formData.append('table', selectedTable);
+            formData.append('cols', JSON.stringify(TABLE_COLS[selectedTable]));
+        }
+
+        fetch(url, { method: 'POST', body: formData })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                showLog(data.log || (data.error ? '❌ ' + data.error : '✅ Готово'));
+                btn.textContent = '⬆ Загрузить';
+                if (!data.error) btn.disabled = false;
+            })
+            .catch(function(e) {
+                showLog('❌ Ошибка: ' + e);
+                btn.textContent = '⬆ Загрузить';
+                btn.disabled = false;
+            });
+    });
+
+    function showLog(text) {
+        var log = document.getElementById('uploadLog');
+        log.textContent = text;
+        log.style.display = 'block';
+    }
+})();
+</script>
+
+</body>
+</html>
