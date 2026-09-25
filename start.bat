@@ -30,7 +30,7 @@ if %errorlevel% neq 0 (
 )
 
 echo [1/3] Python зависимости...
-%PYTHON_BIN% -c "import fastapi, uvicorn, polars, pandas" >nul 2>nul
+%PYTHON_BIN% -c "import fastapi, uvicorn, polars, pandas, flask, sqlalchemy, psycopg2, dotenv" >nul 2>nul
 if %errorlevel% neq 0 (
     %PYTHON_BIN% -m pip install -r requirements.txt
     if %errorlevel% neq 0 (
