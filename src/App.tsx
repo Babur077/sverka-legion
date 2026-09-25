@@ -16,6 +16,7 @@ import { ReconciliationBuilderWorkspace } from './components/ReconciliationBuild
 import { Ravan1CWorkspace } from './components/Ravan1CWorkspace';
 import { RepaymentsWorkspace } from './components/RepaymentsWorkspace';
 import { TestVoronaWorkspace } from './components/TestVoronaWorkspace';
+import { VoronaWorkspace } from './components/VoronaWorkspace';
 import { User, SystemSettings, ReconciliationModuleManifest } from './types';
 import { hasModuleWorkspace, ModuleWorkspaceKey } from './modules/workspaceRegistry';
 import { getSettingsViaApi } from './utils/settingsApi';
@@ -265,6 +266,11 @@ export const App: React.FC = () => {
       setCurrentTab('module');
       return;
     }
+    if (moduleId === 'vorona') {
+      setActiveModuleWorkspace('vorona');
+      setCurrentTab('module');
+      return;
+    }
     setActiveModuleWorkspace(null);
     setCurrentTab('modules');
   };
@@ -335,6 +341,16 @@ export const App: React.FC = () => {
       case 'test_vorona':
         return (
           <TestVoronaWorkspace
+            user={user}
+            onBack={() => {
+              setActiveModuleWorkspace(null);
+              setCurrentTab('modules');
+            }}
+          />
+        );
+      case 'vorona':
+        return (
+          <VoronaWorkspace
             user={user}
             onBack={() => {
               setActiveModuleWorkspace(null);
