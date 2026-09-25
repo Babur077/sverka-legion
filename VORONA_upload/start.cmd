@@ -15,11 +15,11 @@ pause
 exit /b 1
 
 :check_dependencies
-%VORONA_PYTHON% -c "import flask, pandas, sqlalchemy, psycopg2, openpyxl, xlrd"
+%VORONA_PYTHON% -c "import flask, pandas, sqlalchemy, psycopg2, openpyxl, xlrd, dotenv"
 if not errorlevel 1 goto start_app
 echo.
 echo ERROR: Required Python packages are missing. Install them with:
-echo %VORONA_PYTHON% -m pip install Flask pandas SQLAlchemy psycopg2-binary openpyxl xlrd
+echo %VORONA_PYTHON% -m pip install Flask pandas SQLAlchemy psycopg2-binary openpyxl xlrd python-dotenv
 pause
 exit /b 1
 
