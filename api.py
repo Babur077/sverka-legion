@@ -16,15 +16,17 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.wsgi import WSGIMiddleware
 
 from backend.app.config import ALLOWED_ORIGINS, HOST, IS_PRODUCTION, PORT
 from backend.app.http_utils import extract_bearer_token
-from backend.app.routers import admin, audit, auth, bank_ai, dashboard, definitions, epos, health, jobs, modules, settings
+from backend.app.routers import admin, audit, auth, bank_ai, dashboard, definitions, epos, health, jobs, modules, settings, vorona
 from backend.app.logging_config import configure_logging
 from backend.app.services.backups import start_backup_worker, stop_backup_worker
 from backend.app.services.job_worker import start_job_worker, stop_job_worker
 from utils.auth_sessions import get_session_user
 from utils.db_manager import init_db
+from modules.vorona.gateway import vorona_wsgi_app
 
 
 configure_logging()
@@ -145,6 +147,11 @@ app.include_router(epos.router)
 app.include_router(settings.router)
 app.include_router(admin.router)
 app.include_router(audit.router)
+app.include_router(vorona.router)
+
+# Legacy Vorona runs behind ReconcileHub auth/RBAC while keeping its original
+# reconciliation and PostgreSQL logic intact.
+app.mount("/vorona", WSGIMiddleware(vorona_wsgi_app), name="vorona")
 
 
 # Compiled React frontend.
