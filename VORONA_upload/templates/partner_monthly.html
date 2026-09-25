@@ -329,7 +329,7 @@
         <h1>VORONA — Помесячный отчёт по партнёру</h1>
         <p>Динамика сверки нарастающим итогом по месяцам: Payment · Bank · Faktura · Komissiya · Saldo · 1С · Расхождение</p>
     </div>
-    <a href="/" class="btn-secondary" style="margin-left:auto;">← К сверке</a>
+    <a href="{{ request.script_root }}/" class="btn-secondary" style="margin-left:auto;">← К сверке</a>
 </div>
 
 <div class="search-card">
@@ -626,7 +626,7 @@ $(function() {
 
     function searchAct(searchVal, year) {
         $.ajax({
-            url: '/get_partner_reconciliation_act',
+            url: '{{ request.script_root }}/get_partner_reconciliation_act',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({ inn: searchVal, year: year }),
@@ -701,7 +701,7 @@ $(function() {
         }
 
         $.ajax({
-            url: '/get_partner_monthly_report',
+            url: '{{ request.script_root }}/get_partner_monthly_report',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({ inn: searchVal, year: year }),
