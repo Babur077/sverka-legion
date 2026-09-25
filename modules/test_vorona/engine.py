@@ -189,7 +189,7 @@ class TestVoronaModule(BaseReconciliationModule):
         return ModuleManifest(
             id="test_vorona",
             name="Тестовая ворона",
-            version="0.1.0",
+            version="0.2.0",
             description=(
                 "Контроль взаиморасчётов с партнёрами: продажи, комиссии, "
                 "банковские оплаты, фактуры, начальное сальдо и данные 1С."
@@ -615,6 +615,242 @@ class TestVoronaModule(BaseReconciliationModule):
                     "source_counts": {
                         key: len(value)
                         for key, value in datasets.items()
+                    },
+                }
+            },
+        )
+        self._last_result = result
+        return result
+
+    def run_from_records(
+        self,
+        datasets: Dict[str, list[dict[str, Any]]],
+        *,
+        year: int,
+        through_month: int | None = None,
+    ) -> ReconResult:
+        """Run reconciliation from the persistent Test Vorona database."""
+        started = time.perf_counter()
+        run_id = str(uuid.uuid4())[:8]
+
+        sales = list(datasets.get("sales") or [])
+        bank = list(datasets.get("bank") or [])
+        faktura = list(datasets.get("faktura") or [])
+        partners = list(datasets.get("partners") or [])
+        opening_rows = list(datasets.get("opening_balances") or [])
+        one_c_rows = list(datasets.get("one_c") or [])
+
+        vid_to_partner: dict[str, str] = {}
+        vid_to_inn: dict[str, str] = {}
+        active_vids: set[str] = set()
+        metadata: dict[str, dict[str, str]] = {}
+
+        def register_meta(vid: str, partner: str = "", inn: str = "") -> None:
+            normalized_vid = _vid(vid)
+            if not normalized_vid:
+                return
+            active_vids.add(normalized_vid)
+            item = metadata.setdefault(normalized_vid, {})
+            partner_text = _text(partner)
+            inn_text = _identifier(inn)
+            if partner_text and not item.get("partner"):
+                item["partner"] = partner_text
+            if inn_text and not item.get("inn"):
+                item["inn"] = inn_text
+
+        for partner_row in partners:
+            vid = _vid(partner_row.get("vid"))
+            if not vid:
+                continue
+            partner_name = _text(partner_row.get("partner"))
+            inn = _identifier(partner_row.get("inn"))
+            if partner_name:
+                vid_to_partner[vid] = partner_name
+            if inn:
+                vid_to_inn[vid] = inn
+
+        for source in (sales, bank, faktura, opening_rows, one_c_rows):
+            for row in source:
+                register_meta(
+                    str(row.get("vid") or ""),
+                    str(row.get("partner") or ""),
+                    str(row.get("inn") or ""),
+                )
+
+        opening_by_vid: dict[str, float] = {}
+        for row in opening_rows:
+            vid = _vid(row.get("vid"))
+            if not vid:
+                continue
+            opening_by_vid[vid] = (
+                opening_by_vid.get(vid, 0.0)
+                + _number(row.get("amount"))
+            )
+
+        one_c_left: dict[str, float] = {}
+        one_c_right: dict[str, float] = {}
+        for row in one_c_rows:
+            vid = _vid(row.get("vid"))
+            if not vid:
+                continue
+            amount = _number(row.get("amount"))
+            side = _text(row.get("side"))
+            if side == "4890 / 4010":
+                one_c_left[vid] = one_c_left.get(vid, 0.0) + amount
+            elif side == "6990 / 6310":
+                one_c_right[vid] = one_c_right.get(vid, 0.0) + amount
+
+        payment_by_vid: dict[str, float] = {}
+        commission_by_vid: dict[str, float] = {}
+        for row in sales:
+            vid = _vid(row.get("vid"))
+            if not vid:
+                continue
+            if str(row.get("Status") or row.get("status") or "").strip().upper() != "REVERTED":
+                payment_by_vid[vid] = (
+                    payment_by_vid.get(vid, 0.0)
+                    + _number(row.get("amount"))
+                )
+            commission_by_vid[vid] = (
+                commission_by_vid.get(vid, 0.0)
+                + _number(row.get("commission"))
+            )
+
+        bank_by_vid = _sum_by_vid(bank)
+        faktura_by_vid = _sum_by_vid(faktura)
+
+        rows: list[dict[str, Any]] = []
+        for vid in sorted(
+            active_vids,
+            key=lambda value: (
+                int(re.sub(r"\D", "", value) or 10**9),
+                value,
+            ),
+        ):
+            payment = payment_by_vid.get(vid, 0.0)
+            bank_total = bank_by_vid.get(vid, 0.0)
+            faktura_total = faktura_by_vid.get(vid, 0.0)
+            commission = commission_by_vid.get(vid, 0.0)
+            opening_balance = opening_by_vid.get(vid, 0.0)
+
+            saldo = payment - bank_total - faktura_total + opening_balance
+            one_c = one_c_right.get(vid, 0.0) - one_c_left.get(vid, 0.0)
+            difference = faktura_total - commission
+            difference_1c = saldo - one_c
+
+            has_difference = abs(difference) > DIFF_TOLERANCE
+            has_difference_1c = abs(difference_1c) > DIFF_TOLERANCE
+
+            if has_difference and has_difference_1c:
+                status = "Есть оба расхождения"
+            elif has_difference:
+                status = "Есть Difference"
+            elif has_difference_1c:
+                status = "Есть Difference 1C"
+            else:
+                status = "Без расхождений"
+
+            fallback = metadata.get(vid, {})
+            rows.append({
+                "partner": (
+                    vid_to_partner.get(vid)
+                    or fallback.get("partner")
+                    or "—"
+                ),
+                "inn": vid_to_inn.get(vid) or fallback.get("inn") or "",
+                "vid": vid,
+                "payment": payment,
+                "bank": bank_total,
+                "faktura": faktura_total,
+                "komissiya": commission,
+                "opening_balance": opening_balance,
+                "saldo": saldo,
+                "one_c": one_c,
+                "difference": difference,
+                "difference_1c": difference_1c,
+                "status": status,
+            })
+
+        status_counts = Counter(row["status"] for row in rows)
+        matched_count = sum(
+            1 for row in rows if row["status"] == "Без расхождений"
+        )
+        discrepancy_count = len(rows) - matched_count
+
+        total_fields = (
+            "payment",
+            "bank",
+            "faktura",
+            "komissiya",
+            "opening_balance",
+            "saldo",
+            "one_c",
+            "difference",
+            "difference_1c",
+        )
+        totals = {
+            field: sum(float(row[field]) for row in rows)
+            for field in total_fields
+        }
+
+        result = ReconResult(
+            run_id=run_id,
+            module_id="test_vorona",
+            timestamp=datetime.now().isoformat(),
+            status="COMPLETED" if discrepancy_count == 0 else "WARNING",
+            summary=ReconSummary(
+                total_records_a=len(rows),
+                total_records_b=(
+                    len(sales) + len(bank) + len(faktura)
+                    + len(opening_rows) + len(one_c_rows)
+                ),
+                total_sum_a=totals["saldo"],
+                total_sum_b=totals["one_c"],
+                matched_count=matched_count,
+                discrepancy_count=discrepancy_count,
+                diff_sum=totals["difference_1c"],
+                match_percentage=(
+                    round(matched_count / len(rows) * 100, 2)
+                    if rows
+                    else 100.0
+                ),
+                execution_time_ms=round(
+                    (time.perf_counter() - started) * 1000,
+                    2,
+                ),
+            ),
+            by_category=[
+                {"status": status, "count": count}
+                for status, count in status_counts.items()
+            ],
+            discrepancies=[
+                row for row in rows
+                if row["status"] != "Без расхождений"
+            ],
+            custom_metrics={
+                "test_vorona": {
+                    "year": int(year),
+                    "through_month": through_month,
+                    "tolerance": DIFF_TOLERANCE,
+                    "storage_mode": "persistent",
+                    "rows": rows,
+                    "status_counts": dict(status_counts),
+                    "totals": totals,
+                    "datasets": {
+                        "sales": sales,
+                        "bank": bank,
+                        "faktura": faktura,
+                        "partners": partners,
+                        "opening_balances": opening_rows,
+                        "one_c": one_c_rows,
+                    },
+                    "source_counts": {
+                        "sales": len(sales),
+                        "bank": len(bank),
+                        "faktura": len(faktura),
+                        "partners": len(partners),
+                        "opening_balances": len(opening_rows),
+                        "one_c": len(one_c_rows),
                     },
                 }
             },
