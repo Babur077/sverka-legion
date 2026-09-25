@@ -6,9 +6,13 @@ from decimal import Decimal
 from sqlalchemy import create_engine, text
 import datetime
 
+try:
+    from .db_config import DATABASE_URL
+except ImportError:
+    from db_config import DATABASE_URL
+
 app = Flask(__name__)
 
-DATABASE_URL = "postgresql+psycopg2://postgres:admin@localhost:5432/VORONA"
 engine = create_engine(DATABASE_URL)
 
 
