@@ -1,4 +1,4 @@
-export const MODULE_WORKSPACE_KEYS = ['bank_rrn', 'reconciliation_builder', 'ravan_1c', 'repayments', 'test_vorona'] as const;
+export const MODULE_WORKSPACE_KEYS = ['bank_rrn', 'reconciliation_builder', 'ravan_1c', 'repayments', 'test_vorona', 'vorona'] as const;
 
 export type ModuleWorkspaceKey = typeof MODULE_WORKSPACE_KEYS[number];
 
