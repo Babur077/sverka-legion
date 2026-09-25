@@ -15,6 +15,7 @@ import { BankRrnArchive } from './components/BankRrnArchive';
 import { ReconciliationBuilderWorkspace } from './components/ReconciliationBuilderWorkspace';
 import { Ravan1CWorkspace } from './components/Ravan1CWorkspace';
 import { RepaymentsWorkspace } from './components/RepaymentsWorkspace';
+import { TestVoronaWorkspace } from './components/TestVoronaWorkspace';
 import { User, SystemSettings, ReconciliationModuleManifest } from './types';
 import { hasModuleWorkspace, ModuleWorkspaceKey } from './modules/workspaceRegistry';
 import { getSettingsViaApi } from './utils/settingsApi';
@@ -259,6 +260,11 @@ export const App: React.FC = () => {
       setCurrentTab('module');
       return;
     }
+    if (moduleId === 'test_vorona') {
+      setActiveModuleWorkspace('test_vorona');
+      setCurrentTab('module');
+      return;
+    }
     setActiveModuleWorkspace(null);
     setCurrentTab('modules');
   };
@@ -319,6 +325,16 @@ export const App: React.FC = () => {
       case 'repayments':
         return (
           <RepaymentsWorkspace
+            user={user}
+            onBack={() => {
+              setActiveModuleWorkspace(null);
+              setCurrentTab('modules');
+            }}
+          />
+        );
+      case 'test_vorona':
+        return (
+          <TestVoronaWorkspace
             user={user}
             onBack={() => {
               setActiveModuleWorkspace(null);
