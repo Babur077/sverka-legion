@@ -3,13 +3,11 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 import os
 
-USER = "postgres"
-PASSWORD = "admin"
-HOST = "localhost"
-PORT = "5432"
-DB_NAME = "VORONA"
+try:
+    from .db_config import DATABASE_URL
+except ImportError:
+    from db_config import DATABASE_URL
 
-DATABASE_URL = f"postgresql+psycopg2://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB_NAME}"
 engine = create_engine(DATABASE_URL)
 
 def upload_file_to_db(file_name, table_name, use_cols):
