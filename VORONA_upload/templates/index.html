@@ -859,7 +859,7 @@
     </div>
     <div style="margin-left:auto;display:flex;gap:10px;align-items:center;">
         <button id="btnOpenUpload" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);padding:8px 16px;border-radius:7px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">⬆ Загрузить Excel</button>
-        <a href="/partner-monthly" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);padding:8px 16px;border-radius:7px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;text-decoration:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">📅 Помесячный отчёт</a>
+        <a href="{{ request.script_root }}/partner-monthly" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);padding:8px 16px;border-radius:7px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;text-decoration:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">📅 Помесячный отчёт</a>
     </div>
 </div>
 
@@ -957,7 +957,7 @@
 <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:20px;align-items:stretch;">
 
     <!-- Карточка: Сверка -->
-    <form method="POST" action="/" style="flex:1;min-width:280px;" id="formRecon">
+    <form method="POST" action="{{ request.script_root }}/" style="flex:1;min-width:280px;" id="formRecon">
         <input type="hidden" name="active_tab" id="active_tab" value="{{ active_tab }}">
         <!-- Передаём текущие значения базы чтобы не сбросились -->
         <input type="hidden" name="db_month" value="{{ db_month }}">
@@ -982,7 +982,7 @@
     </form>
 
     <!-- Карточка: База данных (Продажи / Фактуры / Оплаты) -->
-    <form method="POST" action="/" style="flex:1;min-width:280px;" id="formDB">
+    <form method="POST" action="{{ request.script_root }}/" style="flex:1;min-width:280px;" id="formDB">
         <input type="hidden" name="active_tab" id="active_tab_db" value="{{ active_tab }}">
         <!-- Передаём текущие значения сверки чтобы не сбросились -->
         <input type="hidden" name="month" value="{{ month }}">
@@ -1065,7 +1065,7 @@
             </label>
             <button id="btnHistoryVidClear" class="pop-btn" style="padding:6px 10px;display:none;" title="Сбросить фильтр по партнёру">✕</button>
             <button id="btnRefreshHistory" class="pop-btn btn-ok" style="padding:6px 14px;">⟳ Обновить</button>
-            <a id="btnExportHistory" class="pop-btn" style="padding:6px 14px;text-decoration:none;display:inline-block;" href="/db/export_history" target="_blank">⬇ Экспорт</a>
+            <a id="btnExportHistory" class="pop-btn" style="padding:6px 14px;text-decoration:none;display:inline-block;" href="{{ request.script_root }}/db/export_history" target="_blank">⬇ Экспорт</a>
         </div>
         <div style="font-size:12px;color:var(--text-muted);" id="historyCount"></div>
     </div>
@@ -1855,7 +1855,7 @@ $(function() {
     function historyUrl() {
         var table = $('#historyTableFilter').val();
         var vid = $('#historyVidFilter').val().trim();
-        var url = '/db/history?limit=300';
+        var url = '{{ request.script_root }}/db/history?limit=300';
         if (table) url += '&table=' + encodeURIComponent(table);
         if (vid) url += '&vid=' + encodeURIComponent(vid);
         return url;
@@ -1867,7 +1867,7 @@ $(function() {
         var params = [];
         if (table) params.push('table=' + encodeURIComponent(table));
         if (vid) params.push('vid=' + encodeURIComponent(vid));
-        return '/db/export_history' + (params.length ? '?' + params.join('&') : '');
+        return '{{ request.script_root }}/db/export_history' + (params.length ? '?' + params.join('&') : '');
     }
 
     function loadHistory() {
@@ -1958,7 +1958,7 @@ $(function() {
         showConfirm('Вернуть значение "' + col + '" (строка #' + pk + ' в ' + table + ') обратно на "' + oldVal + '"?', function() {
             $btn.prop('disabled', true).text('⏳...');
             $.ajax({
-                url: '/db/update',
+                url: '{{ request.script_root }}/db/update',
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ table: table, pk_val: pk, col: col, value: oldVal }),
@@ -2431,7 +2431,7 @@ $(function() {
         resetDetailTables();
 
         $.ajax({
-            url: '/get_partner_details',
+            url: '{{ request.script_root }}/get_partner_details',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({
@@ -2561,7 +2561,7 @@ $(function() {
 
         // Ссылка на помесячный отчёт работает только если известен ИНН
         if (currentDetailInn && currentDetailInn !== '-') {
-            $('#openMonthlyReport').attr('href', '/partner-monthly?inn=' + encodeURIComponent(currentDetailInn)).show();
+            $('#openMonthlyReport').attr('href', '{{ request.script_root }}/partner-monthly?inn=' + encodeURIComponent(currentDetailInn)).show();
         } else {
             $('#openMonthlyReport').hide();
         }
@@ -2645,7 +2645,7 @@ $(function() {
             $td.removeClass('editing');
 
             $.ajax({
-                url: '/db/update',
+                url: '{{ request.script_root }}/db/update',
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ table: table, pk_val: pkVal, col: col, value: newVal }),
@@ -2717,7 +2717,7 @@ $(function() {
 
         showConfirm('Удалить строку из ' + table + '? (pk=' + pkVal + ')', function() {
             $.ajax({
-                url: '/db/delete',
+                url: '{{ request.script_root }}/db/delete',
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ table: table, pk_val: pkVal }),
@@ -2809,7 +2809,7 @@ $(function() {
         var vid = $(this).val().trim();
         if (!vid) return;
         $.ajax({
-            url: '/db/lookup_vid',
+            url: '{{ request.script_root }}/db/lookup_vid',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({ vid: vid }),
@@ -2847,7 +2847,7 @@ $(function() {
         $('#btnSubmitAddRow').prop('disabled', true).text('Добавление...');
 
         $.ajax({
-            url: '/db/insert',
+            url: '{{ request.script_root }}/db/insert',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({ table: table, row: row }),
@@ -2940,7 +2940,7 @@ $(function() {
 
             // Отправляем на сервер для генерации Excel
             $.ajax({
-                url: '/db/export_filtered',
+                url: '{{ request.script_root }}/db/export_filtered',
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ table: table, headers: headers, rows: rows }),
@@ -3172,7 +3172,7 @@ $(function() {
                 addPreviewMsg('info', '📅 Найдены периоды: ' + periodLabel);
 
                 if (uploadType === 'table') {
-                    fetch('/db/check_periods', {
+                    fetch('{{ request.script_root }}/db/check_periods', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ table: selectedTable, periods: periods })
@@ -3264,14 +3264,14 @@ $(function() {
 
         var url;
         if (uploadType === 'saldo') {
-            url = '/db/upload_saldo_initial';
+            url = '{{ request.script_root }}/db/upload_saldo_initial';
             formData.append('year', document.getElementById('uploadSaldoYear').value);
         } else if (uploadType === 'balance1c') {
-            url = '/db/upload_balance_1c';
+            url = '{{ request.script_root }}/db/upload_balance_1c';
             formData.append('month', document.getElementById('uploadBalance1cMonth').value);
             formData.append('year', document.getElementById('uploadBalance1cYear').value);
         } else {
-            url = '/db/upload_excel';
+            url = '{{ request.script_root }}/db/upload_excel';
             formData.append('table', selectedTable);
             formData.append('cols', JSON.stringify(TABLE_COLS[selectedTable]));
         }
